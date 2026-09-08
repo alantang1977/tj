@@ -73,6 +73,9 @@ CONFIG = {
     "MOBILE_STARTUP": "mobile_startup.png",
     # 程序化生成图标的风格：3d（默认，高级立体浮雕）或 iphone17（带光影）
     "ICON_STYLE": "3d",
+    # 设置页「作者链接」：URL_GITHUB / URL_CNB（留空则不修改对应链接）
+    "AUTHOR_GITHUB": "https://github.com/alantang1977/tj",
+    "AUTHOR_CNB": "https://cnb.cool/tangtang.com.cn.kul/juntv",
 }
 
 # ---------------------------------------------------------------------------
@@ -1041,7 +1044,49 @@ def modify_android_manifest(config):
     return changed
 
 
-# ---------------------------------------------------------------- 6. CNB 脚本
+# ---------------------------------------------------------------- 7. 作者链接
+def modify_author_links(config):
+    """修改「设置增强」页的作者链接 URL_GITHUB / URL_CNB（mobile 与 leanback 各一份）。"""
+    github_url = str(config.get("AUTHOR_GITHUB", "")).strip()
+    cnb_url = str(config.get("AUTHOR_CNB", "")).strip()
+    changed_any = False
+    candidates = [
+        os.path.join(REPO_ROOT, "app", "src", "mobile", "java", "com", "fongmi",
+                     "android", "tv", "ui", "fragment", "SettingEnhanceFragment.java"),
+        os.path.join(REPO_ROOT, "app", "src", "leanback", "java", "com", "fongmi",
+                     "android", "tv", "ui", "activity", "SettingEnhanceActivity.java"),
+    ]
+    for full_path in candidates:
+        if not os.path.exists(full_path):
+            print(f"[SKIP] 文件不存在: {os.path.relpath(full_path, REPO_ROOT)}")
+            continue
+        with open(full_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        original = content
+        rel_path = os.path.relpath(full_path, REPO_ROOT)
+        if github_url:
+            content = re.sub(
+                r'(URL_GITHUB\s*=\s*")[^"]*(")',
+                lambda m: m.group(1) + github_url + m.group(2),
+                content,
+            )
+        if cnb_url:
+            content = re.sub(
+                r'(URL_CNB\s*=\s*")[^"]*(")',
+                lambda m: m.group(1) + cnb_url + m.group(2),
+                content,
+            )
+        if content != original:
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            changed_any = True
+            print(f"[OK] {rel_path}: 作者链接已更新（GitHub={github_url or '未改'} / CNB={cnb_url or '未改'}）")
+        else:
+            print(f"[SKIP] {rel_path}: 已是目标值")
+    return changed_any
+
+
+# ---------------------------------------------------------------- 8. CNB 脚本
 def modify_cnb_release_script(config):
     """修改 sync-cnb-release.sh 中的 CNB_REPO_SLUG。"""
     cnb_repo_slug = config.get("CNB_REPO_SLUG", "")
@@ -1171,6 +1216,20 @@ def modify_workflow_files(config):
                     else:
                         print("[WARN] android-release.yml: 未找到 Build four release APKs 步骤，跳过 GRADLE_OPTS 注入")
 
+            # publish_oci 输入项默认改为 false（GitHub Actions 触发时默认不打勾，需要时再手动勾选）
+            pat_oci = re.compile(
+                r'(publish_oci:[ \t]*\r?\n(?:\s+[^\n]*\r?\n)*?)(\s+default:[ \t]*)true',
+                re.MULTILINE,
+            )
+            if pat_oci.search(content):
+                content = pat_oci.sub(r'\g<1>\g<2>false', content)
+                print("[OK] android-release.yml: publish_oci 默认值已改为 false（默认不打勾）")
+            else:
+                if "publish_oci" in content:
+                    print("[SKIP] android-release.yml: publish_oci 默认值已是 false")
+                else:
+                    print("[WARN] android-release.yml: 未找到 publish_oci 输入项，跳过")
+
         if content != original:
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
@@ -1201,38 +1260,42 @@ def main():
 
     results = []
 
-    print("\n--- [1/9] app/build.gradle（applicationId + viewBinding）---")
+    print("\n--- [1/10] app/build.gradle（applicationId + viewBinding）---")
     results.append(modify_build_gradle(config))
 
-    print("\n--- [2/9] 多语言 app 名称（values / values-zh-rCN / values-zh-rTW）---")
+    print("\n--- [2/10] 多语言 app 名称（values / values-zh-rCN / values-zh-rTW）---")
     results.append(modify_all_strings(config))
 
-    print("\n--- [3/9] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
+    print("\n--- [3/10] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
     results.append(generate_app_icons(config))
 
-    print("\n--- [4/9] 可选覆盖：custom/app_icon.png 覆盖 launcher 图标 ---")
+    print("\n--- [4/10] 可选覆盖：custom/app_icon.png 覆盖 launcher 图标 ---")
     results.append(replace_app_icon(config))
 
-    print("\n--- [5/9] 启动图（startup_logo / mobile_startup）---")
+    print("\n--- [5/10] 启动图（startup_logo / mobile_startup）---")
     results.append(replace_startup_images(config))
 
-    print("\n--- [6/9] AndroidManifest.xml（android:label）---")
+    print("\n--- [6/10] AndroidManifest.xml（android:label）---")
     results.append(modify_android_manifest(config))
 
-    print("\n--- [7/9] sync-cnb-release.sh（CNB_REPO_SLUG）---")
+    print("\n--- [7/10] 设置页作者链接（URL_GITHUB / URL_CNB）---")
+    results.append(modify_author_links(config))
+
+    print("\n--- [8/10] sync-cnb-release.sh（CNB_REPO_SLUG）---")
     results.append(modify_cnb_release_script(config))
 
-    print("\n--- [8/9] 工作流 yml（CNB 地址 + GRADLE_OPTS 内存修复）---")
+    print("\n--- [9/10] 工作流 yml（CNB 地址 + GRADLE_OPTS 内存修复 + publish_oci 默认关闭）---")
     results.append(modify_workflow_files(config))
 
-    print("\n--- [9/9] 最终校验：namespace 是否保持上游原值 ---")
+    print("\n--- [10/10] 最终校验：namespace 是否保持上游原值 ---")
     ns_ok = True
+    ns_pattern = re.compile(r'namespace\s*=\s*[\'"]com\.fongmi\.android\.tv[\'"]')
     for path in [os.path.join(REPO_ROOT, "app", "build.gradle"),
                  os.path.join(REPO_ROOT, "app", "build.gradle.kts")]:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 txt = f.read()
-            if 'namespace "com.fongmi.android.tv"' not in txt:
+            if not ns_pattern.search(txt):
                 print(f"[ERROR] {os.path.basename(path)} 中未发现 namespace com.fongmi.android.tv，请检查！")
                 ns_ok = False
             else:
