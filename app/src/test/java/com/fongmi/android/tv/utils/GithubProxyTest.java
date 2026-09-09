@@ -16,7 +16,7 @@ public class GithubProxyTest {
 
     @Test
     public void applyLeavesGithubDownloadsAloneWhenDisabled() {
-        String releaseUrl = "https://github.com/Silent1566/webhtv/releases/latest/download/mobile-arm64_v8a.apk";
+        String releaseUrl = "https://github.com/alantang1977/tj/releases/latest/download/mobile-arm64_v8a.apk";
         String rawUrl = "https://raw.githubusercontent.com/FGBLH/GHK/refs/heads/main/a.json";
 
         assertEquals(releaseUrl, GithubProxy.apply(releaseUrl, "https://ghfast.top/", false));
@@ -25,7 +25,7 @@ public class GithubProxyTest {
 
     @Test
     public void applyPrefixesGithubReleaseDownloadUrl() {
-        String url = "https://github.com/Silent1566/webhtv/releases/latest/download/mobile-arm64_v8a.apk";
+        String url = "https://github.com/alantang1977/tj/releases/latest/download/mobile-arm64_v8a.apk";
 
         assertEquals("https://ghfast.top/" + url, GithubProxy.apply(url, "https://ghfast.top/"));
     }
@@ -39,7 +39,7 @@ public class GithubProxyTest {
 
     @Test
     public void applyLeavesGithubPageUrlAlone() {
-        String url = "https://github.com/Silent1566/webhtv";
+        String url = "https://github.com/alantang1977/tj";
 
         assertEquals(url, GithubProxy.apply(url, "https://ghfast.top/"));
     }
@@ -76,23 +76,23 @@ public class GithubProxyTest {
 
     @Test
     public void probeUrlUsesNormalizedSourceAndFixedTarget() {
-        assertEquals("https://ghfast.top/https://github.com/Silent1566/webhtv/releases/download/update-channel/update.json",
+        assertEquals("https://ghfast.top/https://github.com/alantang1977/tj/releases/download/update-channel/update.json",
                 GithubProxy.probeUrl("https://ghfast.top"));
     }
 
     @Test
     public void configRewritesFullUrlAndStripScheme() {
-        String url = "https://github.com/Silent1566/webhtv/releases/download/v1/app.apk";
+        String url = "https://github.com/alantang1977/tj/releases/download/v1/app.apk";
 
         assertEquals("https://ghfast.top/" + url,
                 GithubProxy.config("https://ghfast.top", GithubProxy.MODE_FULL_URL, true).rewrite(url));
-        assertEquals("https://github.chenc.dev/github.com/Silent1566/webhtv/releases/download/v1/app.apk",
+        assertEquals("https://github.chenc.dev/github.com/alantang1977/tj/releases/download/v1/app.apk",
                 GithubProxy.config("https://github.chenc.dev", GithubProxy.MODE_STRIP_SCHEME, true).rewrite(url));
     }
 
     @Test
     public void disabledConfigUsesDirectTarget() {
-        String url = "https://github.com/Silent1566/webhtv/releases/download/v1/app.apk";
+        String url = "https://github.com/alantang1977/tj/releases/download/v1/app.apk";
 
         assertEquals(url, GithubProxy.config("https://ghfast.top", GithubProxy.MODE_FULL_URL, false).rewrite(url));
     }
@@ -101,6 +101,6 @@ public class GithubProxyTest {
     public void configRejectsUnsafeTarget() {
         assertThrows(IllegalArgumentException.class,
                 () -> GithubProxy.config("https://ghfast.top", GithubProxy.MODE_FULL_URL, true)
-                        .rewrite("http://github.com/Silent1566/webhtv/releases/download/v1/app.apk"));
+                        .rewrite("http://github.com/alantang1977/tj/releases/download/v1/app.apk"));
     }
 }

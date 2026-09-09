@@ -29,8 +29,6 @@
 
 【使用前准备】
   把自定义素材放进项目 custom/ 目录（没有就新建）：
-    - app_icon.png      （可选）自定义应用图标，建议 512x512 的 PNG；
-                        不提供则使用程序化生成的 TJ 立体图标（风格见 ICON_STYLE）
     - startup_logo.png  开机启动图（可选）
     - mobile_startup.png 手机端启动图（可选）
 ================================================================================
@@ -47,6 +45,12 @@ except ImportError:
 import shutil
 import sys
 import xml.etree.ElementTree as ET
+
+# Windows 控制台即时刷新输出，避免日志"卡住不动"的假象（每行 print 立即显示）
+try:
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 # ==============================================================================
 # ★★★ 配置区：按你的需要修改下面的值 ★★★
@@ -65,8 +69,6 @@ CONFIG = {
     "VERSION_NAME_SUFFIX": "",
     # CNB 仓库地址（真实存在的仓库，格式：用户名/仓库名）
     "CNB_REPO_SLUG": "tangtang.com.cn.kul/juntv",
-    # custom/ 目录下的自定义图标文件名
-    "APP_ICON": "app_icon.png",
     # custom/ 目录下的开机启动图文件名
     "STARTUP_LOGO": "startup_logo.png",
     # custom/ 目录下的手机端启动图文件名
@@ -76,6 +78,8 @@ CONFIG = {
     # 设置页「作者链接」：URL_GITHUB / URL_CNB（留空则不修改对应链接）
     "AUTHOR_GITHUB": "https://github.com/alantang1977/tj",
     "AUTHOR_CNB": "https://cnb.cool/tangtang.com.cn.kul/juntv",
+    # 「检查更新」链接：GitHub 仓库（格式：用户名/仓库名）；CNB 部分自动用 CNB_REPO_SLUG
+    "UPDATE_GITHUB_REPO": "alantang1977/tj",
 }
 
 # ---------------------------------------------------------------------------
@@ -909,83 +913,6 @@ def generate_app_icons(config):
         return False
 
 
-def replace_app_icon(config):
-    """替换 mipmap-* / drawable-* 中的 ic_launcher 图标，支持 adaptive icon。"""
-    icon_file = config.get("APP_ICON", "app_icon.png")
-    icon_path = os.path.join(CUSTOM_DIR, icon_file)
-    if not os.path.exists(icon_path):
-        print(f"[SKIP] 未找到自定义图标 custom/{icon_file}，跳过图标替换")
-        return False
-
-    res_main = os.path.join(REPO_ROOT, "app", "src", "main", "res")
-    if not os.path.exists(res_main):
-        print("[SKIP] 未找到 app/src/main/res，跳过图标替换")
-        return False
-
-    changed = False
-
-    # --- 3.1 常规 mipmap 图标 ---
-    mipmap_dirs = sorted(glob.glob(os.path.join(res_main, "mipmap-*")))
-    found = False
-    for mip in mipmap_dirs:
-        den = os.path.basename(mip).replace("mipmap-", "")
-        if den == "anydpi-v26":
-            continue
-        size = ICON_SIZES.get(den)
-        for name in ("ic_launcher", "ic_launcher_round"):
-            for ext in (".png", ".webp"):
-                target = os.path.join(mip, name + ext)
-                if os.path.exists(target):
-                    found = True
-                    if _save_icon(icon_path, target, size):
-                        print(f"[OK] 替换图标 -> app/src/main/res/mipmap-{den}/{name}{ext} ({size}px)")
-                        changed = True
-    if not found:
-        print("[INFO] mipmap-* 下未发现 ic_launcher 文件，继续检查 drawable-* ...")
-        for d in sorted(glob.glob(os.path.join(res_main, "drawable-*"))):
-            den = os.path.basename(d).replace("drawable-", "")
-            if den == "anydpi-v26":
-                continue
-            size = ICON_SIZES.get(den)
-            for name in ("ic_launcher", "ic_launcher_round"):
-                for ext in (".png", ".webp"):
-                    target = os.path.join(d, name + ext)
-                    if os.path.exists(target):
-                        if _save_icon(icon_path, target, size):
-                            print(f"[OK] 替换图标 -> {os.path.relpath(target, REPO_ROOT)} ({size}px)")
-                            changed = True
-
-    # --- 3.2 Adaptive Icon（mipmap-anydpi-v26 引用 drawable 前景/背景） ---
-    adaptive_xml = os.path.join(res_main, "mipmap-anydpi-v26", "ic_launcher.xml")
-    if os.path.exists(adaptive_xml):
-        try:
-            tree = ET.parse(adaptive_xml)
-            refs = set()
-            for elem in tree.getroot().iter():
-                for attr in ("foreground", "background"):
-                    val = elem.get(_ANDROID_NS + attr)
-                    if val and val.startswith("@drawable/"):
-                        refs.add(val.split("/", 1)[1])
-                    elif val and val.startswith("@mipmap/"):
-                        refs.add(val.split("/", 1)[1])
-            for ref in refs:
-                for d in sorted(glob.glob(os.path.join(res_main, "drawable-*"))):
-                    den = os.path.basename(d).replace("drawable-", "")
-                    if den == "anydpi-v26":
-                        continue
-                    size = ADAPTIVE_SIZES.get(den)
-                    for ext in (".png", ".webp"):
-                        target = os.path.join(d, ref + ext)
-                        if os.path.exists(target):
-                            if _save_icon(icon_path, target, size):
-                                print(f"[OK] 替换 Adaptive Icon -> {os.path.relpath(target, REPO_ROOT)} ({size}px)")
-                                changed = True
-        except Exception as e:
-            print(f"[WARN] Adaptive Icon 处理失败: {e}")
-
-    return changed
-
-
 # ---------------------------------------------------------------- 4. 启动图
 def replace_startup_images(config):
     """替换开机启动图与手机端启动图。"""
@@ -1086,7 +1013,50 @@ def modify_author_links(config):
     return changed_any
 
 
-# ---------------------------------------------------------------- 8. CNB 脚本
+# ---------------------------------------------------------------- 8. 更新链接
+def modify_update_urls(config):
+    """把「检查更新」的上游地址（Silent1566 / fish2035）改成你自己的仓库。
+
+    覆盖文件：
+      - 主代码：Github.java（7 个 URL 常量）、GithubProxy.java（测速探针）
+      - CI 测试：GithubTest.java、GithubProxyTest.java（release-critical 必跑，不同步会挂构建）
+    """
+    github_repo = str(config.get("UPDATE_GITHUB_REPO", "")).strip()
+    cnb_slug = str(config.get("CNB_REPO_SLUG", "")).strip()
+    changed_any = False
+    candidates = [
+        os.path.join(REPO_ROOT, "app", "src", "main", "java", "com", "fongmi", "android", "tv", "utils", "Github.java"),
+        os.path.join(REPO_ROOT, "app", "src", "main", "java", "com", "fongmi", "android", "tv", "utils", "GithubProxy.java"),
+        os.path.join(REPO_ROOT, "app", "src", "test", "java", "com", "fongmi", "android", "tv", "utils", "GithubTest.java"),
+        os.path.join(REPO_ROOT, "app", "src", "test", "java", "com", "fongmi", "android", "tv", "utils", "GithubProxyTest.java"),
+    ]
+    for full_path in candidates:
+        if not os.path.exists(full_path):
+            print(f"[SKIP] 文件不存在: {os.path.relpath(full_path, REPO_ROOT)}")
+            continue
+        with open(full_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        original = content
+        rel_path = os.path.relpath(full_path, REPO_ROOT)
+        if github_repo:
+            content = re.sub(r'api\.github\.com/repos/Silent1566/webhtv',
+                             f'api.github.com/repos/{github_repo}', content)
+            content = re.sub(r'github\.com/Silent1566/webhtv',
+                             f'github.com/{github_repo}', content)
+        if cnb_slug:
+            content = re.sub(r'cnb\.cool/fish2035/webhtv-release',
+                             f'cnb.cool/{cnb_slug}', content)
+        if content != original:
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            changed_any = True
+            print(f"[OK] {rel_path}: 更新链接已替换（GitHub={github_repo or '未改'} / CNB={cnb_slug or '未改'}）")
+        else:
+            print(f"[SKIP] {rel_path}: 已是目标值")
+    return changed_any
+
+
+# ---------------------------------------------------------------- 9. CNB 脚本
 def modify_cnb_release_script(config):
     """修改 sync-cnb-release.sh 中的 CNB_REPO_SLUG。"""
     cnb_repo_slug = config.get("CNB_REPO_SLUG", "")
@@ -1217,15 +1187,25 @@ def modify_workflow_files(config):
                         print("[WARN] android-release.yml: 未找到 Build four release APKs 步骤，跳过 GRADLE_OPTS 注入")
 
             # publish_oci 输入项默认改为 false（GitHub Actions 触发时默认不打勾，需要时再手动勾选）
-            pat_oci = re.compile(
-                r'(publish_oci:[ \t]*\r?\n(?:\s+[^\n]*\r?\n)*?)(\s+default:[ \t]*)true',
-                re.MULTILINE,
-            )
-            if pat_oci.search(content):
-                content = pat_oci.sub(r'\g<1>\g<2>false', content)
+            # 用逐行扫描实现，零正则回溯风险，保证不卡死
+            oci_lines = content.splitlines(keepends=True)
+            oci_patched = False
+            oci_found = False
+            for i, line in enumerate(oci_lines):
+                if line.strip().startswith("publish_oci:"):
+                    oci_found = True
+                    for j in range(i + 1, min(i + 6, len(oci_lines))):
+                        m_default = re.match(r'^(\s*default:\s*)(true|false)(\s*)$', oci_lines[j])
+                        if m_default:
+                            if m_default.group(2) == "true":
+                                oci_lines[j] = m_default.group(1) + "false" + m_default.group(3)
+                                oci_patched = True
+                            break
+            if oci_patched:
+                content = "".join(oci_lines)
                 print("[OK] android-release.yml: publish_oci 默认值已改为 false（默认不打勾）")
             else:
-                if "publish_oci" in content:
+                if oci_found:
                     print("[SKIP] android-release.yml: publish_oci 默认值已是 false")
                 else:
                     print("[WARN] android-release.yml: 未找到 publish_oci 输入项，跳过")
@@ -1269,17 +1249,17 @@ def main():
     print("\n--- [3/10] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
     results.append(generate_app_icons(config))
 
-    print("\n--- [4/10] 可选覆盖：custom/app_icon.png 覆盖 launcher 图标 ---")
-    results.append(replace_app_icon(config))
-
-    print("\n--- [5/10] 启动图（startup_logo / mobile_startup）---")
+    print("\n--- [4/10] 启动图（startup_logo / mobile_startup）---")
     results.append(replace_startup_images(config))
 
-    print("\n--- [6/10] AndroidManifest.xml（android:label）---")
+    print("\n--- [5/10] AndroidManifest.xml（android:label）---")
     results.append(modify_android_manifest(config))
 
-    print("\n--- [7/10] 设置页作者链接（URL_GITHUB / URL_CNB）---")
+    print("\n--- [6/10] 设置页作者链接（URL_GITHUB / URL_CNB）---")
     results.append(modify_author_links(config))
+
+    print("\n--- [7/10] 检查更新链接（Github.java / GithubProxy.java / CI 测试）---")
+    results.append(modify_update_urls(config))
 
     print("\n--- [8/10] sync-cnb-release.sh（CNB_REPO_SLUG）---")
     results.append(modify_cnb_release_script(config))
