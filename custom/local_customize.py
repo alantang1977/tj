@@ -460,7 +460,7 @@ def draw_cat(size):
     layer = Image.new("RGBA", (size, size), HOLE)
     d = ImageDraw.Draw(layer)
     cx = size * 0.5
-    r = size * 0.18
+    r = size * 0.28
     head_cy = size * 0.5 + r * 0.08
     hx, hy = cx - r, head_cy - r
     ER = r * 0.10
@@ -606,7 +606,7 @@ def draw_cat_silhouette(size):
     layer = Image.new("RGBA", (size, size), HOLE)
     d = ImageDraw.Draw(layer)
     cx = size * 0.5
-    r = size * 0.18
+    r = size * 0.28
     head_cy = size * 0.5 + r * 0.08
     hx, hy = cx - r, head_cy - r
     for side in (-1, 1):
@@ -626,8 +626,8 @@ def draw_cat_silhouette(size):
 def vector_cat(color="#FFFFFF", size_dp=108):
     """猫头剪影的 VectorDrawable（圆头 + 两耳），用于 adaptive 前景 / monochrome / 通知。"""
     vp = VIEWPORT
-    cx, cy = vp * 0.5, vp * 0.5 + vp * 0.0144
-    rr = vp * 0.18
+    cx, cy = vp * 0.5, vp * 0.5 + vp * 0.0224
+    rr = vp * 0.28
     # 左耳
     le = (f"M{_p(cx - rr * 0.92)},{_p(cy - rr * 0.45)}"
           f"L{_p(cx - rr * 1.18)},{_p(cy - rr * 1.15)}"
