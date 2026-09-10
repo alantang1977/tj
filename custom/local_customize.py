@@ -705,6 +705,21 @@ def render_notification(size, style="3d"):
         return draw_cat_silhouette(size * SS).resize((size, size), Image.LANCZOS)
     return draw_wordmark(size * SS, FILL_NOTIFY, style="3d").resize((size, size),
                           Image.LANCZOS)
+def render_cat_foreground(size):
+    """自适应图标前景：完整彩色猫（透明底），直接复用 draw_cat 居中绘制。
+
+    draw_cat 内部已将猫（含耳包围盒）居中于画布，r=0.28*size 时含耳总宽约
+    0.66*size，正好落在 108dp 自适应图标 72dp 安全区内。
+    """
+    return draw_cat(size)
+def _remove_if_exists(rel):
+    """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
+    path = os.path.join(REPO, rel)
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 # --- VectorDrawable 生成 ---
 def _p(v):
     return f"{v:.2f}".rstrip("0").rstrip(".")
@@ -905,9 +920,14 @@ def do_write(style="3d"):
     print("[vector drawables]")
     save_text(vector_background(), f"{MAIN_RES}/drawable/ic_launcher_background.xml")
     if style == "cat":
-        save_text(vector_cat(), f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
+        # 自适应图标前景用完整彩色猫 PNG（透明底），而非白色矢量剪影
+        _remove_if_exists(f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
+        save_img(render_cat_foreground(432),
+                 f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png", format="PNG")
+        # monochrome 保持纯白矢量（Android 13 主题图标系统要求）
         save_text(vector_cat(), f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
     else:
+        _remove_if_exists(f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png")
         save_text(vector_wordmark(FILL_SAFE), f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
         save_text(vector_wordmark(FILL_SAFE),
                   f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
@@ -927,9 +947,11 @@ def do_write(style="3d"):
               format="PNG")
     print("[tv banner]")
     if style == "cat":
-        save_text(vector_cat(),
-                  "app/src/leanback/res/drawable/ic_banner_foreground.xml")
+        _remove_if_exists("app/src/leanback/res/drawable/ic_banner_foreground.xml")
+        save_img(render_cat_foreground(432),
+                 "app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png", format="PNG")
     else:
+        _remove_if_exists("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png")
         save_text(vector_wordmark(FILL_SAFE),
                   "app/src/leanback/res/drawable/ic_banner_foreground.xml")
     save_text(BANNER_XML, "app/src/leanback/res/mipmap-anydpi-v26/ic_banner.xml")
