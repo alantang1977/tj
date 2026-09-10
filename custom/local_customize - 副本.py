@@ -73,8 +73,8 @@ CONFIG = {
     "STARTUP_LOGO": "startup_logo.png",
     # custom/ 目录下的手机端启动图文件名
     "MOBILE_STARTUP": "mobile_startup.png",
-    # 程序化生成图标的风格：cat（默认，卡通蓝猫头）、3d（高级立体浮雕）或 iphone17（带光影）
-    "ICON_STYLE": "cat",
+    # 程序化生成图标的风格：3d（默认，高级立体浮雕）或 iphone17（带光影）
+    "ICON_STYLE": "3d",
     # 设置页「作者链接」：URL_GITHUB / URL_CNB（留空则不修改对应链接）
     "AUTHOR_GITHUB": "https://github.com/alantang1977/tj",
     "AUTHOR_CNB": "https://cnb.cool/tangtang.com.cn.kul/juntv",
@@ -417,248 +417,11 @@ def _mask(size, shape, radius_ratio=0.0):
     else:
         md.rectangle([0, 0, size - 1, size - 1], fill=255)
     return m
-
-# ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
-import math as _math
-CAT_BLUE_TOP = (140, 190, 255, 255)
-CAT_BLUE_MID = (59, 130, 246, 255)
-CAT_BLUE_BOT = (28, 78, 188, 255)
-CAT_BLUE_SIDE = (20, 60, 150, 255)
-CAT_PINK = (255, 150, 180, 255)
-CAT_DARK = (35, 50, 85, 255)
-CAT_NOSE = (244, 114, 142, 255)
-CAT_COLLAR = (236, 72, 153, 255)
-CAT_BELL = (250, 204, 21, 255)
-
-
-def _rounded_poly(draw, pts, radius, fill, steps=12):
-    """绘制圆角多边形（顶点用二次贝塞尔圆滑）。"""
-    n = len(pts)
-    out = []
-    for i in range(n):
-        V = pts[i]; A = pts[(i - 1) % n]; B = pts[(i + 1) % n]
-        vlen = _math.hypot(V[0] - A[0], V[1] - A[1])
-        alen = _math.hypot(V[0] - B[0], V[1] - B[1])
-        ra = min(radius, vlen * 0.5); rb = min(radius, alen * 0.5)
-        P1 = (V[0] + (A[0] - V[0]) * ra / vlen, V[1] + (A[1] - V[1]) * ra / vlen)
-        P2 = (V[0] + (B[0] - V[0]) * rb / alen, V[1] + (B[1] - V[1]) * rb / alen)
-        for s in range(steps + 1):
-            t = s / steps
-            x = (1 - t) * (1 - t) * P1[0] + 2 * (1 - t) * t * V[0] + t * t * P2[0]
-            y = (1 - t) * (1 - t) * P1[1] + 2 * (1 - t) * t * V[1] + t * t * P2[1]
-            out.append((x, y))
-    draw.polygon(out, fill=fill)
-
-
-def draw_cat(size):
-    """绘制居中的卡通蓝猫头（V7，RGBA 透明底图层）。
-
-    元素：圆角三角耳（受光面+背阴面）、球体渐变头、顶部高光、底部暗边、
-    奶白脸盘、闭眼 ^ ^、粉鼻+鼻尖高光、ω 嘴、白胡须、玫粉项圈+金铃铛、头后光晕。
-    含耳包围盒中心对准图心。
-    """
-    layer = Image.new("RGBA", (size, size), HOLE)
-    d = ImageDraw.Draw(layer)
-    cx = size * 0.5
-    r = size * 0.31
-    head_cy = size * 0.5 + r * 0.075
-    hx, hy = cx - r, head_cy - r
-    ER = r * 0.10
-
-    # 头后光晕
-    halo = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(halo).ellipse([hx - r * 0.15, hy - r * 0.15,
-                                   hx + 2 * r + r * 0.15, hy + 2 * r + r * 0.15],
-                                  fill=(180, 220, 255, 70))
-    halo = halo.filter(ImageFilter.GaussianBlur(radius=r * 0.25))
-    layer.alpha_composite(halo)
-
-    # 耳朵（圆角三角，分受光面+背阴面）
-    def ear_pts(side):
-        if side < 0:
-            outer = (cx - r * 0.92, head_cy - r * 0.45)
-            tip = (cx - r * 1.18, head_cy - r * 1.15)
-            inner = (cx - r * 0.42, head_cy - r * 0.78)
-        else:
-            outer = (cx + r * 0.92, head_cy - r * 0.45)
-            tip = (cx + r * 1.18, head_cy - r * 1.15)
-            inner = (cx + r * 0.42, head_cy - r * 0.78)
-        return outer, tip, inner
-
-    def inner_pink(side):
-        if side < 0:
-            return [(cx - r * 0.80, head_cy - r * 0.55),
-                    (cx - r * 1.02, head_cy - r * 0.98),
-                    (cx - r * 0.52, head_cy - r * 0.74)]
-        return [(cx + r * 0.80, head_cy - r * 0.55),
-                (cx + r * 1.02, head_cy - r * 0.98),
-                (cx + r * 0.52, head_cy - r * 0.74)]
-
-    for side in (-1, 1):
-        outer, tip, inner = ear_pts(side)
-        mid = ((outer[0] + inner[0]) / 2, (outer[1] + inner[1]) / 2)
-        _rounded_poly(d, [tip, inner, mid], ER, CAT_BLUE_MID)
-        _rounded_poly(d, [tip, mid, outer], ER, CAT_BLUE_SIDE)
-
-    # 落地软阴影
-    sh = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(sh).ellipse([hx + size * 0.008, hy + size * 0.02,
-                                 hx + 2 * r + size * 0.008, hy + 2 * r + size * 0.02],
-                                fill=(25, 8, 55, 140))
-    sh = sh.filter(ImageFilter.GaussianBlur(radius=size * 0.02))
-    layer.alpha_composite(sh)
-
-    # 球形头：垂直渐变（顶亮天蓝 -> 底深钴蓝）
-    head_mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(head_mask).ellipse([hx, hy, hx + 2 * r, hy + 2 * r], fill=255)
-    hgrad = Image.new("RGBA", (size, size), HOLE)
-    hgd = ImageDraw.Draw(hgrad)
-    for yy in range(int(2 * r)):
-        k = yy / (2 * r - 1)
-        if k < 0.5:
-            t = k * 2
-            c = tuple(int(CAT_BLUE_TOP[i] + (CAT_BLUE_MID[i] - CAT_BLUE_TOP[i]) * t) for i in range(3))
-        else:
-            t = (k - 0.5) * 2
-            c = tuple(int(CAT_BLUE_MID[i] + (CAT_BLUE_BOT[i] - CAT_BLUE_MID[i]) * t) for i in range(3))
-        hgd.line([(hx, hy + yy), (hx + 2 * r, hy + yy)], fill=c)
-    layer.paste(hgrad, (0, 0), head_mask)
-
-    # 粉耳内（圆角）
-    _rounded_poly(d, inner_pink(-1), ER * 0.7, CAT_PINK)
-    _rounded_poly(d, inner_pink(1), ER * 0.7, CAT_PINK)
-
-    # 顶部高光
-    spec = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(spec).ellipse([cx - r * 0.55, hy + r * 0.08,
-                                   cx + r * 0.05, hy + r * 0.62], fill=(255, 255, 255, 95))
-    spec = spec.filter(ImageFilter.GaussianBlur(radius=r * 0.18))
-    layer.alpha_composite(spec)
-
-    # 底部暗边
-    rim = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(rim).arc([hx, hy, hx + 2 * r, hy + 2 * r],
-                             start=20, end=160, fill=(15, 45, 120, 120), width=int(r * 0.10))
-    rim = rim.filter(ImageFilter.GaussianBlur(radius=r * 0.06))
-    layer.alpha_composite(rim)
-
-    # 奶白脸盘
-    face_cy = head_cy + r * 0.18
-    d.ellipse([cx - r * 0.66, face_cy - r * 0.55,
-               cx + r * 0.66, face_cy + r * 0.62], fill=WHITE)
-
-    # 闭眼 ^ ^
-    eye_y = face_cy - r * 0.10
-    eye_dx, eye_w, eye_h = r * 0.42, r * 0.22, r * 0.18
-    for ex in (cx - eye_dx, cx + eye_dx):
-        d.arc([ex - eye_w, eye_y - eye_h, ex + eye_w, eye_y + eye_h],
-              start=200, end=340, fill=CAT_DARK, width=int(size * 0.012))
-
-    # 粉鼻 + 鼻尖高光
-    nose_y = face_cy + r * 0.10
-    nw = r * 0.10
-    d.polygon([(cx - nw, nose_y), (cx + nw, nose_y), (cx, nose_y + nw * 0.9)], fill=CAT_NOSE)
-    d.ellipse([cx - nw * 0.35, nose_y + nw * 0.1,
-               cx - nw * 0.05, nose_y + nw * 0.45], fill=(255, 235, 240, 255))
-
-    # ω 嘴
-    mw = r * 0.16
-    my = nose_y + nw * 0.9
-    d.arc([cx - mw, my - nw * 0.3, cx, my + nw * 1.1], start=20, end=160,
-          fill=CAT_DARK, width=int(size * 0.010))
-    d.arc([cx, my - nw * 0.3, cx + mw, my + nw * 1.1], start=20, end=160,
-          fill=CAT_DARK, width=int(size * 0.010))
-
-    # 胡须
-    for dy in (-0.10, -0.02, 0.06):
-        yy = face_cy + r * dy
-        ang = r * dy * 1.4
-        d.line([(cx - r * 0.62, yy), (cx - r * 0.62 - r * 0.30, yy + ang)],
-               fill=(255, 255, 255, 235), width=int(size * 0.007))
-        d.line([(cx + r * 0.62, yy), (cx + r * 0.62 + r * 0.30, yy + ang)],
-               fill=(255, 255, 255, 235), width=int(size * 0.007))
-
-    # 项圈（下颏弧形带）
-    collar_cy = head_cy + r * 0.82
-    collar_rx = r * 0.78
-    collar_ry = r * 0.30
-    band = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(band).arc([cx - collar_rx, collar_cy - collar_ry,
-                               cx + collar_rx, collar_cy + collar_ry * 1.6],
-                              start=20, end=160, fill=CAT_COLLAR, width=int(r * 0.16))
-    layer.alpha_composite(band)
-
-    # 金铃铛
-    bell_cx, bell_cy = cx, head_cy + r * 0.99
-    bell_r = r * 0.13
-    d.ellipse([bell_cx - bell_r, bell_cy - bell_r,
-               bell_cx + bell_r, bell_cy + bell_r], fill=CAT_BELL)
-    d.line([(bell_cx - bell_r * 0.7, bell_cy), (bell_cx + bell_r * 0.7, bell_cy)],
-           fill=CAT_DARK, width=int(size * 0.006))
-    d.ellipse([bell_cx - bell_r * 0.15, bell_cy + bell_r * 0.05,
-               bell_cx + bell_r * 0.15, bell_cy + bell_r * 0.35], fill=CAT_DARK)
-
-    return layer
-
-
-def draw_cat_silhouette(size):
-    """猫头纯白剪影（通知栏 / monochrome 用，系统要求纯白透明）。"""
-    layer = Image.new("RGBA", (size, size), HOLE)
-    d = ImageDraw.Draw(layer)
-    cx = size * 0.5
-    r = size * 0.31
-    head_cy = size * 0.5 + r * 0.075
-    hx, hy = cx - r, head_cy - r
-    for side in (-1, 1):
-        if side < 0:
-            pts = [(cx - r * 0.92, head_cy - r * 0.45),
-                   (cx - r * 1.18, head_cy - r * 1.15),
-                   (cx - r * 0.42, head_cy - r * 0.78)]
-        else:
-            pts = [(cx + r * 0.92, head_cy - r * 0.45),
-                   (cx + r * 1.18, head_cy - r * 1.15),
-                   (cx + r * 0.42, head_cy - r * 0.78)]
-        _rounded_poly(d, pts, r * 0.10, WHITE)
-    d.ellipse([hx, hy, hx + 2 * r, hy + 2 * r], fill=WHITE)
-    return layer
-
-
-def vector_cat(color="#FFFFFF", size_dp=108):
-    """猫头剪影的 VectorDrawable（圆头 + 两耳），用于 adaptive 前景 / monochrome / 通知。"""
-    vp = VIEWPORT
-    cx, cy = vp * 0.5, vp * 0.5 + vp * 0.023
-    rr = vp * 0.31
-    # 左耳
-    le = (f"M{_p(cx - rr * 0.92)},{_p(cy - rr * 0.45)}"
-          f"L{_p(cx - rr * 1.18)},{_p(cy - rr * 1.15)}"
-          f"L{_p(cx - rr * 0.42)},{_p(cy - rr * 0.78)}z")
-    # 右耳
-    re_ = (f"M{_p(cx + rr * 0.92)},{_p(cy - rr * 0.45)}"
-           f"L{_p(cx + rr * 1.18)},{_p(cy - rr * 1.15)}"
-           f"L{_p(cx + rr * 0.42)},{_p(cy - rr * 0.78)}z")
-    # 头圆
-    head = (f"M{_p(cx)},{_p(cy - rr)}"
-            f"A{_p(rr)},{_p(rr)} 0 1 1 {_p(cx)},{_p(cy + rr)}"
-            f"A{_p(rr)},{_p(rr)} 0 1 1 {_p(cx)},{_p(cy - rr)}z")
-    return f"""<?xml version="1.0" encoding="utf-8"?>
-<!-- 由 local_customize.py 生成，请勿手工编辑 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="{size_dp}dp"
-    android:height="{size_dp}dp"
-    android:viewportWidth="{vp}"
-    android:viewportHeight="{vp}">
-    <path android:fillColor="{color}" android:pathData="{le}" />
-    <path android:fillColor="{color}" android:pathData="{re_}" />
-    <path android:fillColor="{color}" android:pathData="{head}" />
-</vector>
-"""
-
-
 def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
            inset=None, badge=None, style="3d"):
     """渲染完整图标。
 
-    style: cat（卡通蓝猫头）/ 3d（高级立体浮雕字标）/ iphone17（带光影字标）。
+    style: 控制 `draw_wordmark` 的立体风格（仅支持 3d 和 iphone17）。
     """
     if inset is None:
         inset = {"circle": GRAD_INSET_CIRCLE,
@@ -671,10 +434,8 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
     img = make_gradient(big, inset)
     img = add_iphone17_background_flare(img)
 
-    # 绘制主体
-    if style == "cat":
-        img.alpha_composite(draw_cat(big))
-    elif badge:
+    # 绘制主体字标（始终使用立体浮雕）
+    if badge:
         img.alpha_composite(draw_badge(big))
     else:
         img.alpha_composite(draw_wordmark(big, fill, style=style))
@@ -689,20 +450,13 @@ def render_banner(w, h, style="3d"):
     img = make_gradient(max(bw, bh)).resize((bw, bh), Image.LANCZOS)
     img = add_iphone17_background_flare(img)
 
-    if style == "cat":
-        mark_box = int(bh * 0.95)
-        mark = draw_cat(mark_box)
-        img.alpha_composite(mark, (int(bw * 0.06), int((bh - mark_box) / 2)))
-    else:
-        mark_box = int(bh * 0.62)
-        mark = draw_wordmark(mark_box, 0.92, style=style)
-        img.alpha_composite(mark, (int(bw * 0.075), int((bh - mark_box) / 2)))
+    mark_box = int(bh * 0.62)
+    mark = draw_wordmark(mark_box, 0.92, style=style)
+    img.alpha_composite(mark, (int(bw * 0.075), int((bh - mark_box) / 2)))
 
     return img.resize((w, h), Image.LANCZOS)
-def render_notification(size, style="3d"):
+def render_notification(size):
     """通知栏小图标：纯白扁平轮廓（系统强制要求纯白透明，必须保持扁平）。"""
-    if style == "cat":
-        return draw_cat_silhouette(size * SS).resize((size, size), Image.LANCZOS)
     return draw_wordmark(size * SS, FILL_NOTIFY, style="3d").resize((size, size),
                           Image.LANCZOS)
 # --- VectorDrawable 生成 ---
@@ -886,10 +640,7 @@ def do_preview(style="3d"):
     save_img(render(432, "rounded", fill=FILL_SAFE, radius_ratio=0.30, style=style),
               f"{out}/adaptive_squircle.png")
     mono = Image.new("RGBA", (432, 432), (0x1F, 0x1F, 0x1F, 255))
-    if style == "cat":
-        mono.alpha_composite(draw_cat_silhouette(432))
-    else:
-        mono.alpha_composite(draw_wordmark(432, FILL_SAFE, style="3d"))
+    mono.alpha_composite(draw_wordmark(432, FILL_SAFE, style="3d"))
     save_img(mono, f"{out}/monochrome.png")
     save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style), f"{out}/logo.png")
     for px in FAVICON_SIZES:
@@ -897,20 +648,16 @@ def do_preview(style="3d"):
             (px * 8, px * 8), Image.NEAREST), f"{out}/favicon_{px}.png")
     for px in (24, 36, 48, 72):
         bar = Image.new("RGBA", (px, px), (0x20, 0x21, 0x24, 255))
-        bar.alpha_composite(render_notification(px, style=style))
+        bar.alpha_composite(render_notification(px))
         save_img(bar.resize((px * 8, px * 8), Image.NEAREST),
                   f"{out}/notification_{px}.png")
 def do_write(style="3d"):
     print(f"[writing resources] (Style: {style})")
     print("[vector drawables]")
     save_text(vector_background(), f"{MAIN_RES}/drawable/ic_launcher_background.xml")
-    if style == "cat":
-        save_text(vector_cat(), f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
-        save_text(vector_cat(), f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
-    else:
-        save_text(vector_wordmark(FILL_SAFE), f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
-        save_text(vector_wordmark(FILL_SAFE),
-                  f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
+    save_text(vector_wordmark(FILL_SAFE), f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
+    save_text(vector_wordmark(FILL_SAFE),
+              f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
     save_text(ADAPTIVE_XML, f"{MAIN_RES}/mipmap-anydpi-v26/ic_launcher.xml")
     save_text(ADAPTIVE_XML, f"{MAIN_RES}/mipmap-anydpi-v26/ic_launcher_round.xml")
     print("[legacy launcher bitmaps]")
@@ -926,12 +673,8 @@ def do_write(style="3d"):
     save_img(render(512, "square", style=style), "app/src/main/ic_launcher-playstore.png",
               format="PNG")
     print("[tv banner]")
-    if style == "cat":
-        save_text(vector_cat(),
-                  "app/src/leanback/res/drawable/ic_banner_foreground.xml")
-    else:
-        save_text(vector_wordmark(FILL_SAFE),
-                  "app/src/leanback/res/drawable/ic_banner_foreground.xml")
+    save_text(vector_wordmark(FILL_SAFE),
+              "app/src/leanback/res/drawable/ic_banner_foreground.xml")
     save_text(BANNER_XML, "app/src/leanback/res/mipmap-anydpi-v26/ic_banner.xml")
     save_img(render_banner(320, 180, style), "app/src/leanback/res/drawable/ic_banner.png",
               format="PNG")
@@ -939,14 +682,10 @@ def do_write(style="3d"):
     save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style),
               f"{MAIN_RES}/drawable-nodpi/ic_logo.png", format="PNG")
     print("[notification]")
-    if style == "cat":
-        save_text(vector_cat(size_dp=24),
-                  f"{MAIN_RES}/drawable-anydpi/ic_notification.xml")
-    else:
-        save_text(vector_wordmark(FILL_NOTIFY, size_dp=24),
-                  f"{MAIN_RES}/drawable-anydpi/ic_notification.xml")
+    save_text(vector_wordmark(FILL_NOTIFY, size_dp=24),
+              f"{MAIN_RES}/drawable-anydpi/ic_notification.xml")
     for name, px in NOTIFY_DENSITIES:
-        save_img(render_notification(px, style=style),
+        save_img(render_notification(px),
                   f"{MAIN_RES}/drawable-{name}/ic_notification.png", format="PNG")
     print("[web favicon]")
     sizes = sorted(FAVICON_SIZES)
@@ -1156,10 +895,10 @@ def _save_icon(img_path, target, size=None):
 
 def generate_app_icons(config):
     """程序化生成整套应用图标（整合自 custom/gen_app_icon.py 的 do_write 逻辑）。"""
-    style = config.get("ICON_STYLE", "cat")
-    if style not in ("cat", "3d", "iphone17"):
-        print(f"[WARN] 未知风格 {style}，使用默认 cat")
-        style = "cat"
+    style = config.get("ICON_STYLE", "3d")
+    if style not in ("3d", "iphone17"):
+        print(f"[WARN] 未知风格 {style}，使用默认 3d")
+        style = "3d"
     try:
         import PIL  # noqa: F401
     except Exception:

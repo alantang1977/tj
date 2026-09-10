@@ -1,15 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 由 custom/gen_app_icon.py 生成，请勿手工编辑 -->
+<!-- 由 local_customize.py 生成，请勿手工编辑 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M136.54,170.12L282.54,170.12L282.54,214.78L136.54,214.78zM187.21,214.78L231.87,214.78L231.87,341.88L187.21,341.88zM299.71,239.48L354.68,239.48L354.68,341.88L299.71,341.88zM250.25,311.65L299.71,311.65L299.71,341.88L250.25,341.88zM327.2,170.12A31.33,31.33 0 1 1 327.2,232.78A31.33,31.33 0 1 1 327.2,170.12z" />
-    <!-- 紫色播放三角（向右） -->
-    <path
-        android:fillColor="#8B5CF6"
-        android:pathData="M318.27,186.56L318.27,216.33L345.06,201.45z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M109.98,196.35L68.71,85.25L189.34,143.97z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M402.02,196.35L443.29,85.25L322.66,143.97z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M256,109.06A158.72,158.72 0 1 1 256,426.5A158.72,158.72 0 1 1 256,109.06z" />
 </vector>
