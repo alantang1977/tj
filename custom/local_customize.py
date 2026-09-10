@@ -952,9 +952,10 @@ def do_write(style="3d"):
               format="PNG")
     print("[tv banner]")
     if style == "cat":
-        _remove_if_exists("app/src/leanback/res/drawable/ic_banner_foreground.xml")
-        save_img(render_cat_foreground(432),
-                 "app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png", format="PNG")
+        # banner 前景保持矢量 XML（与原格式一致），用猫头剪影矢量
+        _remove_if_exists("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png")
+        save_text(vector_cat(),
+                  "app/src/leanback/res/drawable/ic_banner_foreground.xml")
     else:
         _remove_if_exists("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png")
         save_text(vector_wordmark(FILL_SAFE),
