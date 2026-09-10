@@ -98,7 +98,7 @@ CUSTOM_DIR = os.path.join(REPO_ROOT, "custom")
 # ==============================================================================
 # 图标生成模块（整合自 custom/gen_app_icon.py）
 # 用 Pillow 程序化生成整套应用图标：launcher / adaptive / banner / 通知栏 / favicon
-# 风格由 CONFIG["ICON_STYLE"] 控制：3d（默认）或 iphone17
+# 风格由 CONFIG["ICON_STYLE"] 控制：cat（默认，V7卡通蓝猫头）/ 3d（立体浮雕字标）/ iphone17
 # ==============================================================================
 GRAD_A = (0x8B, 0x5C, 0xF6)      # 左上 紫罗兰
 GRAD_C = (0x5C, 0xBF, 0xF6)      # 新增：亮青 (流光过渡)
@@ -705,6 +705,26 @@ def render_notification(size, style="3d"):
         return draw_cat_silhouette(size * SS).resize((size, size), Image.LANCZOS)
     return draw_wordmark(size * SS, FILL_NOTIFY, style="3d").resize((size, size),
                           Image.LANCZOS)
+def render_cat_foreground(size):
+    """自适应图标前景：完整彩色 V7 猫头（透明底），缩放至安全区内。
+
+    自适应图标为 108dp，中心 72dp 为安全区。猫头含耳包围盒约占画布 0.63，
+    确保在圆形/水滴/方形等各种蒙版下耳朵不被裁切。
+    """
+    fg = Image.new("RGBA", (size, size), HOLE)
+    cat_size = int(size * 0.86)
+    cat = draw_cat(cat_size)
+    offset = (size - cat_size) // 2
+    fg.alpha_composite(cat, (offset, offset))
+    return fg
+def _remove_if_exists(rel):
+    """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
+    path = os.path.join(REPO, rel)
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 # --- VectorDrawable 生成 ---
 def _p(v):
     return f"{v:.2f}".rstrip("0").rstrip(".")
@@ -905,9 +925,14 @@ def do_write(style="3d"):
     print("[vector drawables]")
     save_text(vector_background(), f"{MAIN_RES}/drawable/ic_launcher_background.xml")
     if style == "cat":
-        save_text(vector_cat(), f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
+        # 自适应图标前景用完整彩色 V7 猫位图（透明底），而非白色剪影矢量
+        _remove_if_exists(f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
+        save_img(render_cat_foreground(432),
+                 f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png", format="PNG")
+        # monochrome 保持纯白剪影（Android 13 主题图标要求单色）
         save_text(vector_cat(), f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
     else:
+        _remove_if_exists(f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png")
         save_text(vector_wordmark(FILL_SAFE), f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
         save_text(vector_wordmark(FILL_SAFE),
                   f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
@@ -927,9 +952,11 @@ def do_write(style="3d"):
               format="PNG")
     print("[tv banner]")
     if style == "cat":
-        save_text(vector_cat(),
-                  "app/src/leanback/res/drawable/ic_banner_foreground.xml")
+        _remove_if_exists("app/src/leanback/res/drawable/ic_banner_foreground.xml")
+        save_img(render_cat_foreground(432),
+                 "app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png", format="PNG")
     else:
+        _remove_if_exists("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png")
         save_text(vector_wordmark(FILL_SAFE),
                   "app/src/leanback/res/drawable/ic_banner_foreground.xml")
     save_text(BANNER_XML, "app/src/leanback/res/mipmap-anydpi-v26/ic_banner.xml")
@@ -1507,7 +1534,7 @@ def main():
     print("\n--- [2/10] 多语言 app 名称（values / values-zh-rCN / values-zh-rTW）---")
     results.append(modify_all_strings(config))
 
-    print("\n--- [3/10] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
+    print("\n--- [3/10] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "cat"))
     results.append(generate_app_icons(config))
 
     print("\n--- [4/10] 启动图（startup_logo / mobile_startup）---")
