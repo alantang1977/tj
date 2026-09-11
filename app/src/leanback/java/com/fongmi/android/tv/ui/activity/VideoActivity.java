@@ -80,6 +80,7 @@ import com.fongmi.android.tv.playback.HistoryResumePayload;
 import com.fongmi.android.tv.playback.SubtitleRestoreCoordinator;
 import com.fongmi.android.tv.player.IntroSkipKinds;
 import com.fongmi.android.tv.player.IntroSkipPlayback;
+import com.fongmi.android.tv.player.PlaybackResourceClassifier;
 import com.fongmi.android.tv.player.PlayerHelper;
 import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.player.lut.LutPreset;
@@ -115,6 +116,7 @@ import com.fongmi.android.tv.ui.custom.CustomSeekView;
 import com.fongmi.android.tv.ui.custom.PlayerOsdController;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.ui.dialog.CodecCapabilityDialog;
+import com.fongmi.android.tv.ui.dialog.PlaybackSpeedDialog;
 import com.fongmi.android.tv.ui.dialog.ContentDialog;
 import com.fongmi.android.tv.ui.dialog.AdRuleEditDialog;
 import com.fongmi.android.tv.ui.dialog.DanmakuDialog;
@@ -4101,9 +4103,12 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
     }
 
     private void onSpeed() {
-        mBinding.control.action.speed.setText(player().addSpeed());
-        saveUserSpeed();
-        setR1Callback();
+        PlaybackSpeedDialog.show(this, player().getSpeed(), speed -> {
+            if (!isServiceReady() || !isOwner() || player().isEmpty()) return;
+            mBinding.control.action.speed.setText(player().setSpeed(speed));
+            saveUserSpeed();
+            setR1Callback();
+        });
     }
 
     private void onSpeedAdd() {
@@ -4366,7 +4371,7 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
         if (player() == null) return false;
         String url = player().getUrl();
         if (TextUtils.isEmpty(url)) return false;
-        return com.fongmi.android.tv.player.exo.MediaSourceFactory.isHlsUrl(url);
+        return PlaybackResourceClassifier.isHlsUrl(url);
     }
 
     private void setAdFeedbackVisible() {

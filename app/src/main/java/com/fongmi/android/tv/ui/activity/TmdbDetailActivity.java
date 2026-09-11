@@ -110,9 +110,9 @@ import com.fongmi.android.tv.playback.PlaybackOrientation;
 import com.fongmi.android.tv.playback.SubtitleRestoreCoordinator;
 import com.fongmi.android.tv.player.IntroSkipKinds;
 import com.fongmi.android.tv.player.IntroSkipPlayback;
+import com.fongmi.android.tv.player.PlaybackResourceClassifier;
 import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.player.PlayerHelper;
-import com.fongmi.android.tv.player.exo.MediaSourceFactory;
 import com.fongmi.android.tv.player.mpv.MpvConfigStore;
 import com.fongmi.android.tv.service.AiAdDetectionService;
 import com.fongmi.android.tv.service.AiEpisodeSeasonService;
@@ -152,6 +152,7 @@ import com.fongmi.android.tv.ui.custom.EpisodeTitlePopup;
 import com.fongmi.android.tv.ui.custom.PlayerGesture;
 import com.fongmi.android.tv.ui.custom.PlayerOsdController;
 import com.fongmi.android.tv.ui.dialog.AdRulePreviewDialog;
+import com.fongmi.android.tv.ui.dialog.PlaybackSpeedDialog;
 import com.fongmi.android.tv.ui.dialog.CodecCapabilityDialog;
 import com.fongmi.android.tv.ui.dialog.DanmakuDialog;
 import com.fongmi.android.tv.ui.dialog.DisplayDialog;
@@ -8057,8 +8058,11 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void changeInlineSpeed() {
         if (service() == null || player().isEmpty()) return;
-        setInlineSpeedText(player().addSpeed());
-        if (history != null) history.setUserSpeed(player().getSpeed());
+        PlaybackSpeedDialog.show(this, player().getSpeed(), speed -> {
+            if (!isServiceReady() || !isOwner() || player().isEmpty()) return;
+            setInlineSpeed(speed);
+            if (history != null) history.setUserSpeed(player().getSpeed());
+        });
     }
 
     private void setInlineSpeed(float speed) {
@@ -8524,7 +8528,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private boolean isInlineAdFeedbackSupportedFormat() {
         return player() != null && !TextUtils.isEmpty(player().getUrl())
-                && MediaSourceFactory.isHlsUrl(player().getUrl());
+                && PlaybackResourceClassifier.isHlsUrl(player().getUrl());
     }
 
     private void submitInlineAdFeedback() {
