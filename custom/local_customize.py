@@ -1600,6 +1600,28 @@ def modify_update_order(config):
         # 清除历史污染的控制字符（如 \u0001），避免 Java 编译失败
         g_content = "".join(ch for ch in g_content if ch >= " " or ch in "\n\r\t")
 
+        # 自愈：上一版脚本 bug 曾把 CNB_MANIFEST 常量整行覆盖删除（只留下 \u0001+新行），
+        # 若缺失则按 CNB_REPO_SLUG 重建，避免 getCnbMirrorAsset 编译报 cannot find symbol
+        if "private static final String CNB_MANIFEST" not in g_content:
+            manifest_base = (
+                f"https://cnb.cool/{cnb_slug}/-/git/raw/main/apk"
+                if cnb_slug
+                else "https://cnb.cool/fish2035/webhtv-release/-/git/raw/main/apk"
+            )
+            new_manifest_line = f'    private static final String CNB_MANIFEST = "{manifest_base}";'
+            anchor = "    private static final String CNB_RELEASE_DOWNLOAD = "
+            if anchor in g_content:
+                g_content = g_content.replace(anchor, new_manifest_line + "\n" + anchor, 1)
+            else:
+                g_content = g_content.replace(
+                    "public class Github {",
+                    "public class Github {\n" + new_manifest_line,
+                    1,
+                )
+            print(f"[OK] {github_rel}: 检测到 CNB_MANIFEST 缺失（历史 bug 误删），已自愈重建")
+            if not cnb_slug:
+                print(f"[WARN] {github_rel}: CNB_REPO_SLUG 未配置，CNB_MANIFEST 暂用旧地址，请检查")
+
         if "CNB_RELEASE_DOWNLOAD" not in g_content:
             release_base = f"https://cnb.cool/{cnb_slug}/-/releases/download" if cnb_slug else "https://cnb.cool/fish2035/webhtv-release/-/releases/download"
             g_content = re.sub(
