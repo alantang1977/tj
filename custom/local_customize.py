@@ -1536,6 +1536,8 @@ def modify_update_order(config):
     with open(full_path, "r", encoding="utf-8") as f:
         content = f.read()
     original = content
+    # 清除历史污染的控制字符（如 \u0001），避免 Java 编译失败
+    content = "".join(ch for ch in content if ch >= " " or ch in "\n\r\t")
 
     # A1. getUpdate()：CNB raw manifest 优先（先试 CNB，再 GitHub）
     old_block = '''        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
@@ -1595,12 +1597,14 @@ def modify_update_order(config):
         with open(github_path, "r", encoding="utf-8") as f:
             g_content = f.read()
         g_original = g_content
+        # 清除历史污染的控制字符（如 \u0001），避免 Java 编译失败
+        g_content = "".join(ch for ch in g_content if ch >= " " or ch in "\n\r\t")
 
         if "CNB_RELEASE_DOWNLOAD" not in g_content:
             release_base = f"https://cnb.cool/{cnb_slug}/-/releases/download" if cnb_slug else "https://cnb.cool/fish2035/webhtv-release/-/releases/download"
             g_content = re.sub(
                 r'(private static final String CNB_MANIFEST = "[^"]*";)',
-                '\1\n    private static final String CNB_RELEASE_DOWNLOAD = "' + release_base + '";',
+                '\\1\n    private static final String CNB_RELEASE_DOWNLOAD = "' + release_base + '";',
                 g_content,
             )
             if not cnb_slug:
