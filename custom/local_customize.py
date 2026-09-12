@@ -1510,6 +1510,54 @@ def modify_update_urls(config):
     return changed_any
 
 
+# ---------------------------------------------------------------- 8. 更新顺序：CNB 优先
+def modify_update_order(config):
+    """
+    修改 Updater.java 的 getUpdate() 方法：
+    检查更新时优先读取 CNB release 的 manifest（SOURCE_CNB），失败后再回退 GitHub
+    （update-channel release -> latest release -> GitHub API 兜底）。
+    用户要求：cnb-release 优先，github release 其次。
+    """
+    rel_path = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "Updater.java")
+    full_path = os.path.join(REPO_ROOT, rel_path)
+    if not os.path.exists(full_path):
+        print(f"[SKIP] {rel_path} 不存在")
+        return False
+
+    with open(full_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # GitHub 优先的原始块（当前上游逻辑）
+    old_block = """        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
+        if (update.hasManifest()) return update;
+        if (Update.CHANNEL_BETA.equals(channel)) {
+            update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
+            if (update.hasManifest()) return update;
+            return getGithubBetaUpdate(channel);
+        }"""
+    # CNB 优先的新块
+    new_block = """        Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
+        if (update.hasManifest()) return update;
+        if (Update.CHANNEL_BETA.equals(channel)) {
+            update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
+            if (update.hasManifest()) return update;
+            return getGithubBetaUpdate(channel);
+        }"""
+
+    if old_block in content:
+        content = content.replace(old_block, new_block)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"[OK] {rel_path}: 更新顺序已改为 CNB 优先 -> GitHub 其次")
+        return True
+    elif "Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);" in content:
+        print(f"[SKIP] {rel_path}: 已是 CNB 优先顺序")
+        return False
+    else:
+        print(f"[WARN] {rel_path}: 未匹配到已知的 getUpdate 顺序代码，请人工检查 Updater.java")
+        return False
+
+
 # ---------------------------------------------------------------- 9. CNB 脚本
 def modify_cnb_release_script(config):
     """修改 sync-cnb-release.sh 中的 CNB_REPO_SLUG。"""
@@ -1602,6 +1650,20 @@ def modify_workflow_files(config):
             rf"\g<1>{cnb_repo_url}\g<2>",
             content,
         )
+
+        # 修复脚本可执行权限：Windows 推送的文件常丢失 +x 位，直接 ./script.sh 会 Permission denied
+        # 在每个脚本调用行前注入 chmod +x（幂等：已有 chmod 行则跳过）
+        if "sync-cnb-release.sh" in content and "chmod +x .github/scripts/sync-cnb-release.sh" not in content:
+            pat_chmod = re.compile(
+                r'^([ \t]*)(\.github/scripts/sync-cnb-release\.sh)([ \t]*)$',
+                re.MULTILINE,
+            )
+            content = pat_chmod.sub(
+                lambda m: f"{m.group(1)}chmod +x .github/scripts/sync-cnb-release.sh\n"
+                          f"{m.group(1)}{m.group(2)}{m.group(3)}",
+                content,
+            )
+            print(f"[OK] {rel_path}: 注入 chmod +x（修复 Permission denied）")
 
         # 仅对 android-release.yml 注入 GRADLE_OPTS
         if rel_path.endswith("android-release.yml"):
@@ -1715,13 +1777,16 @@ def main():
     print("\n--- [7/10] 检查更新链接（Github.java / GithubProxy.java / CI 测试）---")
     results.append(modify_update_urls(config))
 
-    print("\n--- [8/10] sync-cnb-release.sh（CNB_REPO_SLUG）---")
+    print("\n--- [8/10] 更新顺序（Updater.java：CNB release 优先 -> GitHub release 其次）---")
+    results.append(modify_update_order(config))
+
+    print("\n--- [9/10] sync-cnb-release.sh（CNB_REPO_SLUG）---")
     results.append(modify_cnb_release_script(config))
 
-    print("\n--- [9/10] 工作流 yml（CNB 地址 + GRADLE_OPTS 内存修复 + publish_oci 默认关闭）---")
+    print("\n--- [10/10] 工作流 yml（CNB 地址 + chmod +x 权限 + GRADLE_OPTS 内存修复 + publish_oci 默认关闭）---")
     results.append(modify_workflow_files(config))
 
-    print("\n--- [10/10] 最终校验：namespace 是否保持上游原值 ---")
+    print("\n--- [11/11] 最终校验：namespace 是否保持上游原值 ---")
     ns_ok = True
     ns_pattern = re.compile(r'namespace\s*=\s*[\'"]com\.fongmi\.android\.tv[\'"]')
     for path in [os.path.join(REPO_ROOT, "app", "build.gradle"),

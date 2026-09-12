@@ -385,6 +385,7 @@ jobs:
           CNB_RELEASE_PRERELEASE: ${{ inputs.prerelease == true || steps.meta.outputs.channel == 'beta' }}
           CNB_RELEASE_LATEST: ${{ steps.meta.outputs.channel == 'stable' }}
         run: |
+          chmod +x .github/scripts/sync-cnb-release.sh
           .github/scripts/sync-cnb-release.sh
 
       - name: Upload workflow artifacts
