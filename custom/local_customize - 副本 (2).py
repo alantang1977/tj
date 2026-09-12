@@ -455,7 +455,7 @@ def draw_cat(size):
     """绘制居中的卡通蓝猫头（广告级布光版，RGBA 透明底图层）。
 
     三点布光：主光左上、补光右侧、轮廓光右缘。
-    元素：圆角三角耳（渐变白耳）、径向渐变球头、腮红、闭眼+睫毛、
+    元素：圆角三角耳（渐变粉耳）、径向渐变球头、腮红、闭眼+睫毛、
     粉鼻水滴高光、ω嘴、胡须、项圈织物高光、金属铃铛、偏移双层光晕、接触投影。
     """
     layer = Image.new("RGBA", (size, size), HOLE)
@@ -553,7 +553,7 @@ def draw_cat(size):
     rim_light = rim_light.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(rim_light)
 
-    # 白耳内（渐变：上浅冷灰白 -> 下纯白，保留极轻层次不显平）
+    # 粉耳内（渐变：上深粉下浅粉）
     for side in (-1, 1):
         pts = inner_pink(side)
         ear_mask = Image.new("L", (size, size), 0)
@@ -562,9 +562,9 @@ def draw_cat(size):
         egd = ImageDraw.Draw(ear_grad)
         for yy in range(int(size)):
             k = yy / size
-            r_c = int(238 * (1 - k) + 255 * k)
-            g_c = int(242 * (1 - k) + 255 * k)
-            b_c = int(250 * (1 - k) + 255 * k)
+            r_c = int(255 * (1 - k) + 200 * k)
+            g_c = int(130 * (1 - k) + 180 * k)
+            b_c = int(180 * (1 - k) + 210 * k)
             egd.line([(0, yy), (size, yy)], fill=(r_c, g_c, b_c, 255))
         layer.paste(ear_grad, (0, 0), ear_mask)
 
@@ -1512,21 +1512,12 @@ def modify_update_urls(config):
 
 # ---------------------------------------------------------------- 8. 更新顺序：CNB 优先
 def modify_update_order(config):
-    '''
-    增强更新机制（Updater.java + Github.java），三处修改：
-      1) getUpdate()：先读 CNB raw manifest（https://cnb.cool/<slug>/-/git/raw/main/apk/xx.json），
-         失败才回退 GitHub（update-channel -> latest -> GitHub API 兜底）。
-      2) getApkUrl()：CNB 源（SOURCE_CNB）命中后，APK 下载地址 = CNB Release 直链
-         https://cnb.cool/<slug>/-/releases/download/<tag>/xx.apk（sync-cnb-release.sh 上传后
-         manifest apk 字段即该地址），国内直连 CNB、绕开 GitHub。
-      3) getRoutes()：把 CNB 下载地址作为第一路由，GitHub Release 原地址由
-         UpdateRoutePlanner.plan() 追加为兜底（CNB 下载失败自动回退）。
-    约束：UpdateRoutePlanner 本身不动（签名/逻辑不变），CI 测试均不受影响。
-    '''
-    changed_any = False
-    cnb_slug = str(config.get("CNB_REPO_SLUG", "")).strip()
-
-    # ---------- A. Updater.java ----------
+    """
+    修改 Updater.java 的 getUpdate() 方法：
+    检查更新时优先读取 CNB release 的 manifest（SOURCE_CNB），失败后再回退 GitHub
+    （update-channel release -> latest release -> GitHub API 兜底）。
+    用户要求：cnb-release 优先，github release 其次。
+    """
     rel_path = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "Updater.java")
     full_path = os.path.join(REPO_ROOT, rel_path)
     if not os.path.exists(full_path):
@@ -1535,99 +1526,36 @@ def modify_update_order(config):
 
     with open(full_path, "r", encoding="utf-8") as f:
         content = f.read()
-    original = content
 
-    # A1. getUpdate()：CNB raw manifest 优先（先试 CNB，再 GitHub）
-    old_block = '''        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
+    # GitHub 优先的原始块（当前上游逻辑）
+    old_block = """        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
         if (update.hasManifest()) return update;
         if (Update.CHANNEL_BETA.equals(channel)) {
             update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
             if (update.hasManifest()) return update;
             return getGithubBetaUpdate(channel);
-        }'''
-    new_block = '''        Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
+        }"""
+    # CNB 优先的新块
+    new_block = """        Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
         if (update.hasManifest()) return update;
         if (Update.CHANNEL_BETA.equals(channel)) {
             update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
             if (update.hasManifest()) return update;
             return getGithubBetaUpdate(channel);
-        }'''
+        }"""
+
     if old_block in content:
         content = content.replace(old_block, new_block)
-    elif "Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);" not in content:
-        print(f"[WARN] {rel_path}: 未匹配到已知的 getUpdate 顺序代码，请人工检查 Updater.java")
-
-    # A2. getApkUrl()：SOURCE_CNB 命中后直接拼 CNB Release 下载直链
-    old_apkurl = '''        if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
-        if (apk.startsWith("http://") || apk.startsWith("https://")) return apk;'''
-    new_apkurl = '''        if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
-        if (SOURCE_CNB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getCnbReleaseAsset(update.name, getFileName(apk, update.channel));
-        if (apk.startsWith("http://") || apk.startsWith("https://")) return apk;'''
-    if old_apkurl in content and "Github.getCnbReleaseAsset(update.name" not in content:
-        content = content.replace(old_apkurl, new_apkurl)
-
-    # A3. getRoutes()：CNB 下载地址第一路由，GitHub/OCI 由 plan() 追加为兜底
-    if "import java.util.ArrayList;" not in content and "import java.util.Arrays;" in content:
-        content = content.replace("import java.util.Arrays;", "import java.util.ArrayList;\nimport java.util.Arrays;")
-    old_routes = "            return UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint);"
-    new_routes = '''            List<UpdateTarget> routes = new ArrayList<>();
-            String cnbUrl = update.apkUrl;
-            if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
-                routes.add(UpdateTarget.github(cnbUrl));
-            }
-            routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint));
-            return routes;'''
-    if old_routes in content and "String cnbUrl = update.apkUrl;" not in content:
-        content = content.replace(old_routes, new_routes)
-
-    if content != original:
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)
-        changed_any = True
-        print(f"[OK] {rel_path}: CNB 优先 manifest + CNB 直连下载 + 路由兜底已生效")
-
-    # ---------- B. Github.java：新增 CNB Release 下载常量与方法 ----------
-    github_rel = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "utils", "Github.java")
-    github_path = os.path.join(REPO_ROOT, github_rel)
-    if not os.path.exists(github_path):
-        print(f"[SKIP] {github_rel} 不存在")
-    else:
-        with open(github_path, "r", encoding="utf-8") as f:
-            g_content = f.read()
-        g_original = g_content
-
-        if "CNB_RELEASE_DOWNLOAD" not in g_content:
-            release_base = f"https://cnb.cool/{cnb_slug}/-/releases/download" if cnb_slug else "https://cnb.cool/fish2035/webhtv-release/-/releases/download"
-            g_content = re.sub(
-                r'(private static final String CNB_MANIFEST = "[^"]*";)',
-                '\1\n    private static final String CNB_RELEASE_DOWNLOAD = "' + release_base + '";',
-                g_content,
-            )
-            if not cnb_slug:
-                print(f"[WARN] {github_rel}: CNB_REPO_SLUG 未配置，CNB_RELEASE_DOWNLOAD 暂用旧地址，请检查")
-        if "public static String getCnbReleaseAsset" not in g_content:
-            g_content = g_content.replace(
-                '    public static String getCnbMirrorAsset(String name) {\n'
-                '        return CNB_MANIFEST + "/" + name;\n'
-                '    }',
-                '    public static String getCnbMirrorAsset(String name) {\n'
-                '        return CNB_MANIFEST + "/" + name;\n'
-                '    }\n'
-                '\n'
-                '    public static String getCnbReleaseAsset(String tag, String name) {\n'
-                '        return CNB_RELEASE_DOWNLOAD + "/" + tag + "/" + name;\n'
-                '    }',
-            )
-        if g_content != g_original:
-            with open(github_path, "w", encoding="utf-8") as f:
-                f.write(g_content)
-            changed_any = True
-            print(f"[OK] {github_rel}: 新增 CNB_RELEASE_DOWNLOAD 常量 + getCnbReleaseAsset 方法")
-
-    if changed_any:
+        print(f"[OK] {rel_path}: 更新顺序已改为 CNB 优先 -> GitHub 其次")
         return True
-    print("[SKIP] 更新机制已是目标状态（CNB 优先 + CNB 直连下载 + 路由兜底）")
-    return False
+    elif "Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);" in content:
+        print(f"[SKIP] {rel_path}: 已是 CNB 优先顺序")
+        return False
+    else:
+        print(f"[WARN] {rel_path}: 未匹配到已知的 getUpdate 顺序代码，请人工检查 Updater.java")
+        return False
 
 
 # ---------------------------------------------------------------- 9. CNB 脚本
@@ -1828,34 +1756,34 @@ def main():
 
     results = []
 
-    print("\n--- [1/11] app/build.gradle（applicationId + viewBinding）---")
+    print("\n--- [1/10] app/build.gradle（applicationId + viewBinding）---")
     results.append(modify_build_gradle(config))
 
-    print("\n--- [2/11] 多语言 app 名称（values / values-zh-rCN / values-zh-rTW）---")
+    print("\n--- [2/10] 多语言 app 名称（values / values-zh-rCN / values-zh-rTW）---")
     results.append(modify_all_strings(config))
 
-    print("\n--- [3/11] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
+    print("\n--- [3/10] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
     results.append(generate_app_icons(config))
 
-    print("\n--- [4/11] 启动图（startup_logo / mobile_startup）---")
+    print("\n--- [4/10] 启动图（startup_logo / mobile_startup）---")
     results.append(replace_startup_images(config))
 
-    print("\n--- [5/11] AndroidManifest.xml（android:label）---")
+    print("\n--- [5/10] AndroidManifest.xml（android:label）---")
     results.append(modify_android_manifest(config))
 
-    print("\n--- [6/11] 设置页作者链接（URL_GITHUB / URL_CNB）---")
+    print("\n--- [6/10] 设置页作者链接（URL_GITHUB / URL_CNB）---")
     results.append(modify_author_links(config))
 
-    print("\n--- [7/11] 检查更新链接（Github.java / GithubProxy.java / CI 测试）---")
+    print("\n--- [7/10] 检查更新链接（Github.java / GithubProxy.java / CI 测试）---")
     results.append(modify_update_urls(config))
 
-    print("\n--- [8/11] 更新机制（CNB 优先 manifest + CNB 直连下载 APK + GitHub 兜底路由）---")
+    print("\n--- [8/10] 更新顺序（Updater.java：CNB release 优先 -> GitHub release 其次）---")
     results.append(modify_update_order(config))
 
-    print("\n--- [9/11] sync-cnb-release.sh（CNB_REPO_SLUG）---")
+    print("\n--- [9/10] sync-cnb-release.sh（CNB_REPO_SLUG）---")
     results.append(modify_cnb_release_script(config))
 
-    print("\n--- [10/11] 工作流 yml（CNB 地址 + chmod +x 权限 + GRADLE_OPTS 内存修复 + publish_oci 默认关闭）---")
+    print("\n--- [10/10] 工作流 yml（CNB 地址 + chmod +x 权限 + GRADLE_OPTS 内存修复 + publish_oci 默认关闭）---")
     results.append(modify_workflow_files(config))
 
     print("\n--- [11/11] 最终校验：namespace 是否保持上游原值 ---")

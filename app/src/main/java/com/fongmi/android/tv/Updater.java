@@ -42,6 +42,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.lang.ref.WeakReference;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -323,6 +324,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     private String getApkUrl(Update update, String source) {
         String apk = TextUtils.isEmpty(update.apk) ? getDefaultApkName(update.channel) : update.apk;
         if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
+        if (SOURCE_CNB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getCnbReleaseAsset(update.name, getFileName(apk, update.channel));
         if (apk.startsWith("http://") || apk.startsWith("https://")) return apk;
         return Github.getCnbAsset(apk);
     }
@@ -439,7 +441,13 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         try {
             GithubProxy.Config github = GithubProxy.config();
             String endpoint = update.oci == null ? "" : OciMirror.resolve(Setting.getUpdateOciMirror(), Setting.getUpdateOciMirrorUrl(), update.oci);
-            return UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint);
+            List<UpdateTarget> routes = new ArrayList<>();
+            String cnbUrl = update.apkUrl;
+            if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
+                routes.add(UpdateTarget.github(cnbUrl));
+            }
+            routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint));
+            return routes;
         } catch (Exception e) {
             return List.of();
         }

@@ -5,7 +5,8 @@ public class Github {
     private static final String GITHUB_LATEST = "https://github.com/alantang1977/tj/releases/latest/download";
     private static final String GITHUB_RELEASE = "https://github.com/alantang1977/tj/releases/download";
     private static final String GITHUB_UPDATE_CHANNEL = GITHUB_RELEASE + "/update-channel";
-    private static final String CNB_MANIFEST = "https://cnb.cool/tangtang.com.cn.kul/juntv/-/git/raw/main/apk";
+    
+    private static final String CNB_RELEASE_DOWNLOAD = "https://cnb.cool/tangtang.com.cn.kul/juntv/-/releases/download";
     private static final String GITHUB_API = "https://api.github.com/repos/alantang1977/tj/releases/tags";
     private static final String GITHUB_RELEASES_API = "https://api.github.com/repos/alantang1977/tj/releases";
     private static final String GITHUB_RELEASE_ASSETS_API = "https://api.github.com/repos/alantang1977/tj/releases/assets";
@@ -16,6 +17,10 @@ public class Github {
 
     public static String getCnbMirrorAsset(String name) {
         return CNB_MANIFEST + "/" + name;
+    }
+
+    public static String getCnbReleaseAsset(String tag, String name) {
+        return CNB_RELEASE_DOWNLOAD + "/" + tag + "/" + name;
     }
 
     public static String getCnbAsset(String name) {
