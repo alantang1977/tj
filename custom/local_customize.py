@@ -427,7 +427,7 @@ def _mask(size, shape, radius_ratio=0.0):
 
 # ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
 import math as _math
-CAT_BLUE_TOP = (200, 235, 255, 255)
+CAT_BLUE_TOP = (185, 224, 250, 255)
 CAT_BLUE_MID = (100, 180, 230, 255)
 CAT_BLUE_BOT = (40, 110, 180, 255)
 CAT_BLUE_SIDE = (25, 80, 140, 255)
@@ -436,7 +436,7 @@ CAT_DARK = (35, 50, 85, 255)
 CAT_NOSE = (244, 114, 142, 255)
 CAT_COLLAR = (10, 110, 80, 255)
 CAT_COLLAR_HL = (120, 230, 190, 255)
-CAT_BELL = (255, 205, 60, 255)
+CAT_BELL = (252, 188, 48, 255)
 
 
 def _rounded_poly(draw, pts, radius, fill, steps=12):
@@ -478,36 +478,36 @@ def draw_cat(size):
     halo_out = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(halo_out).ellipse([halo_cx - r * 1.25, halo_cy - r * 1.25,
                                        halo_cx + r * 1.25, halo_cy + r * 1.25],
-                                      fill=(170, 190, 255, 30))
+                                      fill=(190, 225, 255, 26))
     halo_out = halo_out.filter(ImageFilter.GaussianBlur(radius=r * 0.35))
     layer.alpha_composite(halo_out)
     halo_in = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(halo_in).ellipse([halo_cx - r * 1.10, halo_cy - r * 1.10,
                                       halo_cx + r * 1.10, halo_cy + r * 1.10],
-                                     fill=(200, 210, 255, 70))
+                                     fill=(205, 232, 255, 60))
     halo_in = halo_in.filter(ImageFilter.GaussianBlur(radius=r * 0.18))
     layer.alpha_composite(halo_in)
 
     # ===== 耳朵（圆角三角）=====
     def ear_pts(side):
         if side < 0:
-            outer = (cx - r * 0.92, head_cy - r * 0.45)
-            tip = (cx - r * 1.18, head_cy - r * 1.15)
-            inner = (cx - r * 0.42, head_cy - r * 0.78)
+            outer = (cx - r * 0.96, head_cy - r * 0.45)
+            tip = (cx - r * 1.24, head_cy - r * 1.15)
+            inner = (cx - r * 0.46, head_cy - r * 0.78)
         else:
-            outer = (cx + r * 0.92, head_cy - r * 0.45)
-            tip = (cx + r * 1.18, head_cy - r * 1.15)
-            inner = (cx + r * 0.42, head_cy - r * 0.78)
+            outer = (cx + r * 0.96, head_cy - r * 0.45)
+            tip = (cx + r * 1.24, head_cy - r * 1.15)
+            inner = (cx + r * 0.46, head_cy - r * 0.78)
         return outer, tip, inner
 
     def inner_pink(side):
         if side < 0:
-            return [(cx - r * 0.80, head_cy - r * 0.55),
-                    (cx - r * 1.02, head_cy - r * 0.98),
-                    (cx - r * 0.52, head_cy - r * 0.74)]
-        return [(cx + r * 0.80, head_cy - r * 0.55),
-                (cx + r * 1.02, head_cy - r * 0.98),
-                (cx + r * 0.52, head_cy - r * 0.74)]
+            return [(cx - r * 0.84, head_cy - r * 0.55),
+                    (cx - r * 1.08, head_cy - r * 0.98),
+                    (cx - r * 0.56, head_cy - r * 0.74)]
+        return [(cx + r * 0.84, head_cy - r * 0.55),
+                (cx + r * 1.08, head_cy - r * 0.98),
+                (cx + r * 0.56, head_cy - r * 0.74)]
 
     for side in (-1, 1):
         outer, tip, inner = ear_pts(side)
@@ -544,15 +544,7 @@ def draw_cat(size):
             hgd.point((xx, yy), fill=c + (255,))
     layer.paste(hgrad, (0, 0), head_mask)
 
-    # 轮廓光（右后缘细亮边）
-    rim_light = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(rim_light).arc([hx, hy, hx + 2 * r, hy + 2 * r],
-                                   start=280, end=80, fill=(180, 235, 255, 160),
-                                   width=max(1, int(r * 0.045)))
-    rim_light = rim_light.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
-    layer.alpha_composite(rim_light)
-
-    # 亮粉耳内（渐变：上浅粉 -> 下深粉，与鼻子 CAT_NOSE 同色系，配色统一）
+    # 纯白亮光耳内（渐变：上纯白 -> 下极淡冷白，亮光质感）
     for side in (-1, 1):
         pts = inner_pink(side)
         ear_mask = Image.new("L", (size, size), 0)
@@ -561,20 +553,11 @@ def draw_cat(size):
         egd = ImageDraw.Draw(ear_grad)
         for yy in range(int(size)):
             k = yy / size
-            r_c = int(255 * (1 - k) + 244 * k)
-            g_c = int(180 * (1 - k) + 114 * k)
-            b_c = int(200 * (1 - k) + 142 * k)
+            r_c = int(255 * (1 - k) + 243 * k)
+            g_c = int(255 * (1 - k) + 246 * k)
+            b_c = int(255 * (1 - k) + 252 * k)
             egd.line([(0, yy), (size, yy)], fill=(r_c, g_c, b_c, 255))
         layer.paste(ear_grad, (0, 0), ear_mask)
-        # 耳朵内耳顶部受光（叠一层 5% 白，做受光感）
-        ear_gloss = Image.new("RGBA", (size, size), HOLE)
-        egd2 = ImageDraw.Draw(ear_gloss)
-        ex = cx + side * r * 0.75
-        ey = head_cy - r * 0.82
-        egd2.ellipse([ex - r * 0.20, ey - r * 0.16, ex + r * 0.08, ey + r * 0.06],
-                     fill=(255, 255, 255, 13))
-        ear_gloss = ear_gloss.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
-        layer.alpha_composite(ear_gloss)
 
     # 主光高光（左上大面积柔光）
     spec = Image.new("RGBA", (size, size), HOLE)
@@ -583,6 +566,13 @@ def draw_cat(size):
     spec = spec.filter(ImageFilter.GaussianBlur(radius=r * 0.20))
     layer.alpha_composite(spec)
 
+    # 头部整体描边（1px 深蓝，提升浅色背景下清晰度）
+    head_ol = Image.new("RGBA", (size, size), HOLE)
+    ImageDraw.Draw(head_ol).arc([hx, hy, hx + 2 * r, hy + 2 * r],
+                                start=0, end=360, fill=(25, 80, 140, 80),
+                                width=max(1, int(r * 0.022)))
+    head_ol = head_ol.filter(ImageFilter.GaussianBlur(radius=r * 0.015))
+    layer.alpha_composite(head_ol)
     # 底部暗边
     rim = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(rim).arc([hx, hy, hx + 2 * r, hy + 2 * r],
@@ -592,8 +582,8 @@ def draw_cat(size):
 
     # ===== 奶白脸盘（纯白 + 极淡投影浮起感）=====
     face_cy = head_cy + r * 0.18
-    face_box = [cx - r * 0.66, face_cy - r * 0.55,
-                cx + r * 0.66, face_cy + r * 0.62]
+    face_box = [cx - r * 0.70, face_cy - r * 0.55,
+                cx + r * 0.70, face_cy + r * 0.62]
     # 脸盘投影（淡灰偏移）
     face_sh = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(face_sh).ellipse([face_box[0] + r * 0.015, face_box[1] + r * 0.02,
@@ -610,20 +600,53 @@ def draw_cat(size):
     face_gloss = face_gloss.filter(ImageFilter.GaussianBlur(radius=r * 0.10))
     layer.alpha_composite(face_gloss)
 
-    # 闭眼 ^ ^（与鼻嘴比例协调）
+    # 大圆眼（参考启动图低多边形猫咪：金色眼白 + 深色大瞳孔 + 瞳孔内金色高光点）
     eye_y = face_cy - r * 0.10
-    eye_dx, eye_w, eye_h = r * 0.40, r * 0.20, r * 0.16
+    eye_dx, eye_R, pupil_R = r * 0.375, r * 0.19, r * 0.117
     for ex in (cx - eye_dx, cx + eye_dx):
-        d.arc([ex - eye_w, eye_y - eye_h, ex + eye_w, eye_y + eye_h],
-              start=200, end=340, fill=CAT_DARK, width=int(size * 0.012))
+        # 眼白（金色径向层次：外圈深金描边 -> 中圈亮金 -> 内圈高亮）
+        d.ellipse([ex - eye_R - 1, eye_y - eye_R - 1,
+                   ex + eye_R + 1, eye_y + eye_R + 1],
+                  fill=(222, 188, 108, 255))
+        d.ellipse([ex - eye_R, eye_y - eye_R, ex + eye_R, eye_y + eye_R],
+                  fill=(255, 216, 118, 255))
+        d.ellipse([ex - eye_R * 0.60, eye_y - eye_R * 0.60,
+                   ex + eye_R * 0.60, eye_y + eye_R * 0.60],
+                  fill=(255, 230, 155, 255))
+        # 瞳孔（深蓝黑，与整体蓝调协调）
+        d.ellipse([ex - pupil_R, eye_y - pupil_R, ex + pupil_R, eye_y + pupil_R],
+                  fill=CAT_DARK)
+        # 瞳孔高光点（金色，偏左上）
+        hl_r = pupil_R * 0.26
+        d.ellipse([ex - pupil_R * 0.32 - hl_r, eye_y - pupil_R * 0.38 - hl_r,
+                   ex - pupil_R * 0.32 + hl_r, eye_y - pupil_R * 0.38 + hl_r],
+                  fill=(255, 238, 168, 255))
+        # 瞳孔底部反光月牙（玻璃感地反射）
+        d.arc([ex - pupil_R * 0.72, eye_y - pupil_R * 0.30,
+               ex + pupil_R * 0.72, eye_y + pupil_R * 0.90],
+              start=20, end=160, fill=(255, 216, 120, 180),
+              width=max(2, int(pupil_R * 0.22)))
+        # 副高光（右上小点，双光源）
+        hl2_r = pupil_R * 0.13
+        d.ellipse([ex + pupil_R * 0.42 - hl2_r, eye_y - pupil_R * 0.45 - hl2_r,
+                   ex + pupil_R * 0.42 + hl2_r, eye_y - pupil_R * 0.45 + hl2_r],
+                  fill=(255, 240, 180, 220))
 
     # 粉鼻（圆润水滴椭圆，日系Q版，与闭眼表情搭配）
     nose_y = face_cy + r * 0.10
-    nw = r * 0.11
+    nw = r * 0.105
     d.ellipse([cx - nw, nose_y - nw * 0.25, cx + nw, nose_y + nw * 1.1], fill=CAT_NOSE)
-    # 鼻尖水滴高光（放大增亮，湿润鼻头质感）
-    d.ellipse([cx - nw * 0.45, nose_y + nw * 0.02,
-               cx - nw * 0.02, nose_y + nw * 0.45], fill=(255, 255, 255, 240))
+    # 鼻尖水滴高光（两点+细线，湿润鼻头质感）
+    d.ellipse([cx - nw * 0.52, nose_y + nw * 0.00,
+               cx - nw * 0.14, nose_y + nw * 0.34], fill=(255, 255, 255, 240))
+    d.ellipse([cx + nw * 0.04, nose_y + nw * 0.16,
+               cx + nw * 0.30, nose_y + nw * 0.40], fill=(255, 255, 255, 180))
+    d.line([(cx - nw * 0.40, nose_y + nw * 0.52), (cx + nw * 0.40, nose_y + nw * 0.52)],
+           fill=(255, 255, 255, 120), width=max(1, int(nw * 0.12)))
+    # 鼻头底部暗影弧（增强水滴鼻立体感）
+    d.arc([cx - nw, nose_y + nw * 0.10, cx + nw, nose_y + nw * 1.30],
+          start=20, end=160, fill=(205, 90, 110, 140),
+          width=max(1, int(nw * 0.21)))
 
     # 三瓣嘴（中间竖线 + 左右圆润弧，日系Q版）
     mouth_cy = nose_y + nw * 1.3
@@ -634,12 +657,21 @@ def draw_cat(size):
           fill=CAT_DARK, width=int(size * 0.012))
     d.arc([cx, mouth_cy - nw * 0.1, cx + mw, mouth_cy + nw * 1.0], start=10, end=170,
           fill=CAT_DARK, width=int(size * 0.012))
-
-    # === 眼睛高光点（闭眼弧上方加白点，增加灵动）===
-    for ex in (cx - eye_dx, cx + eye_dx):
-        d.ellipse([ex - eye_w * 0.32, eye_y - eye_h * 0.95,
-                   ex - eye_w * 0.12, eye_y - eye_h * 0.70],
-                  fill=(255, 255, 255, 220))
+    # 嘴角微笑影（极淡粉弧，三瓣嘴更立体）
+    smile_sh = Image.new("RGBA", (size, size), HOLE)
+    ssd = ImageDraw.Draw(smile_sh)
+    ssd.arc([cx - mw * 1.25, mouth_cy - nw * 0.2, cx - mw * 0.15, mouth_cy + nw * 1.15],
+            start=20, end=160, fill=(232, 165, 175, 55), width=max(1, int(nw * 0.30)))
+    ssd.arc([cx + mw * 0.15, mouth_cy - nw * 0.2, cx + mw * 1.25, mouth_cy + nw * 1.15],
+            start=20, end=160, fill=(232, 165, 175, 55), width=max(1, int(nw * 0.30)))
+    smile_sh = smile_sh.filter(ImageFilter.GaussianBlur(radius=nw * 0.25))
+    layer.alpha_composite(smile_sh)
+    # 三瓣嘴微笑收尾（两侧嘴角向外上方微翘，表情更温和）
+    for sgn in (-1, 1):
+        bx = cx + sgn * mw * 0.55
+        by = mouth_cy + nw * 0.35
+        d.line([(bx, by), (bx + sgn * max(2, int(nw * 0.36)), by - max(2, int(nw * 0.36)))],
+               fill=CAT_DARK, width=max(1, int(nw * 0.21)))
 
     # 胡须（三长三短，白色光泽感：根部加粗 + 轻微上扬弧度 + 三层叠加）
     whisker_rows = [
@@ -679,7 +711,7 @@ def draw_cat(size):
 
     # ===== 项圈（绿茶色渐变，明亮清新，与冰川蓝猫头形成冷暖对比）=====
     collar_cy = head_cy + r * 0.82
-    collar_rx = r * 0.78
+    collar_rx = r * 0.76
     collar_ry = r * 0.30
     # 横向渐变：中间绿茶高光 -> 两侧深绿茶
     collar_grad = Image.new("RGBA", (size, size), HOLE)
@@ -687,9 +719,9 @@ def draw_cat(size):
     for xx in range(int(size)):
         k = abs(xx - cx) / (collar_rx * 1.1)
         k = min(1.0, k)
-        cr = int(140 * (1 - k) + 60 * k)
-        cg_g = int(190 * (1 - k) + 120 * k)
-        cb = int(110 * (1 - k) + 60 * k)
+        cr = int(130 * (1 - k) + 56 * k)
+        cg_g = int(176 * (1 - k) + 106 * k)
+        cb = int(106 * (1 - k) + 60 * k)
         cgd.line([(xx, 0), (xx, size)], fill=(cr, cg_g, cb, 255))
     collar_mask = Image.new("L", (size, size), 0)
     ImageDraw.Draw(collar_mask).arc([cx - collar_rx, collar_cy - collar_ry,
@@ -715,7 +747,7 @@ def draw_cat(size):
 
     # ===== 金铃铛（金属质感：尖锐高光点 + 底部暗弧）=====
     bell_cx, bell_cy = cx, head_cy + r * 0.99
-    bell_r = r * 0.13
+    bell_r = r * 0.12
     # 铃铛挂环（金色椭圆连接项圈）
     d.ellipse([bell_cx - bell_r * 0.20, bell_cy - bell_r * 1.15,
                bell_cx + bell_r * 0.20, bell_cy - bell_r * 0.78],
@@ -738,10 +770,13 @@ def draw_cat(size):
                                   width=max(1, int(bell_r * 0.25)))
     bell_dark = bell_dark.filter(ImageFilter.GaussianBlur(radius=bell_r * 0.15))
     layer.alpha_composite(bell_dark)
-    # 尖锐高光点（偏橙金）
-    d.ellipse([bell_cx - bell_r * 0.45, bell_cy - bell_r * 0.55,
-               bell_cx - bell_r * 0.15, bell_cy - bell_r * 0.25],
-              fill=(255, 220, 150, 220))
+    # 尖锐高光点（两点式金属感）
+    d.ellipse([bell_cx - bell_r * 0.48, bell_cy - bell_r * 0.55,
+               bell_cx - bell_r * 0.16, bell_cy - bell_r * 0.23],
+              fill=(255, 225, 150, 235))
+    d.ellipse([bell_cx + bell_r * 0.08, bell_cy - bell_r * 0.45,
+               bell_cx + bell_r * 0.28, bell_cy - bell_r * 0.27],
+              fill=(255, 245, 200, 160))
     # 铃铛金属光泽弧（顶部受光弧，增强金属质感）
     d.arc([bell_cx - bell_r * 0.75, bell_cy - bell_r * 0.95,
            bell_cx + bell_r * 0.75, bell_cy + bell_r * 0.55],
@@ -762,7 +797,7 @@ def draw_cat(size):
                 [bell_cx - off, bell_cy - off, bell_cx + off, bell_cy + off],
                 start=(-60 if side > 0 else 240),
                 end=(-30 + k * 15 if side > 0 else 300 - k * 15),
-                fill=(255, 80, 80, 160 - k * 70),
+                fill=(255, 185, 70, 160 - k * 70),
                 width=max(1, int(bell_r * 0.14)))
             layer.alpha_composite(arc)
 
@@ -779,13 +814,13 @@ def draw_cat_silhouette(size):
     hx, hy = cx - r, head_cy - r
     for side in (-1, 1):
         if side < 0:
-            pts = [(cx - r * 0.92, head_cy - r * 0.45),
-                   (cx - r * 1.18, head_cy - r * 1.15),
-                   (cx - r * 0.42, head_cy - r * 0.78)]
+            pts = [(cx - r * 0.96, head_cy - r * 0.45),
+                   (cx - r * 1.24, head_cy - r * 1.15),
+                   (cx - r * 0.46, head_cy - r * 0.78)]
         else:
-            pts = [(cx + r * 0.92, head_cy - r * 0.45),
-                   (cx + r * 1.18, head_cy - r * 1.15),
-                   (cx + r * 0.42, head_cy - r * 0.78)]
+            pts = [(cx + r * 0.96, head_cy - r * 0.45),
+                   (cx + r * 1.24, head_cy - r * 1.15),
+                   (cx + r * 0.46, head_cy - r * 0.78)]
         _rounded_poly(d, pts, r * 0.10, WHITE)
     d.ellipse([hx, hy, hx + 2 * r, hy + 2 * r], fill=WHITE)
     return layer
@@ -797,13 +832,13 @@ def vector_cat(color="#FFFFFF", size_dp=108):
     cx, cy = vp * 0.5, vp * 0.5 + vp * 0.0224
     rr = vp * 0.25
     # 左耳
-    le = (f"M{_p(cx - rr * 0.92)},{_p(cy - rr * 0.45)}"
-          f"L{_p(cx - rr * 1.18)},{_p(cy - rr * 1.15)}"
-          f"L{_p(cx - rr * 0.42)},{_p(cy - rr * 0.78)}z")
+    le = (f"M{_p(cx - rr * 0.96)},{_p(cy - rr * 0.45)}"
+          f"L{_p(cx - rr * 1.24)},{_p(cy - rr * 1.15)}"
+          f"L{_p(cx - rr * 0.46)},{_p(cy - rr * 0.78)}z")
     # 右耳
-    re_ = (f"M{_p(cx + rr * 0.92)},{_p(cy - rr * 0.45)}"
-           f"L{_p(cx + rr * 1.18)},{_p(cy - rr * 1.15)}"
-           f"L{_p(cx + rr * 0.42)},{_p(cy - rr * 0.78)}z")
+    re_ = (f"M{_p(cx + rr * 0.96)},{_p(cy - rr * 0.45)}"
+           f"L{_p(cx + rr * 1.24)},{_p(cy - rr * 1.15)}"
+           f"L{_p(cx + rr * 0.46)},{_p(cy - rr * 0.78)}z")
     # 头圆
     head = (f"M{_p(cx)},{_p(cy - rr)}"
             f"A{_p(rr)},{_p(rr)} 0 1 1 {_p(cx)},{_p(cy + rr)}"
