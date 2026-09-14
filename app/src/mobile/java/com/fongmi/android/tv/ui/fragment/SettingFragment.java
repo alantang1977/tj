@@ -116,13 +116,8 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.cache.setOnClickListener(this::onCache);
         mBinding.backup.setOnClickListener(this::onBackup);
         mBinding.enhance.setOnClickListener(this::onEnhance);
-        mBinding.tmdb.setOnClickListener(this::onTmdb);
-        mBinding.ai.setOnClickListener(this::onAi);
-        mBinding.personal.setOnClickListener(this::onPersonal);
         mBinding.player.setOnClickListener(this::onPlayer);
-        mBinding.ad.setOnClickListener(this::onAd);
         mBinding.danmaku.setOnClickListener(this::onDanmaku);
-        mBinding.subtitle.setOnClickListener(this::onSubtitle);
         mBinding.restore.setOnClickListener(this::onRestore);
         mBinding.version.setOnClickListener(this::onVersion);
         mBinding.vod.setOnLongClickListener(this::onVodEdit);
@@ -242,32 +237,12 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         getRoot().change(2);
     }
 
-    private void onAd(View view) {
-        getRoot().change(9);
-    }
-
     private void onDanmaku(View view) {
         getRoot().change(4);
     }
 
-    private void onSubtitle(View view) {
-        getRoot().change(6);
-    }
-
     private void onEnhance(View view) {
         getRoot().change(3);
-    }
-
-    private void onTmdb(View view) {
-        getRoot().change(7);
-    }
-
-    private void onAi(View view) {
-        getRoot().change(8);
-    }
-
-    private void onPersonal(View view) {
-        getRoot().change(5);
     }
 
     private void onAppearance(View view) {
@@ -324,46 +299,36 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
 
     private void onBackup(View view) {
         PermissionUtil.requestFile(this, allGranted -> {
-            if (!allGranted) {
-                Notify.show(R.string.backup_permission_denied);
-                return;
-            }
             BackupProgressDialog progress = BackupProgressDialog.open(getParentFragmentManager(), "备份应用数据");
             AppDatabase.backup(new Callback() {
-                @Override
-                public void success() {
-                    progress.finish();
-                    Notify.show(R.string.backup_success);
-                }
+            @Override
+            public void success() {
+                progress.finish();
+                Notify.show(R.string.backup_success);
+            }
 
-                @Override
-                public void error() {
-                    progress.finish();
-                    Notify.show(R.string.backup_fail);
-                }
+            @Override
+            public void error() {
+                progress.finish();
+                Notify.show(R.string.backup_fail);
+            }
             }, progress::update);
         });
     }
 
     private void onRestore(View view) {
-        PermissionUtil.requestFile(this, allGranted -> {
-            if (!allGranted) {
-                Notify.show(R.string.backup_permission_denied);
-                return;
+        PermissionUtil.requestFile(this, allGranted -> RestoreDialog.create().show(requireActivity(), new Callback() {
+            @Override
+            public void success() {
+                Notify.show(R.string.restore_success);
+                setOtherText();
             }
-            RestoreDialog.create().show(requireActivity(), new Callback() {
-                @Override
-                public void success() {
-                    Notify.show(R.string.restore_success);
-                    setOtherText();
-                }
 
-                @Override
-                public void error() {
-                    Notify.show(R.string.restore_fail);
-                }
-            });
-        });
+            @Override
+            public void error() {
+                Notify.show(R.string.restore_fail);
+            }
+        }));
     }
 
     private void initConfig() {

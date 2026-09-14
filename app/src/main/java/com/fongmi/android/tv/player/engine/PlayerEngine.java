@@ -57,9 +57,6 @@ public interface PlayerEngine {
         getPlayer().stop();
     }
 
-    default void cancelPendingPrepare() {
-    }
-
     void setMetadata(MediaMetadata data);
 
     boolean isLive();
@@ -69,10 +66,6 @@ public interface PlayerEngine {
     void setTrack(List<Track> tracks);
 
     void resetTrack();
-
-default void resetTrack(int type) {
-        resetTrack();
-    }
 
     default void restoreVideoTrack() {
     }
@@ -86,9 +79,6 @@ default void resetTrack(int type) {
     }
 
     default void setVideoEffects(List<Effect> effects) {
-    }
-
-    default void setVideoAspect(float aspectRatio, boolean stretch) {
     }
 
     default boolean supportsNativeLut() {

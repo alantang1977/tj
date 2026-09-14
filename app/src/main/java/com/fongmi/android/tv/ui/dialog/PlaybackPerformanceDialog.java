@@ -6,7 +6,6 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -19,7 +18,6 @@ import android.widget.ScrollView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
-import androidx.core.widget.TextViewCompat;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
@@ -280,17 +278,13 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
         button.setAllCaps(false);
         button.setText(text);
         button.setSingleLine(true);
-        button.setMaxLines(1);
         button.setGravity(Gravity.CENTER);
         button.setTextSize(14);
-        button.setIncludeFontPadding(false);
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                button, 10, 14, 1, TypedValue.COMPLEX_UNIT_SP);
-        button.setMinWidth(0);
+        button.setMinWidth(dp(64));
         button.setMinimumWidth(0);
         button.setMinHeight(dp(36));
         button.setMinimumHeight(dp(36));
-        button.setPadding(dp(6), 0, dp(6), 0);
+        button.setPaddingRelative(dp(10), 0, dp(10), 0);
         button.setInsetLeft(0);
         button.setInsetRight(0);
         button.setInsetTop(0);
@@ -554,7 +548,6 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
                     PlayerSetting.getPlayer() == PlayerSetting.MPV
                             ? PlaybackPerformanceSetting.getMpvDv7HandlingText()
                             : PlaybackPerformanceSetting.getDv7HandlingText();
-            case PlaybackPerformanceCatalog.DEFERRED_CUES -> onOff(PlaybackPerformanceSetting.isDeferredCuesEnabled());
             case PlaybackPerformanceCatalog.SOFT_VIDEO_TUNE -> onOff(PlaybackPerformanceSetting.isSoftVideoTuneEnabled());
             case PlaybackPerformanceCatalog.AUDIO_PASSTHROUGH -> onOff(PlayerSetting.isAudioPassThrough());
             case PlaybackPerformanceCatalog.MPV_MULTICHANNEL_AUDIO -> MpvPerformanceSetting.getMultichannelAudioText();
@@ -650,7 +643,6 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
                                 : PlaybackPerformanceSetting.DV7_HANDLING_P81);
                 refresh();
             };
-            case PlaybackPerformanceCatalog.DEFERRED_CUES -> () -> toggle(PlaybackPerformanceSetting::isDeferredCuesEnabled, PlaybackPerformanceSetting::putDeferredCuesEnabled);
             case PlaybackPerformanceCatalog.SOFT_VIDEO_TUNE -> () -> toggle(PlaybackPerformanceSetting::isSoftVideoTuneEnabled, PlaybackPerformanceSetting::putSoftVideoTuneEnabled);
             case PlaybackPerformanceCatalog.AUDIO_PASSTHROUGH -> () -> togglePlayer(id, PlayerSetting::isAudioPassThrough, PlayerSetting::putAudioPassThrough);
             case PlaybackPerformanceCatalog.MPV_MULTICHANNEL_AUDIO -> () -> {

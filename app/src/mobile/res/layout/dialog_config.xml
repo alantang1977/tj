@@ -57,9 +57,7 @@
         app:endIconDrawable="@drawable/ic_action_choose"
         app:endIconMode="custom"
         app:endIconTint="@color/dialog_text_button"
-        app:hintTextColor="#5F6368"
-        app:startIconContentDescription="@string/dialog_config_choose_dir"
-        app:startIconDrawable="@drawable/ic_folder">
+        app:hintTextColor="#5F6368">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/url"

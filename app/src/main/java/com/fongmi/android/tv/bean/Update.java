@@ -36,10 +36,7 @@ public class Update {
     }
 
     public boolean hasManifest() {
-        return !TextUtils.isEmpty(name)
-                && !TextUtils.isEmpty(versionName)
-                && code > 0
-                && (!TextUtils.isEmpty(githubUrl) || oci != null && oci.isValid());
+        return !TextUtils.isEmpty(name) && (!TextUtils.isEmpty(githubUrl) || oci != null && oci.isValid());
     }
 
     public boolean hasUpdate() {

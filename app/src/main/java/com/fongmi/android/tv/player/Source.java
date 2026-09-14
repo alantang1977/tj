@@ -85,7 +85,7 @@ public class Source {
     }
 
     public String fetch(Result result) throws Exception {
-        return fetch(result, PlayerSetting.getActivePlayer());
+        return fetch(result, PlayerSetting.getPlayer());
     }
 
     public String fetch(Result result, int playerType) throws Exception {

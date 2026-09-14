@@ -225,21 +225,8 @@ public final class MPVLib {
 
     public static native int destroy();
 
-    public static synchronized void initializeCreatedContext() {
-        try {
-            init();
-        } catch (RuntimeException error) {
-            contextCreated = false;
-            contextCreationAttempted = false;
-            contextDestroying = false;
-            lastContextDestroyedAtMs = SystemClock.elapsedRealtime();
-            MPVLib.class.notifyAll();
-            throw error;
-        }
-    }
-
     public static synchronized boolean tryCreate(Context appctx) {
-        if (!awaitContextShutdown()) return false;
+        awaitContextShutdown();
         if (contextCreationAttempted) {
             Log.w(TAG, "Ignore duplicate MPV context creation");
             return false;
@@ -251,24 +238,20 @@ public final class MPVLib {
             SystemClock.sleep(waitMs);
         }
         contextCreationAttempted = true;
-        try {
-            create(appctx);
-            contextCreated = true;
-            return true;
-        } catch (RuntimeException | Error error) {
-            contextCreationAttempted = false;
-            throw error;
-        }
+        create(appctx);
+        contextCreated = true;
+        return true;
     }
 
-    private static boolean awaitContextShutdown() {
-        if (!contextDestroying) return true;
+    private static void awaitContextShutdown() {
+        if (!contextDestroying) return;
         long deadline = SystemClock.elapsedRealtime() + CONTEXT_SHUTDOWN_TIMEOUT_MS;
         while (contextDestroying) {
             long remaining = deadline - SystemClock.elapsedRealtime();
             if (remaining <= 0) {
                 Log.w(TAG, "Timed out waiting for previous MPV context shutdown");
-                return false;
+                contextDestroying = false;
+                break;
             }
             try {
                 MPVLib.class.wait(Math.min(remaining, 100));
@@ -277,7 +260,6 @@ public final class MPVLib {
                 throw new IllegalStateException("Interrupted while waiting for MPV shutdown", e);
             }
         }
-        return true;
     }
 
     public static synchronized void destroyCreatedContext() {

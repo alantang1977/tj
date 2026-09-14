@@ -87,11 +87,18 @@ CONFIG = {
 # ---------------------------------------------------------------------------
 
 # 脚本所在目录：兼容「放在项目根目录」和「放在 custom/ 目录」两种情况
+# 用 app/build.gradle 是否存在来判断项目根目录，比仅靠目录名更稳妥
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-if os.path.basename(_SCRIPT_DIR) == "custom":
+if os.path.exists(os.path.join(_SCRIPT_DIR, "app", "build.gradle")):
+    REPO_ROOT = _SCRIPT_DIR
+elif os.path.exists(os.path.join(os.path.dirname(_SCRIPT_DIR), "app", "build.gradle")):
     REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
 else:
-    REPO_ROOT = _SCRIPT_DIR
+    # 回退：按目录名判断（兼容项目根目录本身叫 custom 的罕见情况）
+    if os.path.basename(_SCRIPT_DIR) == "custom":
+        REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
+    else:
+        REPO_ROOT = _SCRIPT_DIR
 
 CUSTOM_DIR = os.path.join(REPO_ROOT, "custom")
 
@@ -227,7 +234,7 @@ def draw_wordmark(size, fill, style="3d"):
         d.rectangle([x + off, y + thick, x + w + off, y + bh + thick], fill=(120, 50, 140, 255)) # 深紫
     # 圆圈挤出层
     d.ellipse([j_dot_cx - j_dot_r + off, j_dot_cy - j_dot_r + thick,
-               j_dot_cx + j_dot_r + off, j_dot_cy + j_dot_r + thick], fill=(120, 50, 140, 255))
+                j_dot_cx + j_dot_r + off, j_dot_cy + j_dot_r + thick], fill=(120, 50, 140, 255))
     # === 绘制核心主体（含微渐变，模拟抛光表面）===
     # 绘制 T 和 J 表面（纯白渐变色，边缘带微蓝灰）
     for x, y, w, bh in blocks:
@@ -420,16 +427,16 @@ def _mask(size, shape, radius_ratio=0.0):
 
 # ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
 import math as _math
-CAT_BLUE_TOP = (155, 200, 255, 255)
-CAT_BLUE_MID = (70, 140, 250, 255)
-CAT_BLUE_BOT = (35, 88, 198, 255)
-CAT_BLUE_SIDE = (22, 62, 155, 255)
+CAT_BLUE_TOP = (200, 235, 255, 255)
+CAT_BLUE_MID = (100, 180, 230, 255)
+CAT_BLUE_BOT = (40, 110, 180, 255)
+CAT_BLUE_SIDE = (25, 80, 140, 255)
 CAT_PINK = (255, 150, 180, 255)
 CAT_DARK = (35, 50, 85, 255)
 CAT_NOSE = (244, 114, 142, 255)
 CAT_COLLAR = (10, 110, 80, 255)
 CAT_COLLAR_HL = (120, 230, 190, 255)
-CAT_BELL = (255, 195, 40, 255)
+CAT_BELL = (255, 205, 60, 255)
 
 
 def _rounded_poly(draw, pts, radius, fill, steps=12):
@@ -471,7 +478,7 @@ def draw_cat(size):
     halo_out = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(halo_out).ellipse([halo_cx - r * 1.25, halo_cy - r * 1.25,
                                        halo_cx + r * 1.25, halo_cy + r * 1.25],
-                                      fill=(170, 190, 255, 40))
+                                      fill=(170, 190, 255, 30))
     halo_out = halo_out.filter(ImageFilter.GaussianBlur(radius=r * 0.35))
     layer.alpha_composite(halo_out)
     halo_in = Image.new("RGBA", (size, size), HOLE)
@@ -480,14 +487,6 @@ def draw_cat(size):
                                      fill=(200, 210, 255, 70))
     halo_in = halo_in.filter(ImageFilter.GaussianBlur(radius=r * 0.18))
     layer.alpha_composite(halo_in)
-
-    # ===== 接触投影（整体向右下偏移）=====
-    sh = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(sh).ellipse([hx + r * 0.12, hy + r * 0.15,
-                                 hx + 2 * r + r * 0.12, hy + 2 * r + r * 0.15],
-                                fill=(30, 10, 60, 100))
-    sh = sh.filter(ImageFilter.GaussianBlur(radius=size * 0.035))
-    layer.alpha_composite(sh)
 
     # ===== 耳朵（圆角三角）=====
     def ear_pts(side):
@@ -538,9 +537,9 @@ def draw_cat(size):
                 c = tuple(int(CAT_BLUE_TOP[i] + (CAT_BLUE_MID[i] - CAT_BLUE_TOP[i]) * t) for i in range(3))
             else:
                 t = (k - 0.5) * 2
-                # 暗部带一点暖紫（环境色反射）
+                # 暗部带一点冷青（冰川环境色反射）
                 c_mid = CAT_BLUE_MID
-                c_bot = (CAT_BLUE_BOT[0] + 15, CAT_BLUE_BOT[1], CAT_BLUE_BOT[2] - 10)
+                c_bot = (CAT_BLUE_BOT[0] + 5, CAT_BLUE_BOT[1] + 10, CAT_BLUE_BOT[2] + 5)
                 c = tuple(int(c_mid[i] + (c_bot[i] - c_mid[i]) * t) for i in range(3))
             hgd.point((xx, yy), fill=c + (255,))
     layer.paste(hgrad, (0, 0), head_mask)
@@ -548,12 +547,12 @@ def draw_cat(size):
     # 轮廓光（右后缘细亮边）
     rim_light = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(rim_light).arc([hx, hy, hx + 2 * r, hy + 2 * r],
-                                   start=280, end=80, fill=(180, 220, 255, 160),
+                                   start=280, end=80, fill=(180, 235, 255, 160),
                                    width=max(1, int(r * 0.045)))
     rim_light = rim_light.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(rim_light)
 
-    # 白耳内（渐变：上浅冷灰白 -> 下纯白，保留极轻层次不显平）
+    # 亮粉耳内（渐变：上浅粉 -> 下深粉，与鼻子 CAT_NOSE 同色系，配色统一）
     for side in (-1, 1):
         pts = inner_pink(side)
         ear_mask = Image.new("L", (size, size), 0)
@@ -562,11 +561,20 @@ def draw_cat(size):
         egd = ImageDraw.Draw(ear_grad)
         for yy in range(int(size)):
             k = yy / size
-            r_c = int(238 * (1 - k) + 255 * k)
-            g_c = int(242 * (1 - k) + 255 * k)
-            b_c = int(250 * (1 - k) + 255 * k)
+            r_c = int(255 * (1 - k) + 244 * k)
+            g_c = int(180 * (1 - k) + 114 * k)
+            b_c = int(200 * (1 - k) + 142 * k)
             egd.line([(0, yy), (size, yy)], fill=(r_c, g_c, b_c, 255))
         layer.paste(ear_grad, (0, 0), ear_mask)
+        # 耳朵内耳顶部受光（叠一层 5% 白，做受光感）
+        ear_gloss = Image.new("RGBA", (size, size), HOLE)
+        egd2 = ImageDraw.Draw(ear_gloss)
+        ex = cx + side * r * 0.75
+        ey = head_cy - r * 0.82
+        egd2.ellipse([ex - r * 0.20, ey - r * 0.16, ex + r * 0.08, ey + r * 0.06],
+                     fill=(255, 255, 255, 13))
+        ear_gloss = ear_gloss.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
+        layer.alpha_composite(ear_gloss)
 
     # 主光高光（左上大面积柔光）
     spec = Image.new("RGBA", (size, size), HOLE)
@@ -594,6 +602,13 @@ def draw_cat(size):
     face_sh = face_sh.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(face_sh)
     d.ellipse(face_box, fill=WHITE)
+    # 脸瓷面柔光（上半部分微妙高光，瓷面质感，与猫头光泽统一）
+    face_gloss = Image.new("RGBA", (size, size), HOLE)
+    ImageDraw.Draw(face_gloss).ellipse([cx - r * 0.55, face_cy - r * 0.50,
+                                          cx + r * 0.10, face_cy - r * 0.05],
+                                         fill=(255, 255, 255, 35))
+    face_gloss = face_gloss.filter(ImageFilter.GaussianBlur(radius=r * 0.10))
+    layer.alpha_composite(face_gloss)
 
     # 闭眼 ^ ^（与鼻嘴比例协调）
     eye_y = face_cy - r * 0.10
@@ -602,59 +617,79 @@ def draw_cat(size):
         d.arc([ex - eye_w, eye_y - eye_h, ex + eye_w, eye_y + eye_h],
               start=200, end=340, fill=CAT_DARK, width=int(size * 0.012))
 
-    # 粉鼻（圆润倒三角 + 底部阴影弧，与眼嘴等比例）
+    # 粉鼻（圆润水滴椭圆，日系Q版，与闭眼表情搭配）
     nose_y = face_cy + r * 0.10
     nw = r * 0.11
-    nose_pts = [(cx - nw, nose_y + nw * 0.15), (cx + nw, nose_y + nw * 0.15),
-                (cx, nose_y + nw * 0.95)]
-    d.polygon(nose_pts, fill=CAT_NOSE)
-    # 鼻底阴影弧
-    nose_sh = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(nose_sh).arc([cx - nw * 0.9, nose_y + nw * 0.5,
-                                 cx + nw * 0.9, nose_y + nw * 1.3],
-                                start=20, end=160, fill=(180, 60, 90, 80),
-                                width=max(1, int(nw * 0.25)))
-    nose_sh = nose_sh.filter(ImageFilter.GaussianBlur(radius=nw * 0.15))
-    layer.alpha_composite(nose_sh)
-    # 鼻尖水滴高光
-    d.ellipse([cx - nw * 0.22, nose_y + nw * 0.25,
-               cx + nw * 0.08, nose_y + nw * 0.55], fill=(255, 255, 255, 230))
+    d.ellipse([cx - nw, nose_y - nw * 0.25, cx + nw, nose_y + nw * 1.1], fill=CAT_NOSE)
+    # 鼻尖水滴高光（放大增亮，湿润鼻头质感）
+    d.ellipse([cx - nw * 0.45, nose_y + nw * 0.02,
+               cx - nw * 0.02, nose_y + nw * 0.45], fill=(255, 255, 255, 240))
 
-    # ω 嘴（宽度与鼻子协调）
-    mw = r * 0.14
-    my = nose_y + nw * 0.9
-    d.arc([cx - mw, my - nw * 0.3, cx, my + nw * 1.1], start=20, end=160,
+    # 三瓣嘴（中间竖线 + 左右圆润弧，日系Q版）
+    mouth_cy = nose_y + nw * 1.3
+    d.line([(cx, mouth_cy), (cx, mouth_cy + nw * 0.6)],
+           fill=CAT_DARK, width=int(size * 0.010))
+    mw = nw * 1.5
+    d.arc([cx - mw, mouth_cy - nw * 0.1, cx, mouth_cy + nw * 1.0], start=10, end=170,
           fill=CAT_DARK, width=int(size * 0.012))
-    d.arc([cx, my - nw * 0.3, cx + mw, my + nw * 1.1], start=20, end=160,
+    d.arc([cx, mouth_cy - nw * 0.1, cx + mw, mouth_cy + nw * 1.0], start=10, end=170,
           fill=CAT_DARK, width=int(size * 0.012))
 
-    # 胡须（三长三短，更自然）
+    # === 眼睛高光点（闭眼弧上方加白点，增加灵动）===
+    for ex in (cx - eye_dx, cx + eye_dx):
+        d.ellipse([ex - eye_w * 0.32, eye_y - eye_h * 0.95,
+                   ex - eye_w * 0.12, eye_y - eye_h * 0.70],
+                  fill=(255, 255, 255, 220))
+
+    # 胡须（三长三短，白色光泽感：根部加粗 + 轻微上扬弧度 + 三层叠加）
     whisker_rows = [
         (-0.10, 0.32),   # 上：最长
         (-0.02, 0.26),   # 中：中等
         (0.06, 0.20),    # 下：最短
     ]
+    whisker_w = int(size * 0.008)
+    root_w = max(1, int(whisker_w * 1.4))  # 根部加粗
     for dy, length in whisker_rows:
         yy = face_cy + r * dy
         ang = r * dy * 1.4
-        d.line([(cx - r * 0.62, yy), (cx - r * 0.62 - r * length, yy + ang)],
-               fill=(255, 255, 255, 235), width=int(size * 0.008))
-        d.line([(cx + r * 0.62, yy), (cx + r * 0.62 + r * length, yy + ang)],
-               fill=(255, 255, 255, 235), width=int(size * 0.008))
+        for side in (-1, 1):
+            x_start = cx + side * r * 0.62
+            x_end = x_start + side * r * length
+            # 轻微上扬：终点 y 上移
+            y_end = yy + ang - r * 0.03
+            # 分段点（根部 35% 更粗，尖部 65% 正常）
+            x_mid = x_start + (x_end - x_start) * 0.35
+            y_mid = yy + (y_end - yy) * 0.35
+            # 底层：淡灰阴影（右下偏移，增加立体感）
+            d.line([(x_start + 1, yy + 1), (x_mid + 1, y_mid + 1)],
+                   fill=(180, 190, 210, 100), width=root_w)
+            d.line([(x_mid + 1, y_mid + 1), (x_end + 1, y_end + 1)],
+                   fill=(180, 190, 210, 100), width=whisker_w)
+            # 中层：白色主体
+            d.line([(x_start, yy), (x_mid, y_mid)],
+                   fill=(255, 255, 255, 235), width=root_w)
+            d.line([(x_mid, y_mid), (x_end, y_end)],
+                   fill=(255, 255, 255, 235), width=whisker_w)
+            # 顶层：纯白高光（上方偏移，更细，增加光泽感）
+            hl_w = max(1, whisker_w - 1)
+            d.line([(x_start, yy - 1), (x_mid, y_mid - 1)],
+                   fill=(255, 255, 255, 255), width=max(1, root_w - 1))
+            d.line([(x_mid, y_mid - 1), (x_end, y_end - 1)],
+                   fill=(255, 255, 255, 255), width=hl_w)
 
-    # ===== 项圈（纯银金属反光）=====
+    # ===== 项圈（绿茶色渐变，明亮清新，与冰川蓝猫头形成冷暖对比）=====
     collar_cy = head_cy + r * 0.82
     collar_rx = r * 0.78
     collar_ry = r * 0.30
-    # 横向渐变：中间高光白 -> 两侧暗银灰
+    # 横向渐变：中间绿茶高光 -> 两侧深绿茶
     collar_grad = Image.new("RGBA", (size, size), HOLE)
     cgd = ImageDraw.Draw(collar_grad)
     for xx in range(int(size)):
         k = abs(xx - cx) / (collar_rx * 1.1)
         k = min(1.0, k)
-        cr = int(60 * (1 - k) + 5 * k)
-        cg_g = int(200 * (1 - k) + 90 * k)
-        cb = int(150 * (1 - k) + 55 * k)
+        cr = int(140 * (1 - k) + 60 * k)
+        cg_g = int(190 * (1 - k) + 120 * k)
+        cb = int(110 * (1 - k) + 60 * k)
         cgd.line([(xx, 0), (xx, size)], fill=(cr, cg_g, cb, 255))
     collar_mask = Image.new("L", (size, size), 0)
     ImageDraw.Draw(collar_mask).arc([cx - collar_rx, collar_cy - collar_ry,
@@ -707,12 +742,29 @@ def draw_cat(size):
     d.ellipse([bell_cx - bell_r * 0.45, bell_cy - bell_r * 0.55,
                bell_cx - bell_r * 0.15, bell_cy - bell_r * 0.25],
               fill=(255, 220, 150, 220))
+    # 铃铛金属光泽弧（顶部受光弧，增强金属质感）
+    d.arc([bell_cx - bell_r * 0.75, bell_cy - bell_r * 0.95,
+           bell_cx + bell_r * 0.75, bell_cy + bell_r * 0.55],
+          start=200, end=340, fill=(255, 240, 190, 190), width=max(1, int(bell_r * 0.09)))
     # 中缝（随球体弧度微弯）和锤
     d.arc([bell_cx - bell_r * 0.7, bell_cy - bell_r * 0.35,
            bell_cx + bell_r * 0.7, bell_cy + bell_r * 0.35],
           start=0, end=180, fill=CAT_DARK, width=max(1, int(size * 0.005)))
     d.ellipse([bell_cx - bell_r * 0.15, bell_cy + bell_r * 0.05,
                bell_cx + bell_r * 0.15, bell_cy + bell_r * 0.35], fill=CAT_DARK)
+
+    # === 铃铛声波（两侧红色短弧，暗示「叮当响」）===
+    for side in (-1, 1):
+        for k, rr in enumerate((1.35, 1.70)):
+            off = bell_r * rr
+            arc = Image.new("RGBA", (size, size), HOLE)
+            ImageDraw.Draw(arc).arc(
+                [bell_cx - off, bell_cy - off, bell_cx + off, bell_cy + off],
+                start=(-60 if side > 0 else 240),
+                end=(-30 + k * 15 if side > 0 else 300 - k * 15),
+                fill=(255, 80, 80, 160 - k * 70),
+                width=max(1, int(bell_r * 0.14)))
+            layer.alpha_composite(arc)
 
     return layer
 
@@ -841,7 +893,8 @@ def render_notification(size, style="3d"):
     """通知栏小图标：纯白扁平轮廓（系统强制要求纯白透明，必须保持扁平）。"""
     if style == "cat":
         return draw_cat_silhouette(size * SS).resize((size, size), Image.LANCZOS)
-    return draw_wordmark(size * SS, FILL_NOTIFY, style="3d").resize((size, size),
+    # 注意：draw_wordmark 在 fill=FILL_NOTIFY 时会强制输出纯白无阴影，style 参数不影响结果
+    return draw_wordmark(size * SS, FILL_NOTIFY, style=style).resize((size, size),
                           Image.LANCZOS)
 def render_cat_foreground(size):
     """自适应图标前景：完整彩色猫（透明底），超采样后缩放至安全区内。
@@ -1111,8 +1164,8 @@ def do_write(style="3d"):
         save_img(render(px, "rounded", style=style), f"{MAIN_RES}/mipmap-{name}/ic_launcher.png",
                   format="PNG")
         save_img(render(base, "circle", fill=FILL_CIRCLE, style=style),
-                  f"{MAIN_RES}/mipmap-{name}/ic_launcher_round.webp",
-                  format="WEBP", lossless=True, quality=100)
+                 f"{MAIN_RES}/mipmap-{name}/ic_launcher_round.webp",
+                 format="WEBP", lossless=True, quality=100)
     print("[play store]")
     save_img(render(512, "square", style=style), "app/src/main/ic_launcher-playstore.png",
               format="PNG")
@@ -1140,7 +1193,7 @@ def do_write(style="3d"):
                   f"{MAIN_RES}/drawable-anydpi/ic_notification.xml")
     for name, px in NOTIFY_DENSITIES:
         save_img(render_notification(px, style=style),
-                  f"{MAIN_RES}/drawable-{name}/ic_notification.png", format="PNG")
+                 f"{MAIN_RES}/drawable-{name}/ic_notification.png", format="PNG")
     print("[web favicon]")
     sizes = sorted(FAVICON_SIZES)
     frames = [render(px, "circle", fill=FILL_CIRCLE, style=style) for px in sizes]
@@ -1149,15 +1202,6 @@ def do_write(style="3d"):
               append_images=frames[:-1])
     print("\nDone.")
 
-
-# 图标密度 -> 标准像素尺寸（Android 规范）
-ICON_SIZES = {
-    "mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192,
-}
-# Adaptive Icon 前景/背景 drawable 的标准尺寸（108dp）
-ADAPTIVE_SIZES = {
-    "mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432,
-}
 
 _ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
 
@@ -1236,6 +1280,7 @@ def modify_build_gradle(config):
         # 自动补全 viewBinding（groovy .gradle）
         if filename.endswith(".gradle"):
             if "viewBinding true" not in content:
+                before_vb = content
                 if re.search(r'android\s*\{[^}]*buildFeatures', content):
                     content = re.sub(
                         r'(buildFeatures\s*\{)',
@@ -1248,8 +1293,11 @@ def modify_build_gradle(config):
                         r'\g<1>\n    buildFeatures {\n        viewBinding true\n    }',
                         content,
                     )
-                changed_any = True
-                print("[OK] app/build.gradle: 已补全 buildFeatures { viewBinding true }")
+                if content != before_vb:
+                    changed_any = True
+                    print("[OK] app/build.gradle: 已补全 buildFeatures { viewBinding true }")
+                else:
+                    print("[WARN] app/build.gradle: 未找到 android{} 或 buildFeatures{} 块，viewBinding 补全失败，请人工检查")
 
         if content != original:
             with open(path, "w", encoding="utf-8") as f:
@@ -1317,36 +1365,6 @@ def modify_all_strings(config):
 
 
 # ---------------------------------------------------------------- 3. 应用图标
-def _save_icon(img_path, target, size=None):
-    """把源图标写入 target，若安装了 Pillow 且给定 size 则缩放。返回 True/False。"""
-    try:
-        from PIL import Image
-        have_pil = True
-    except Exception:
-        have_pil = False
-
-    ext = os.path.splitext(target)[1].lower()
-    if have_pil and size:
-        try:
-            img = Image.open(img_path).convert("RGBA")
-        except Exception as e:
-            print(f"      [WARN] 图标文件无法解析（{e}），按原文件复制")
-            shutil.copy2(img_path, target)
-            return True
-        resample = getattr(Image, "Resampling", Image)
-        img = img.resize((size, size), resample.LANCZOS)
-        if ext == ".webp":
-            img.save(target, "WEBP", quality=92)
-        else:
-            img.save(target, "PNG")
-    else:
-        if not have_pil and size:
-            print("      [WARN] 未安装 Pillow（pip install pillow），图标按原尺寸复制")
-        shutil.copy2(img_path, target)
-    return True
-
-
-
 def generate_app_icons(config):
     """程序化生成整套应用图标（整合自 custom/gen_app_icon.py 的 do_write 逻辑）。"""
     style = config.get("ICON_STYLE", "cat")
@@ -1529,64 +1547,67 @@ def modify_update_order(config):
     # ---------- A. Updater.java ----------
     rel_path = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "Updater.java")
     full_path = os.path.join(REPO_ROOT, rel_path)
-    if not os.path.exists(full_path):
-        print(f"[SKIP] {rel_path} 不存在")
-        return False
+    updater_exists = os.path.exists(full_path)
+    if not updater_exists:
+        print(f"[SKIP] {rel_path} 不存在（继续执行 Github.java 修改）")
 
-    with open(full_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    original = content
-    # 清除历史污染的控制字符（如 \u0001），避免 Java 编译失败
-    content = "".join(ch for ch in content if ch >= " " or ch in "\n\r\t")
+    if updater_exists:
+        with open(full_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        original = content
+        # 仅在检测到历史污染字符 \u0001 时才清洗，避免静默修改合法文件
+        if "\u0001" in content:
+            print(f"[WARN] {rel_path}: 检测到控制字符 \\u0001，执行清洗")
+            content = "".join(ch for ch in content if ch >= " " or ch in "\n\r\t")
 
-    # A1. getUpdate()：CNB raw manifest 优先（先试 CNB，再 GitHub）
-    old_block = '''        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
+        # A1. getUpdate()：CNB raw manifest 优先（先试 CNB，再 GitHub）
+        old_block = '''        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
         if (update.hasManifest()) return update;
         if (Update.CHANNEL_BETA.equals(channel)) {
             update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
             if (update.hasManifest()) return update;
             return getGithubBetaUpdate(channel);
         }'''
-    new_block = '''        Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
+        new_block = '''        Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
         if (update.hasManifest()) return update;
         if (Update.CHANNEL_BETA.equals(channel)) {
             update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
             if (update.hasManifest()) return update;
             return getGithubBetaUpdate(channel);
         }'''
-    if old_block in content:
-        content = content.replace(old_block, new_block)
-    elif "Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);" not in content:
-        print(f"[WARN] {rel_path}: 未匹配到已知的 getUpdate 顺序代码，请人工检查 Updater.java")
+        if old_block in content:
+            content = content.replace(old_block, new_block)
+        elif "Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);" not in content:
+            print(f"[WARN] {rel_path}: 未匹配到已知的 getUpdate 顺序代码，请人工检查 Updater.java")
 
-    # A2. getApkUrl()：SOURCE_CNB 命中后直接拼 CNB Release 下载直链
-    old_apkurl = '''        if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
+        # A2. getApkUrl()：SOURCE_CNB 命中后直接拼 CNB Release 下载直链
+        old_apkurl = '''        if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
         if (apk.startsWith("http://") || apk.startsWith("https://")) return apk;'''
-    new_apkurl = '''        if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
+        new_apkurl = '''        if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
         if (SOURCE_CNB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getCnbReleaseAsset(update.name, getFileName(apk, update.channel));
         if (apk.startsWith("http://") || apk.startsWith("https://")) return apk;'''
-    if old_apkurl in content and "Github.getCnbReleaseAsset(update.name" not in content:
-        content = content.replace(old_apkurl, new_apkurl)
+        if old_apkurl in content and "Github.getCnbReleaseAsset(update.name" not in content:
+            content = content.replace(old_apkurl, new_apkurl)
 
-    # A3. getRoutes()：CNB 下载地址第一路由，GitHub/OCI 由 plan() 追加为兜底
-    if "import java.util.ArrayList;" not in content and "import java.util.Arrays;" in content:
-        content = content.replace("import java.util.Arrays;", "import java.util.ArrayList;\nimport java.util.Arrays;")
-    old_routes = "            return UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint);"
-    new_routes = '''            List<UpdateTarget> routes = new ArrayList<>();
+        # A3. getRoutes()：CNB 下载地址第一路由，GitHub/OCI 由 plan() 追加为兜底
+        if "import java.util.ArrayList;" not in content and "import java.util.Arrays;" in content:
+            content = content.replace("import java.util.Arrays;", "import java.util.ArrayList;\nimport java.util.Arrays;")
+        old_routes = "            return UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint);"
+        new_routes = '''            List<UpdateTarget> routes = new ArrayList<>();
             String cnbUrl = update.apkUrl;
             if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
                 routes.add(UpdateTarget.github(cnbUrl));
             }
             routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint));
             return routes;'''
-    if old_routes in content and "String cnbUrl = update.apkUrl;" not in content:
-        content = content.replace(old_routes, new_routes)
+        if old_routes in content and "String cnbUrl = update.apkUrl;" not in content:
+            content = content.replace(old_routes, new_routes)
 
-    if content != original:
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        changed_any = True
-        print(f"[OK] {rel_path}: CNB 优先 manifest + CNB 直连下载 + 路由兜底已生效")
+        if content != original:
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            changed_any = True
+            print(f"[OK] {rel_path}: CNB 优先 manifest + CNB 直连下载 + 路由兜底已生效")
 
     # ---------- B. Github.java：新增 CNB Release 下载常量与方法 ----------
     github_rel = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "utils", "Github.java")
@@ -1597,8 +1618,10 @@ def modify_update_order(config):
         with open(github_path, "r", encoding="utf-8") as f:
             g_content = f.read()
         g_original = g_content
-        # 清除历史污染的控制字符（如 \u0001），避免 Java 编译失败
-        g_content = "".join(ch for ch in g_content if ch >= " " or ch in "\n\r\t")
+        # 仅在检测到历史污染字符 \u0001 时才清洗，避免静默修改合法文件
+        if "\u0001" in g_content:
+            print(f"[WARN] {github_rel}: 检测到控制字符 \\u0001，执行清洗")
+            g_content = "".join(ch for ch in g_content if ch >= " " or ch in "\n\r\t")
 
         # 自愈：上一版脚本 bug 曾把 CNB_MANIFEST 常量整行覆盖删除（只留下 \u0001+新行），
         # 若缺失则按 CNB_REPO_SLUG 重建，避免 getCnbMirrorAsset 编译报 cannot find symbol
@@ -1808,8 +1831,18 @@ def modify_workflow_files(config):
             for i, line in enumerate(oci_lines):
                 if line.strip().startswith("publish_oci:"):
                     oci_found = True
-                    for j in range(i + 1, min(i + 6, len(oci_lines))):
-                        m_default = re.match(r'^(\s*default:\s*)(true|false)(\s*)$', oci_lines[j])
+                    # 计算 publish_oci: 的缩进级别，扫描到下一个同级 key 为止
+                    base_indent = len(line) - len(line.lstrip())
+                    for j in range(i + 1, len(oci_lines)):
+                        next_line = oci_lines[j]
+                        # 空行跳过
+                        if not next_line.strip():
+                            continue
+                        next_indent = len(next_line) - len(next_line.lstrip())
+                        # 遇到同级或更高级别的 key，停止扫描
+                        if next_indent <= base_indent and next_line.strip():
+                            break
+                        m_default = re.match(r'^(\s*default:\s*)(true|false)(\s*)$', next_line)
                         if m_default:
                             if m_default.group(2) == "true":
                                 oci_lines[j] = m_default.group(1) + "false" + m_default.group(3)

@@ -17,8 +17,6 @@ import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.setting.SiteHealthStore;
 import com.fongmi.android.tv.setting.SiteBlockSetting;
 import com.fongmi.android.tv.setting.SiteOrderStore;
-import com.fongmi.android.tv.setting.SiteNameStore;
-import com.fongmi.android.tv.ui.helper.SiteDialogTheme;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +25,6 @@ import java.util.Locale;
 public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
 
     private final OnClickListener listener;
-    private final SiteDialogTheme theme;
     private final List<Site> mAllItems;
     private final List<Site> mItems;
     private String group;
@@ -37,13 +34,10 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
     private boolean block;
     private int column = 1;
 
-    public SiteAdapter(OnClickListener listener, SiteDialogTheme theme) {
+    public SiteAdapter(OnClickListener listener) {
         this.listener = listener;
-        this.theme = theme;
         this.mAllItems = new ArrayList<>();
         this.mItems = new ArrayList<>();
-        this.column = 1;
-        this.group = "";
         this.addAll();
     }
 
@@ -118,8 +112,12 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
         boolean searching = !TextUtils.isEmpty(text);
         mItems.clear();
         for (Site site : mAllItems) {
+            String name = site.getName();
+            String key = site.getKey();
             boolean matchGroup = searching || site.inGroup(group);
-            boolean matchKeyword = !searching || SiteNameStore.matchesSearch(site, text);
+            boolean matchName = !TextUtils.isEmpty(name) && name.toLowerCase(Locale.ROOT).contains(text);
+            boolean matchKey = !TextUtils.isEmpty(key) && key.toLowerCase(Locale.ROOT).contains(text);
+            boolean matchKeyword = !searching || matchName || matchKey;
             if (matchGroup && matchKeyword) mItems.add(site);
         }
         notifyDataSetChanged();
@@ -156,11 +154,7 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        AdapterSiteBinding binding = AdapterSiteBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false);
-        theme.apply(binding.text);
-        theme.tint(binding.search);
-        theme.tint(binding.change);
-        return new ViewHolder(binding);
+        return new ViewHolder(AdapterSiteBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false));
     }
 
     @Override
@@ -169,23 +163,18 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
         boolean blocked = SiteBlockSetting.isBlocked(item);
         boolean on = block || !search || change;
         boolean singleColumn = column == 1;
-        holder.binding.text.setText(item.getDisplayName());
+        holder.binding.text.setText(item.getName());
         holder.binding.health.setBackgroundTintList(ColorStateList.valueOf(SiteHealthStore.getColor(item)));
         holder.binding.text.setEnabled(on);
-        holder.binding.text.setFocusable(false);
+        holder.binding.text.setFocusable(on);
         holder.binding.text.setSelected(block ? blocked : on && item.isSelected());
-        holder.binding.text.setAlpha(1.0f);
+        holder.binding.text.setAlpha(block && blocked ? 0.55f : 1.0f);
         holder.binding.health.setAlpha(block && blocked ? 0.55f : 1.0f);
         holder.binding.search.setImageResource(getSearchIcon(item));
         holder.binding.change.setImageResource(getChangeIcon(item));
         holder.binding.search.setVisibility(!block && search && singleColumn ? View.VISIBLE : View.GONE);
         holder.binding.change.setVisibility(!block && change && singleColumn ? View.VISIBLE : View.GONE);
-        holder.binding.health.setVisibility(singleColumn ? View.VISIBLE : View.GONE);
         holder.binding.text.setOnClickListener(v -> listener.onTextClick(item));
-        holder.binding.text.setOnLongClickListener(v -> {
-            holder.binding.text.setSelected(true);
-            return true;
-        });
         holder.binding.search.setOnClickListener(v -> listener.onSearchClick(position, item));
         holder.binding.change.setOnClickListener(v -> listener.onChangeClick(position, item));
         holder.binding.text.setOnLongClickListener(v -> listener.onTextLongClick(holder));

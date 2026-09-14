@@ -120,13 +120,6 @@ public final class MpvPreloadController {
         }
 
         if (assessment.signal() == MpvPreloadPolicy.Signal.BOOTSTRAP) {
-            if (assessment.reason() == MpvPreloadPolicy.Reason.RATIO_LOW) {
-                ready = false;
-                clearRecovery();
-                state = State.BLOCKED;
-                return remember(Action.BLOCK, Reason.POLICY_BLOCK,
-                        true, oldConcurrency > 0, assessment, now);
-            }
             ready = true;
             clearRecovery();
             state = State.BOOTSTRAP;
