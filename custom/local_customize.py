@@ -1559,15 +1559,15 @@ def modify_update_urls(config):
 # ---------------------------------------------------------------- 8. 更新顺序：CNB 优先
 def modify_update_order(config):
     '''
-    增强更新机制（Updater.java + Github.java），三处修改：
-      1) getUpdate()：先读 CNB raw manifest（https://cnb.cool/<slug>/-/git/raw/main/apk/xx.json），
-         失败才回退 GitHub（update-channel -> latest -> GitHub API 兜底）。
-      2) getApkUrl()：CNB 源（SOURCE_CNB）命中后，APK 下载地址 = CNB Release 直链
-         https://cnb.cool/<slug>/-/releases/download/<tag>/xx.apk（sync-cnb-release.sh 上传后
-         manifest apk 字段即该地址），国内直连 CNB、绕开 GitHub。
-      3) getRoutes()：把 CNB 下载地址作为第一路由，GitHub Release 原地址由
-         UpdateRoutePlanner.plan() 追加为兜底（CNB 下载失败自动回退）。
-    约束：UpdateRoutePlanner 本身不动（签名/逻辑不变），CI 测试均不受影响。
+    增强更新机制（Updater.java + Github.java），对齐线上真实代码结构，三处修改：
+      1) getUpdate()：先读 CNB raw manifest（https://cnb.cool/<slug>/-/git/raw/main/apk/xx.json，
+         由 sync-cnb-release.sh 在 sync_cnb 时推送），失败才回退 GitHub API。
+      2) parseDownloads()：manifest 的 apk 字段为 CNB 直链（sync-cnb-release.sh 已改写）时，
+         APK 下载地址优先用 CNB Release 直链 https://cnb.cool/<slug>/-/releases/download/<tag>/xx.apk，
+         国内直连 CNB、绕开 GitHub。
+      3) getRoutes()：线上已具备 CNB 第一路由 + GitHub/OCI 兜底形态，仅幂等校验。
+    约束：UpdateRoutePlanner 本身不动（签名/逻辑不变），GitHub 兜底链路完整保留；
+         未勾选 sync_cnb 发布时 CNB 无 manifest，自动回退 GitHub，不影响现有更新。
     '''
     changed_any = False
     cnb_slug = str(config.get("CNB_REPO_SLUG", "")).strip()
@@ -1588,48 +1588,48 @@ def modify_update_order(config):
             print(f"[WARN] {rel_path}: 检测到控制字符 \\u0001，执行清洗")
             content = "".join(ch for ch in content if ch >= " " or ch in "\n\r\t")
 
-        # A1. getUpdate()：CNB raw manifest 优先（先试 CNB，再 GitHub）
-        old_block = '''        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
+        # A1. getUpdate()：CNB raw manifest 优先，失败回退 GitHub API
+        # 对齐线上真实结构：getUpdate() 直接分派到 getGithubStableUpdate / getGithubBetaUpdate
+        old_get_update = '''    private Update getUpdate(String channel) {
+        return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
+    }'''
+        new_get_update = '''    private Update getUpdate(String channel) {
+        Update update = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), GITHUB_API_HEADERS, null);
         if (update.hasManifest()) return update;
-        if (Update.CHANNEL_BETA.equals(channel)) {
-            update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
-            if (update.hasManifest()) return update;
-            return getGithubBetaUpdate(channel);
-        }'''
-        new_block = '''        Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
-        if (update.hasManifest()) return update;
-        if (Update.CHANNEL_BETA.equals(channel)) {
-            update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
-            if (update.hasManifest()) return update;
-            return getGithubBetaUpdate(channel);
-        }'''
-        if old_block in content:
-            content = content.replace(old_block, new_block)
-        elif "Update update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);" not in content:
-            print(f"[WARN] {rel_path}: 未匹配到已知的 getUpdate 顺序代码，请人工检查 Updater.java")
+        return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
+    }'''
+        if "Github.getCnbMirrorAsset(getManifestName(channel)), GITHUB_API_HEADERS" in content:
+            print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先")
+        elif old_get_update in content:
+            content = content.replace(old_get_update, new_get_update)
+            print(f"[OK] {rel_path}: getUpdate() 改为 CNB raw manifest 优先（GitHub API 兜底）")
+        else:
+            print(f"[WARN] {rel_path}: 未匹配到已知 getUpdate() 结构，请人工检查 Updater.java")
 
-        # A2. getApkUrl()：SOURCE_CNB 命中后直接拼 CNB Release 下载直链
-        old_apkurl = '''        if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
-        if (apk.startsWith("http://") || apk.startsWith("https://")) return apk;'''
-        new_apkurl = '''        if (SOURCE_GITHUB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getGithubReleaseAsset(update.name, getFileName(apk, update.channel));
-        if (SOURCE_CNB.equals(source) && !TextUtils.isEmpty(update.name)) return Github.getCnbReleaseAsset(update.name, getFileName(apk, update.channel));
-        if (apk.startsWith("http://") || apk.startsWith("https://")) return apk;'''
-        if old_apkurl in content and "Github.getCnbReleaseAsset(update.name" not in content:
-            content = content.replace(old_apkurl, new_apkurl)
+        # A2. parseDownloads()：manifest 的 apk 字段为 CNB 直链时，APK 下载优先走 CNB Release
+        # （sync-cnb-release.sh 会把同步到 CNB 的 manifest 的 .apk 字段改写为 CNB 直链）
+        old_parse = '''        update.apkUrl = update.githubUrl;
+        JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");'''
+        new_parse = '''        update.apkUrl = update.githubUrl;
+        String apkField = update.apk;
+        if (apkField != null && apkField.startsWith("https://cnb.cool/")) {
+            update.apkUrl = apkField;
+        }
+        JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");'''
+        if 'String apkField = update.apk;' in content:
+            print(f"[SKIP] {rel_path}: parseDownloads() 已是 CNB 直链优先")
+        elif old_parse in content:
+            content = content.replace(old_parse, new_parse)
+            print(f"[OK] {rel_path}: parseDownloads() APK 下载改为 CNB Release 直链优先（GitHub 兜底）")
+        else:
+            print(f"[WARN] {rel_path}: 未匹配到 parseDownloads() 结构，请人工检查 Updater.java")
 
-        # A3. getRoutes()：CNB 下载地址第一路由，GitHub/OCI 由 plan() 追加为兜底
-        if "import java.util.ArrayList;" not in content and "import java.util.Arrays;" in content:
-            content = content.replace("import java.util.Arrays;", "import java.util.ArrayList;\nimport java.util.Arrays;")
-        old_routes = "            return UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint);"
-        new_routes = '''            List<UpdateTarget> routes = new ArrayList<>();
-            String cnbUrl = update.apkUrl;
-            if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
-                routes.add(UpdateTarget.github(cnbUrl));
-            }
-            routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint));
-            return routes;'''
-        if old_routes in content and "String cnbUrl = update.apkUrl;" not in content:
-            content = content.replace(old_routes, new_routes)
+        # A3. getRoutes()：CNB 直链第一路由 + GitHub/OCI 兜底
+        # 线上真实代码已具备该形态（cnbUrl 判断 + plan() 追加兜底），此处仅幂等校验，不再强行注入
+        if "cnbUrl.startsWith(\"https://cnb.cool/\")" in content:
+            print(f"[SKIP] {rel_path}: getRoutes() 已具备 CNB 第一路由（GitHub/OCI 兜底）")
+        else:
+            print(f"[WARN] {rel_path}: getRoutes() 缺少 CNB 第一路由判断，请人工检查（CNB 直链不会作为第一下载路由）")
 
         if content != original:
             with open(full_path, "w", encoding="utf-8") as f:

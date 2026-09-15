@@ -163,6 +163,8 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     }
 
     private Update getUpdate(String channel) {
+        Update update = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), GITHUB_API_HEADERS, null);
+        if (update.hasManifest()) return update;
         return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
     }
 
@@ -248,6 +250,10 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         update.githubUrl = github == null ? "" : github.optString("url");
         if (TextUtils.isEmpty(update.githubUrl)) update.githubUrl = getGithubApkUrl(update);
         update.apkUrl = update.githubUrl;
+        String apkField = update.apk;
+        if (apkField != null && apkField.startsWith("https://cnb.cool/")) {
+            update.apkUrl = apkField;
+        }
         JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");
         if (oci == null) return;
         OciArtifact artifact = new OciArtifact(
