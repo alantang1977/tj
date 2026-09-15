@@ -1814,19 +1814,40 @@ def modify_workflow_files(config):
         # setup-android：参考 fish2018/webhtv 两步法，彻底绕开已废弃的 "tools" 包
         # 第一步：setup-android@v3 只设环境 + platform-tools（不含 tools）
         # 第二步：单独步骤手动 sdkmanager 安装 platforms / build-tools
-        sa_pat = re.compile(
-            r'^([ \t]*)- uses:\s*android-actions/setup-android@v[34][ \t]*\n'
-            r'(?:\1  with:\n\1    packages:\s*[^\n]+\n)?',
+        # 逐行处理，兼容 `- uses:` 与 name 步骤下的裸 `uses:`，任意版本号
+        # （避免用 (?P=...) 引用开放组：Python re 会报 cannot refer to an open group）
+        crlf = '\r\n' in content
+        if crlf:
+            content = content.replace('\r\n', '\n')
+        sa_uses_pat = re.compile(
+            r'^([ \t]*)(- )?uses:[ \t]*android-actions/setup-android@\S+[ \t]*$',
             re.MULTILINE,
         )
-        sa_match = sa_pat.search(content)
-        if sa_match:
-            sa_indent = sa_match.group(1)
-            sa_repl = (f'{sa_indent}- uses: android-actions/setup-android@v3\n'
-                       f'{sa_indent}  with:\n'
-                       f'{sa_indent}    packages: \'platform-tools\'\n')
-            content = sa_pat.sub(sa_repl, content, count=1)
-            print(f"[OK] {rel_path}: setup-android 改为 v3 + platform-tools（排除 tools）")
+        sa_uses = sa_uses_pat.search(content)
+        if sa_uses:
+            sa_indent = sa_uses.group(1)
+            sa_dash = sa_uses.group(2) or ''
+            sa_key = sa_indent + ('  ' if sa_dash else '')
+            sa_repl = (f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3\n'
+                       f'{sa_key}with:\n'
+                       f'{sa_key}  packages: \'platform-tools\'\n')
+            line_idx = content[:sa_uses.start()].count('\n')
+            lines = content.split('\n')
+            # 吞掉旧的 with 块：紧跟 uses 行、以 key+'with:' 开头，及其后缩进更深的行
+            j = line_idx + 1
+            if j < len(lines) and lines[j].startswith(sa_key + 'with:'):
+                j += 1
+                while j < len(lines) and lines[j].strip() and \
+                        len(lines[j]) - len(lines[j].lstrip(' ')) > len(sa_key):
+                    j += 1
+            new_lines = [
+                f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3',
+                f'{sa_key}with:',
+                f'{sa_key}  packages: \'platform-tools\'',
+            ]
+            lines = lines[:line_idx] + new_lines + lines[j:]
+            content = '\n'.join(lines)
+            print(f"[OK] {rel_path}: setup-android 显式 packages=platform-tools（排除 tools）")
             # 第二步：检查是否已有 "Install Android packages" 步骤，没有则插入
             if 'Install Android packages' not in content:
                 install_step = (
@@ -1836,14 +1857,13 @@ def modify_workflow_files(config):
                     f'"platforms;android-{compile_sdk}" '
                     f'"build-tools;{compile_sdk}.0.0"\n'
                 )
-                sa_end_pat = re.compile(
-                    r'^([ \t]*)- uses:\s*android-actions/setup-android@v3[ \t]*\n'
-                    r'\1  with:\n\1    packages:\s*[^\n]+\n',
-                    re.MULTILINE,
-                )
-                content = sa_end_pat.sub(
-                    lambda m: m.group(0) + install_step, content, count=1)
+                content = content.replace(sa_repl, sa_repl + install_step, 1)
                 print(f"[OK] {rel_path}: 插入 Install Android packages 步骤（compileSdk={compile_sdk}）")
+        else:
+            print(f"[WARN] {rel_path}: 未找到 android-actions/setup-android 步骤，"
+                  f"请确认 workflow 中的 setup 步骤写法后手动修改")
+        if crlf:
+            content = content.replace('\n', '\r\n')
         # 修复脚本可执行权限：Windows 推送的文件常丢失 +x 位，直接 ./script.sh 会 Permission denied
         # 在每个脚本调用行前注入 chmod +x（幂等：已有 chmod 行则跳过）
         if "sync-cnb-release.sh" in content and "chmod +x .github/scripts/sync-cnb-release.sh" not in content:
