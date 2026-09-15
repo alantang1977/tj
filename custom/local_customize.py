@@ -434,7 +434,7 @@ CAT_BLUE_SIDE = (32, 74, 150, 255)
 CAT_PINK = (255, 150, 180, 255)
 CAT_DARK = (35, 50, 85, 255)
 CAT_NOSE = (247, 122, 152, 255)
-CAT_COLLAR = (10, 110, 80, 255)
+CAT_COLLAR = (7, 193, 96, 255)
 CAT_COLLAR_HL = (120, 230, 190, 255)
 CAT_BELL = (252, 188, 48, 255)
 
@@ -712,9 +712,9 @@ def draw_cat(size):
     for xx in range(int(size)):
         k = abs(xx - cx) / (collar_rx * 1.1)
         k = min(1.0, k)
-        cr = int(150 * (1 - k) + 82 * k)
-        cg_g = int(196 * (1 - k) + 128 * k)
-        cb = int(128 * (1 - k) + 88 * k)
+        cr = int(28 * (1 - k) + 6 * k)
+        cg_g = int(200 * (1 - k) + 158 * k)
+        cb = int(108 * (1 - k) + 80 * k)
         cgd.line([(xx, 0), (xx, size)], fill=(cr, cg_g, cb, 255))
     collar_mask = Image.new("L", (size, size), 0)
     ImageDraw.Draw(collar_mask).arc([cx - collar_rx, collar_cy - collar_ry,
@@ -1759,6 +1759,17 @@ def modify_workflow_files(config):
         print("[SKIP] CNB_REPO_SLUG 未配置，跳过工作流修改")
         return False
     cnb_repo_url = f"https://cnb.cool/{cnb_repo_slug}.git"
+    # 读取项目 compileSdk，用于 setup-android 显式 packages（排除已废弃的 tools 包）
+    compile_sdk = 34
+    for _bp in [os.path.join(REPO_ROOT, "app", "build.gradle"),
+                os.path.join(REPO_ROOT, "app", "build.gradle.kts")]:
+        if os.path.exists(_bp):
+            with open(_bp, "r", encoding="utf-8") as _f:
+                _bt = _f.read()
+            _m = re.search(r'compileSdk(?:Version)?\s*=?\s*["\']?(\d+)', _bt)
+            if _m:
+                compile_sdk = int(_m.group(1))
+                break
     workflow_files = [
         os.path.join(".github", "workflows", "android-release.yml"),
         os.path.join(".github", "workflows", "cnb-release-sync.yml"),
@@ -1800,10 +1811,39 @@ def modify_workflow_files(config):
             content,
         )
 
-        # setup-android v3 -> v4（v3 在新版 cmdline-tools 下会因 sdkmanager tools 包不存在而失败）
-        if "android-actions/setup-android@v3" in content:
-            content = content.replace("android-actions/setup-android@v3", "android-actions/setup-android@v4")
-            print(f"[OK] {rel_path}: setup-android v3 -> v4（修复 sdkmanager tools 包不存在）")
+        # setup-android：参考 fish2018/webhtv 两步法，彻底绕开已废弃的 "tools" 包
+        # 第一步：setup-android@v3 只设环境 + platform-tools（不含 tools）
+        # 第二步：单独步骤手动 sdkmanager 安装 platforms / build-tools
+        sa_pat = re.compile(
+            r'^([ \t]*)- uses:\s*android-actions/setup-android@v[34][ \t]*\n'
+            r'(?:\1  with:\n\1    packages:\s*[^\n]+\n)?',
+            re.MULTILINE,
+        )
+        sa_match = sa_pat.search(content)
+        if sa_match:
+            sa_indent = sa_match.group(1)
+            sa_repl = (f'{sa_indent}- uses: android-actions/setup-android@v3\n'
+                       f'{sa_indent}  with:\n'
+                       f'{sa_indent}    packages: \'platform-tools\'\n')
+            content = sa_pat.sub(sa_repl, content, count=1)
+            print(f"[OK] {rel_path}: setup-android 改为 v3 + platform-tools（排除 tools）")
+            # 第二步：检查是否已有 "Install Android packages" 步骤，没有则插入
+            if 'Install Android packages' not in content:
+                install_step = (
+                    f'{sa_indent}- name: Install Android packages\n'
+                    f'{sa_indent}  run: |\n'
+                    f'{sa_indent}    sdkmanager "platform-tools" '
+                    f'"platforms;android-{compile_sdk}" '
+                    f'"build-tools;{compile_sdk}.0.0"\n'
+                )
+                sa_end_pat = re.compile(
+                    r'^([ \t]*)- uses:\s*android-actions/setup-android@v3[ \t]*\n'
+                    r'\1  with:\n\1    packages:\s*[^\n]+\n',
+                    re.MULTILINE,
+                )
+                content = sa_end_pat.sub(
+                    lambda m: m.group(0) + install_step, content, count=1)
+                print(f"[OK] {rel_path}: 插入 Install Android packages 步骤（compileSdk={compile_sdk}）")
         # 修复脚本可执行权限：Windows 推送的文件常丢失 +x 位，直接 ./script.sh 会 Permission denied
         # 在每个脚本调用行前注入 chmod +x（幂等：已有 chmod 行则跳过）
         if "sync-cnb-release.sh" in content and "chmod +x .github/scripts/sync-cnb-release.sh" not in content:
