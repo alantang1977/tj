@@ -74,7 +74,7 @@ jobs:
         run: bash scripts/verify_mpv_native_assets.sh --require-elf
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android packages
         run: |

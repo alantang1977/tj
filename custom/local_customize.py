@@ -1800,6 +1800,10 @@ def modify_workflow_files(config):
             content,
         )
 
+        # setup-android v3 -> v4（v3 在新版 cmdline-tools 下会因 sdkmanager tools 包不存在而失败）
+        if "android-actions/setup-android@v3" in content:
+            content = content.replace("android-actions/setup-android@v3", "android-actions/setup-android@v4")
+            print(f"[OK] {rel_path}: setup-android v3 -> v4（修复 sdkmanager tools 包不存在）")
         # 修复脚本可执行权限：Windows 推送的文件常丢失 +x 位，直接 ./script.sh 会 Permission denied
         # 在每个脚本调用行前注入 chmod +x（幂等：已有 chmod 行则跳过）
         if "sync-cnb-release.sh" in content and "chmod +x .github/scripts/sync-cnb-release.sh" not in content:
