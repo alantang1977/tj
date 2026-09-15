@@ -427,13 +427,13 @@ def _mask(size, shape, radius_ratio=0.0):
 
 # ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
 import math as _math
-CAT_BLUE_TOP = (185, 224, 250, 255)
-CAT_BLUE_MID = (100, 180, 230, 255)
-CAT_BLUE_BOT = (40, 110, 180, 255)
-CAT_BLUE_SIDE = (25, 80, 140, 255)
+CAT_BLUE_TOP = (192, 228, 252, 255)
+CAT_BLUE_MID = (116, 168, 240, 255)
+CAT_BLUE_BOT = (58, 104, 196, 255)
+CAT_BLUE_SIDE = (32, 74, 150, 255)
 CAT_PINK = (255, 150, 180, 255)
 CAT_DARK = (35, 50, 85, 255)
-CAT_NOSE = (244, 114, 142, 255)
+CAT_NOSE = (247, 122, 152, 255)
 CAT_COLLAR = (10, 110, 80, 255)
 CAT_COLLAR_HL = (120, 230, 190, 255)
 CAT_BELL = (252, 188, 48, 255)
@@ -566,13 +566,6 @@ def draw_cat(size):
     spec = spec.filter(ImageFilter.GaussianBlur(radius=r * 0.20))
     layer.alpha_composite(spec)
 
-    # 头部整体描边（1px 深蓝，提升浅色背景下清晰度）
-    head_ol = Image.new("RGBA", (size, size), HOLE)
-    ImageDraw.Draw(head_ol).arc([hx, hy, hx + 2 * r, hy + 2 * r],
-                                start=0, end=360, fill=(25, 80, 140, 80),
-                                width=max(1, int(r * 0.022)))
-    head_ol = head_ol.filter(ImageFilter.GaussianBlur(radius=r * 0.015))
-    layer.alpha_composite(head_ol)
     # 底部暗边
     rim = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(rim).arc([hx, hy, hx + 2 * r, hy + 2 * r],
@@ -591,7 +584,7 @@ def draw_cat(size):
                                      fill=(0, 20, 80, 40))
     face_sh = face_sh.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(face_sh)
-    d.ellipse(face_box, fill=WHITE)
+    d.ellipse(face_box, fill=(248, 236, 208, 255))
     # 脸瓷面柔光（上半部分微妙高光，瓷面质感，与猫头光泽统一）
     face_gloss = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(face_gloss).ellipse([cx - r * 0.55, face_cy - r * 0.50,
@@ -607,12 +600,12 @@ def draw_cat(size):
         # 眼白（金色径向层次：外圈深金描边 -> 中圈亮金 -> 内圈高亮）
         d.ellipse([ex - eye_R - 1, eye_y - eye_R - 1,
                    ex + eye_R + 1, eye_y + eye_R + 1],
-                  fill=(222, 188, 108, 255))
+                  fill=(210, 212, 218, 255))
         d.ellipse([ex - eye_R, eye_y - eye_R, ex + eye_R, eye_y + eye_R],
-                  fill=(255, 216, 118, 255))
+                  fill=(255, 255, 255, 255))
         d.ellipse([ex - eye_R * 0.60, eye_y - eye_R * 0.60,
                    ex + eye_R * 0.60, eye_y + eye_R * 0.60],
-                  fill=(255, 230, 155, 255))
+                  fill=(252, 252, 254, 255))
         # 瞳孔（深蓝黑，与整体蓝调协调）
         d.ellipse([ex - pupil_R, eye_y - pupil_R, ex + pupil_R, eye_y + pupil_R],
                   fill=CAT_DARK)
@@ -620,17 +613,17 @@ def draw_cat(size):
         hl_r = pupil_R * 0.26
         d.ellipse([ex - pupil_R * 0.32 - hl_r, eye_y - pupil_R * 0.38 - hl_r,
                    ex - pupil_R * 0.32 + hl_r, eye_y - pupil_R * 0.38 + hl_r],
-                  fill=(255, 238, 168, 255))
+                  fill=(255, 255, 255, 255))
         # 瞳孔底部反光月牙（玻璃感地反射）
         d.arc([ex - pupil_R * 0.72, eye_y - pupil_R * 0.30,
                ex + pupil_R * 0.72, eye_y + pupil_R * 0.90],
-              start=20, end=160, fill=(255, 216, 120, 180),
+              start=20, end=160, fill=(255, 255, 255, 190),
               width=max(2, int(pupil_R * 0.22)))
         # 副高光（右上小点，双光源）
         hl2_r = pupil_R * 0.13
         d.ellipse([ex + pupil_R * 0.42 - hl2_r, eye_y - pupil_R * 0.45 - hl2_r,
                    ex + pupil_R * 0.42 + hl2_r, eye_y - pupil_R * 0.45 + hl2_r],
-                  fill=(255, 240, 180, 220))
+                  fill=(255, 255, 255, 225))
 
     # 粉鼻（圆润水滴椭圆，日系Q版，与闭眼表情搭配）
     nose_y = face_cy + r * 0.10
@@ -719,9 +712,9 @@ def draw_cat(size):
     for xx in range(int(size)):
         k = abs(xx - cx) / (collar_rx * 1.1)
         k = min(1.0, k)
-        cr = int(130 * (1 - k) + 56 * k)
-        cg_g = int(176 * (1 - k) + 106 * k)
-        cb = int(106 * (1 - k) + 60 * k)
+        cr = int(150 * (1 - k) + 82 * k)
+        cg_g = int(196 * (1 - k) + 128 * k)
+        cb = int(128 * (1 - k) + 88 * k)
         cgd.line([(xx, 0), (xx, size)], fill=(cr, cg_g, cb, 255))
     collar_mask = Image.new("L", (size, size), 0)
     ImageDraw.Draw(collar_mask).arc([cx - collar_rx, collar_cy - collar_ry,
@@ -741,7 +734,7 @@ def draw_cat(size):
         rx = cx + side * collar_rx * 0.95
         ry = collar_cy + collar_ry * 0.3
         d.ellipse([rx - r * 0.04, ry - r * 0.04,
-                   rx + r * 0.04, ry + r * 0.04], fill=(250, 204, 21, 255))
+                   rx + r * 0.04, ry + r * 0.04], fill=(252, 198, 38, 255))
         d.ellipse([rx - r * 0.02, ry - r * 0.02,
                    rx + r * 0.02, ry + r * 0.02], fill=(255, 230, 120, 255))
 
