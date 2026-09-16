@@ -1618,7 +1618,9 @@ def modify_update_order(config):
                     indent = lines[gu_start][:len(lines[gu_start]) - len(lines[gu_start].lstrip())]
                     new_method = [
                         f'{indent}private Update getUpdate(String channel) {{',
-                        f'{indent}    Update update = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), GITHUB_API_HEADERS, null);',
+                        f'{indent}    Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
+                        f'{indent}    if (cnb.hasManifest()) return cnb;',
+                        f'{indent}    Update update = readUpdate(channel, Github.getChannelAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
                         f'{indent}    if (update.hasManifest()) return update;',
                         f'{indent}    return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);',
                         f'{indent}}}',

@@ -168,7 +168,9 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     }
 
     private Update getUpdate(String channel) {
-        Update update = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);
+        Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);
+        if (cnb.hasManifest()) return cnb;
+        Update update = readUpdate(channel, Github.getChannelAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);
         if (update.hasManifest()) return update;
         return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
     }
