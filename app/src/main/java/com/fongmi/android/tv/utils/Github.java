@@ -1,8 +1,8 @@
 package com.fongmi.android.tv.utils;
 
 public class Github {
-    private static final String CNB_MANIFEST = "https://cnb.cool/tangtang.com.cn.kul/juntv/-/git/raw/main/apk";
-    private static final String CNB_RELEASE_DOWNLOAD = "https://cnb.cool/tangtang.com.cn.kul/juntv/-/releases/download";
+private static final String CNB_MANIFEST = "https://cnb.cool/tangtang.com.cn.kul/juntv/-/git/raw/main/apk";
+private static final String CNB_RELEASE_DOWNLOAD = "https://cnb.cool/tangtang.com.cn.kul/juntv/-/releases/download";
 
     private static final String GITHUB_LATEST = "https://github.com/alantang1977/tj/releases/latest/download";
     private static final String GITHUB_RELEASE = "https://github.com/alantang1977/tj/releases/download";
