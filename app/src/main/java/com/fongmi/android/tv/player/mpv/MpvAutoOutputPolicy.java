@@ -63,6 +63,11 @@ public final class MpvAutoOutputPolicy {
         return new Decision(true, "tv-hardware-decode");
     }
 
+    /** A same-item rebuild must not retry an output that already failed. */
+    public static Decision afterSurfaceFailure(Decision candidate, boolean failedForItem) {
+        return failedForItem ? new Decision(false, "surface-direct-failed-for-item") : candidate;
+    }
+
     /** Select the initial TV output before MPV has reported a video size. */
     public static boolean canStartSurfaceDirect(boolean hardDecode, boolean leanback,
                                                  boolean lutOrFilterActive,
@@ -80,6 +85,14 @@ public final class MpvAutoOutputPolicy {
         return width > 0 && height > 0;
     }
 
+    public static boolean requiresGpuSubtitle(boolean externalSubtitleActive, boolean userRequestedSubtitle) {
+        return false;
+    }
+
+    public static boolean shouldLeaveSurfaceDirectForSubtitle(boolean automaticOutput, boolean currentlyDirect, boolean externalSubtitleActive, boolean userRequestedSubtitle) {
+        return automaticOutput && currentlyDirect && requiresGpuSubtitle(externalSubtitleActive, userRequestedSubtitle);
+    }
+
     public static boolean canRevealDirectFrame(boolean automaticOutput,
                                                boolean outputEvaluated,
                                                boolean playbackReady,
@@ -89,9 +102,9 @@ public final class MpvAutoOutputPolicy {
         return automaticOutput
                 && !outputEvaluated
                 && playbackReady
-                && surfaceDirect
-                && width > 0
-                && height > 0;
+                 && surfaceDirect
+                 && width > 0
+                 && height > 0;
     }
 
     public enum Transition {

@@ -102,6 +102,11 @@ else:
 
 CUSTOM_DIR = os.path.join(REPO_ROOT, "custom")
 
+# 强制模式：跳过所有幂等判断，强制重写所有可修改文件
+# 用法：python local_customize.py --force
+# 适用场景：上游同步后文件形态变化、怀疑脚本假阳性 SKIP、或需要确保所有修改落地
+FORCE_MODE = False
+
 # ==============================================================================
 # 图标生成模块（整合自 custom/gen_app_icon.py）
 # 用 Pillow 程序化生成整套应用图标：launcher / adaptive / banner / 通知栏 / favicon
@@ -1568,6 +1573,8 @@ def modify_update_order(config):
       3) getRoutes()：线上已具备 CNB 第一路由 + GitHub/OCI 兜底形态，仅幂等校验。
     约束：UpdateRoutePlanner 本身不动（签名/逻辑不变），GitHub 兜底链路完整保留；
          未勾选 sync_cnb 发布时 CNB 无 manifest，自动回退 GitHub，不影响现有更新。
+    健壮性：用方法体正则精确匹配（不依赖整文件子串），写回后重新读盘验证，
+           --force 模式跳过幂等判断强制重写。
     '''
     changed_any = False
     cnb_slug = str(config.get("CNB_REPO_SLUG", "")).strip()
@@ -1575,11 +1582,9 @@ def modify_update_order(config):
     # ---------- A. Updater.java ----------
     rel_path = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "Updater.java")
     full_path = os.path.join(REPO_ROOT, rel_path)
-    updater_exists = os.path.exists(full_path)
-    if not updater_exists:
+    if not os.path.exists(full_path):
         print(f"[SKIP] {rel_path} 不存在（继续执行 Github.java 修改）")
-
-    if updater_exists:
+    else:
         with open(full_path, "r", encoding="utf-8") as f:
             content = f.read()
         original = content
@@ -1588,56 +1593,84 @@ def modify_update_order(config):
             print(f"[WARN] {rel_path}: 检测到控制字符 \\u0001，执行清洗")
             content = "".join(ch for ch in content if ch >= " " or ch in "\n\r\t")
 
-        # A1. getUpdate()：CNB raw manifest 优先，失败回退 GitHub API
-        # 对齐线上真实结构：getUpdate() 直接分派到 getGithubStableUpdate / getGithubBetaUpdate
-        old_get_update = '''    private Update getUpdate(String channel) {
-        return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
-    }'''
-        new_get_update = '''    private Update getUpdate(String channel) {
+        # A1. getUpdate()：用正则精确匹配方法体，判断是否已是 CNB 优先
+        # 匹配：private Update getUpdate(String channel) { ... }（方法体到第一个缩进 4 空格的 } 为止）
+        get_update_re = re.compile(
+            r'(\n    private Update getUpdate\(String channel\)\s*\{)(.*?)(\n    \})',
+            re.DOTALL,
+        )
+        m1 = get_update_re.search(content)
+        if m1:
+            body = m1.group(2)
+            already_cnb = "getCnbMirrorAsset" in body
+            if already_cnb and not FORCE_MODE:
+                print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先（方法体精确匹配）")
+            else:
+                _before = content
+                new_body = '''
         Update update = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), GITHUB_API_HEADERS, null);
         if (update.hasManifest()) return update;
         return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
-    }'''
-        if "Github.getCnbMirrorAsset(getManifestName(channel)), GITHUB_API_HEADERS" in content:
-            print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先")
-        elif old_get_update in content:
-            content = content.replace(old_get_update, new_get_update)
-            print(f"[OK] {rel_path}: getUpdate() 改为 CNB raw manifest 优先（GitHub API 兜底）")
+    '''
+                content = content[:m1.start()] + m1.group(1) + new_body + m1.group(3) + content[m1.end():]
+                if content != _before:
+                    print(f"[OK] {rel_path}: getUpdate() 改为 CNB raw manifest 优先（GitHub API 兜底）")
+                    changed_any = True
+                else:
+                    print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先（--force 下形态不变）")
         else:
-            print(f"[WARN] {rel_path}: 未匹配到已知 getUpdate() 结构，请人工检查 Updater.java")
+            print(f"[WARN] {rel_path}: 未匹配到 getUpdate() 方法体，请人工检查 Updater.java 结构")
 
-        # A2. parseDownloads()：manifest 的 apk 字段为 CNB 直链时，APK 下载优先走 CNB Release
-        # （sync-cnb-release.sh 会把同步到 CNB 的 manifest 的 .apk 字段改写为 CNB 直链）
-        old_parse = '''        update.apkUrl = update.githubUrl;
-        JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");'''
-        new_parse = '''        update.apkUrl = update.githubUrl;
-        String apkField = update.apk;
+        # A2. parseDownloads()：先幂等判断（整文件范围检查 apkField），再精确匹配注入
+        already_apkfield = "String apkField = update.apk;" in content
+        if already_apkfield and not FORCE_MODE:
+            print(f"[SKIP] {rel_path}: parseDownloads() 已是 CNB 直链优先")
+        else:
+            parse_re = re.compile(
+                r'(\n        update\.apkUrl = update\.githubUrl;\n)(        JSONObject oci = downloads == null \? null : downloads\.optJSONObject\("oci"\);)',
+            )
+            m2 = parse_re.search(content)
+            if m2:
+                insertion = '''        String apkField = update.apk;
         if (apkField != null && apkField.startsWith("https://cnb.cool/")) {
             update.apkUrl = apkField;
         }
-        JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");'''
-        if 'String apkField = update.apk;' in content:
-            print(f"[SKIP] {rel_path}: parseDownloads() 已是 CNB 直链优先")
-        elif old_parse in content:
-            content = content.replace(old_parse, new_parse)
-            print(f"[OK] {rel_path}: parseDownloads() APK 下载改为 CNB Release 直链优先（GitHub 兜底）")
-        else:
-            print(f"[WARN] {rel_path}: 未匹配到 parseDownloads() 结构，请人工检查 Updater.java")
+'''
+                content = content[:m2.start()] + m2.group(1) + insertion + m2.group(2) + content[m2.end():]
+                print(f"[OK] {rel_path}: parseDownloads() APK 下载改为 CNB Release 直链优先（GitHub 兜底）")
+                changed_any = True
+            elif already_apkfield and FORCE_MODE:
+                # --force 但正则匹配不到（已注入过形态），跳过不报错
+                print(f"[SKIP] {rel_path}: parseDownloads() 已是 CNB 直链优先（--force 下形态不变）")
+            else:
+                print(f"[WARN] {rel_path}: 未匹配到 parseDownloads() 关键行（update.apkUrl=...），请人工检查")
 
-        # A3. getRoutes()：CNB 直链第一路由 + GitHub/OCI 兜底
-        # 线上真实代码已具备该形态（cnbUrl 判断 + plan() 追加兜底），此处仅幂等校验，不再强行注入
+        # A3. getRoutes()：CNB 直链第一路由 + GitHub/OCI 兜底（仅校验，不注入）
         if "cnbUrl.startsWith(\"https://cnb.cool/\")" in content:
             print(f"[SKIP] {rel_path}: getRoutes() 已具备 CNB 第一路由（GitHub/OCI 兜底）")
         else:
             print(f"[WARN] {rel_path}: getRoutes() 缺少 CNB 第一路由判断，请人工检查（CNB 直链不会作为第一下载路由）")
 
+        # 写回 + 读盘验证（确保修改真正落盘，避免假阳性）
         if content != original:
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            changed_any = True
-            print(f"[OK] {rel_path}: CNB 优先 manifest + CNB 直连下载 + 路由兜底已生效")
+            # 验证：重新读取文件，确认关键代码确实存在
+            with open(full_path, "r", encoding="utf-8") as f:
+                verify = f.read()
+            v1 = "getCnbMirrorAsset(getManifestName(channel))" in verify
+            v2 = "String apkField = update.apk;" in verify
+            if v1 and v2:
+                print(f"[VERIFY] {rel_path}: 写回验证通过（getUpdate CNB 优先 + parseDownloads CNB 直链）")
+            else:
+                print(f"[ERROR] {rel_path}: 写回验证失败！getCnbMirrorAsset={v1}, apkField={v2} —— 文件可能未正确写入")
+                changed_any = False
+        elif changed_any:
+            # 内部状态不一致：标记了修改但内容未变（不应该发生）
+            print(f"[WARN] {rel_path}: 内部状态不一致（标记修改但内容未变），请检查")
+            changed_any = False
 
-    # ---------- B. Github.java：新增 CNB Release 下载常量与方法 ----------
+    # ---------- B. Github.java：CNB_MANIFEST 常量自愈 + CNB_RELEASE_DOWNLOAD + getCnbReleaseAsset ----------
     github_rel = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "utils", "Github.java")
     github_path = os.path.join(REPO_ROOT, github_rel)
     if not os.path.exists(github_path):
@@ -1646,14 +1679,14 @@ def modify_update_order(config):
         with open(github_path, "r", encoding="utf-8") as f:
             g_content = f.read()
         g_original = g_content
-        # 仅在检测到历史污染字符 \u0001 时才清洗，避免静默修改合法文件
+        # 仅在检测到历史污染字符 \u0001 时才清洗
         if "\u0001" in g_content:
             print(f"[WARN] {github_rel}: 检测到控制字符 \\u0001，执行清洗")
             g_content = "".join(ch for ch in g_content if ch >= " " or ch in "\n\r\t")
 
-        # 自愈：上一版脚本 bug 曾把 CNB_MANIFEST 常量整行覆盖删除（只留下 \u0001+新行），
-        # 若缺失则按 CNB_REPO_SLUG 重建，避免 getCnbMirrorAsset 编译报 cannot find symbol
-        if "private static final String CNB_MANIFEST" not in g_content:
+        # B1. CNB_MANIFEST 常量：缺失则重建（历史 bug 曾误删）
+        has_manifest = "private static final String CNB_MANIFEST" in g_content
+        if not has_manifest or FORCE_MODE:
             manifest_base = (
                 f"https://cnb.cool/{cnb_slug}/-/git/raw/main/apk"
                 if cnb_slug
@@ -1662,27 +1695,46 @@ def modify_update_order(config):
             new_manifest_line = f'    private static final String CNB_MANIFEST = "{manifest_base}";'
             anchor = "    private static final String CNB_RELEASE_DOWNLOAD = "
             if anchor in g_content:
+                # 先移除已存在的 CNB_MANIFEST 行（FORCE_MODE 时重建）
+                g_content = re.sub(r'    private static final String CNB_MANIFEST = "[^"]*";\n', '', g_content)
                 g_content = g_content.replace(anchor, new_manifest_line + "\n" + anchor, 1)
             else:
+                g_content = re.sub(r'    private static final String CNB_MANIFEST = "[^"]*";\n', '', g_content)
                 g_content = g_content.replace(
                     "public class Github {",
                     "public class Github {\n" + new_manifest_line,
                     1,
                 )
-            print(f"[OK] {github_rel}: 检测到 CNB_MANIFEST 缺失（历史 bug 误删），已自愈重建")
+            print(f"[OK] {github_rel}: CNB_MANIFEST 常量已{'重建' if not has_manifest else '强制更新'}（{manifest_base}）")
             if not cnb_slug:
                 print(f"[WARN] {github_rel}: CNB_REPO_SLUG 未配置，CNB_MANIFEST 暂用旧地址，请检查")
+            changed_any = True
+        else:
+            print(f"[SKIP] {github_rel}: CNB_MANIFEST 常量已存在")
 
-        if "CNB_RELEASE_DOWNLOAD" not in g_content:
+        # B2. CNB_RELEASE_DOWNLOAD 常量
+        if "CNB_RELEASE_DOWNLOAD" not in g_content or FORCE_MODE:
             release_base = f"https://cnb.cool/{cnb_slug}/-/releases/download" if cnb_slug else "https://cnb.cool/fish2035/webhtv-release/-/releases/download"
+            # 移除已存在的旧行（FORCE_MODE 时重建）
+            g_content = re.sub(r'    private static final String CNB_RELEASE_DOWNLOAD = "[^"]*";\n', '', g_content)
             g_content = re.sub(
                 r'(private static final String CNB_MANIFEST = "[^"]*";)',
                 '\\1\n    private static final String CNB_RELEASE_DOWNLOAD = "' + release_base + '";',
                 g_content,
             )
+            print(f"[OK] {github_rel}: CNB_RELEASE_DOWNLOAD 常量已设置")
             if not cnb_slug:
                 print(f"[WARN] {github_rel}: CNB_REPO_SLUG 未配置，CNB_RELEASE_DOWNLOAD 暂用旧地址，请检查")
-        if "public static String getCnbReleaseAsset" not in g_content:
+            changed_any = True
+
+        # B3. getCnbReleaseAsset 方法
+        if "public static String getCnbReleaseAsset" not in g_content or FORCE_MODE:
+            # 移除已存在的旧方法（FORCE_MODE 时重建）
+            g_content = re.sub(
+                r'\n    public static String getCnbReleaseAsset\(String tag, String name\) \{\n        return CNB_RELEASE_DOWNLOAD \+ "/" \+ tag \+ "/" \+ name;\n    \}\n',
+                '\n',
+                g_content,
+            )
             g_content = g_content.replace(
                 '    public static String getCnbMirrorAsset(String name) {\n'
                 '        return CNB_MANIFEST + "/" + name;\n'
@@ -1695,11 +1747,26 @@ def modify_update_order(config):
                 '        return CNB_RELEASE_DOWNLOAD + "/" + tag + "/" + name;\n'
                 '    }',
             )
+            print(f"[OK] {github_rel}: getCnbReleaseAsset 方法已添加")
+            changed_any = True
+
+        # 写回 + 读盘验证
         if g_content != g_original:
             with open(github_path, "w", encoding="utf-8") as f:
                 f.write(g_content)
-            changed_any = True
-            print(f"[OK] {github_rel}: 新增 CNB_RELEASE_DOWNLOAD 常量 + getCnbReleaseAsset 方法")
+            with open(github_path, "r", encoding="utf-8") as f:
+                g_verify = f.read()
+            v1 = "private static final String CNB_MANIFEST" in g_verify
+            v2 = "CNB_RELEASE_DOWNLOAD" in g_verify
+            v3 = "getCnbReleaseAsset" in g_verify
+            if v1 and v2 and v3:
+                print(f"[VERIFY] {github_rel}: 写回验证通过（CNB_MANIFEST + CNB_RELEASE_DOWNLOAD + getCnbReleaseAsset）")
+            else:
+                print(f"[ERROR] {github_rel}: 写回验证失败！CNB_MANIFEST={v1}, CNB_RELEASE_DOWNLOAD={v2}, getCnbReleaseAsset={v3}")
+                changed_any = False
+        elif changed_any:
+            print(f"[WARN] {github_rel}: 内部状态不一致（标记修改但内容未变），请检查")
+            changed_any = False
 
     if changed_any:
         return True
@@ -1828,37 +1895,46 @@ def modify_workflow_files(config):
             sa_indent = sa_uses.group(1)
             sa_dash = sa_uses.group(2) or ''
             sa_key = sa_indent + ('  ' if sa_dash else '')
-            sa_repl = (f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3\n'
-                       f'{sa_key}with:\n'
-                       f'{sa_key}  packages: \'platform-tools\'\n')
-            line_idx = content[:sa_uses.start()].count('\n')
-            lines = content.split('\n')
-            # 吞掉旧的 with 块：紧跟 uses 行、以 key+'with:' 开头，及其后缩进更深的行
-            j = line_idx + 1
-            if j < len(lines) and lines[j].startswith(sa_key + 'with:'):
-                j += 1
-                while j < len(lines) and lines[j].strip() and \
-                        len(lines[j]) - len(lines[j].lstrip(' ')) > len(sa_key):
+            # 幂等判断：检查 uses 行后 300 字符内是否已有 with: + packages: 'platform-tools'
+            after_uses = content[sa_uses.end():sa_uses.end() + 300]
+            already_with = bool(re.search(
+                r'^\s*with:\s*$\s+packages:\s*[\'"]platform-tools[\'"]',
+                after_uses, re.MULTILINE,
+            ))
+            if already_with and not FORCE_MODE:
+                print(f"[SKIP] {rel_path}: setup-android 已显式 packages=platform-tools")
+            else:
+                sa_repl = (f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3\n'
+                           f'{sa_key}with:\n'
+                           f'{sa_key}  packages: \'platform-tools\'\n')
+                line_idx = content[:sa_uses.start()].count('\n')
+                lines = content.split('\n')
+                # 吞掉旧的 with 块：紧跟 uses 行、以 key+'with:' 开头，及其后缩进更深的行
+                j = line_idx + 1
+                if j < len(lines) and lines[j].startswith(sa_key + 'with:'):
                     j += 1
-            new_lines = [
-                f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3',
-                f'{sa_key}with:',
-                f'{sa_key}  packages: \'platform-tools\'',
-            ]
-            lines = lines[:line_idx] + new_lines + lines[j:]
-            content = '\n'.join(lines)
-            print(f"[OK] {rel_path}: setup-android 显式 packages=platform-tools（排除 tools）")
-            # 第二步：检查是否已有 "Install Android packages" 步骤，没有则插入
-            if 'Install Android packages' not in content:
-                install_step = (
-                    f'{sa_indent}- name: Install Android packages\n'
-                    f'{sa_indent}  run: |\n'
-                    f'{sa_indent}    sdkmanager "platform-tools" '
-                    f'"platforms;android-{compile_sdk}" '
-                    f'"build-tools;{compile_sdk}.0.0"\n'
-                )
-                content = content.replace(sa_repl, sa_repl + install_step, 1)
-                print(f"[OK] {rel_path}: 插入 Install Android packages 步骤（compileSdk={compile_sdk}）")
+                    while j < len(lines) and lines[j].strip() and \
+                            len(lines[j]) - len(lines[j].lstrip(' ')) > len(sa_key):
+                        j += 1
+                new_lines = [
+                    f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3',
+                    f'{sa_key}with:',
+                    f'{sa_key}  packages: \'platform-tools\'',
+                ]
+                lines = lines[:line_idx] + new_lines + lines[j:]
+                content = '\n'.join(lines)
+                print(f"[OK] {rel_path}: setup-android 显式 packages=platform-tools（排除 tools）")
+                # 第二步：检查是否已有 "Install Android packages" 步骤，没有则插入
+                if 'Install Android packages' not in content:
+                    install_step = (
+                        f'{sa_indent}- name: Install Android packages\n'
+                        f'{sa_indent}  run: |\n'
+                        f'{sa_indent}    sdkmanager "platform-tools" '
+                        f'"platforms;android-{compile_sdk}" '
+                        f'"build-tools;{compile_sdk}.0.0"\n'
+                    )
+                    content = content.replace(sa_repl, sa_repl + install_step, 1)
+                    print(f"[OK] {rel_path}: 插入 Install Android packages 步骤（compileSdk={compile_sdk}）")
         else:
             print(f"[WARN] {rel_path}: 未找到 android-actions/setup-android 步骤，"
                   f"请确认 workflow 中的 setup 步骤写法后手动修改")
@@ -1952,6 +2028,15 @@ def modify_workflow_files(config):
         if content != original:
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
+            # 读盘验证：确认关键修改确实落盘
+            with open(full_path, "r", encoding="utf-8") as f:
+                wf_verify = f.read()
+            v_sa = "packages: 'platform-tools'" in wf_verify or 'packages: "platform-tools"' in wf_verify
+            v_chmod = "chmod +x .github/scripts/sync-cnb-release.sh" in wf_verify or "sync-cnb-release.sh" not in wf_verify
+            if v_sa and v_chmod:
+                print(f"[VERIFY] {rel_path}: 写回验证通过（setup-android packages + chmod）")
+            else:
+                print(f"[ERROR] {rel_path}: 写回验证失败！setup-android packages={v_sa}, chmod={v_chmod} —— 文件可能未正确写入")
             changed_any = True
             print(f"[OK] {rel_path}: CNB 配置 / GRADLE_OPTS 已更新")
         else:
@@ -1961,9 +2046,13 @@ def modify_workflow_files(config):
 
 # ---------------------------------------------------------------- 主流程
 def main():
+    global FORCE_MODE
+    FORCE_MODE = "--force" in sys.argv
     print("=" * 72)
     print("  local_customize.py —— 本地一键自定义（名称 / 图标 / 包名 / CNB / 内存）")
     print(f"  项目根目录: {REPO_ROOT}")
+    if FORCE_MODE:
+        print("  [模式] 强制模式 --force：跳过幂等判断，强制重写所有可修改文件")
     print("=" * 72)
 
     if not os.path.isdir(REPO_ROOT):
