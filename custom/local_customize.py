@@ -1772,9 +1772,11 @@ def modify_update_order(config):
                     old_line = lines[gr_idx]
                     new_line = old_line.replace('update.githubUrl', 'update.apkUrl')
                     new_line = new_line.replace('return UpdateRoutePlanner.plan', 'routes.addAll(UpdateRoutePlanner.plan')
-                    # 去掉末尾的分号，addAll 后不需要分号（后面还有 return routes;）
+                    # addAll( 比原 return 多一层左括号，需补右括号闭合 addAll，并保留语句分号
                     if new_line.rstrip().endswith(';'):
-                        new_line = new_line.rstrip()[:-1]
+                        new_line = new_line.rstrip()[:-1] + ');'
+                    else:
+                        new_line = new_line.rstrip() + ');'
                     replacement = [
                         f'{indent}List<UpdateTarget> routes = new ArrayList<>();',
                         f'{indent}String cnbUrl = update.apkUrl;',
