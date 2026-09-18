@@ -197,7 +197,6 @@ jobs:
         env:
           WEBHTV_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           WEBHTV_APK_SUFFIX: ${{ steps.meta.outputs.apk_suffix }}
-          GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=512m"
         run: |
           chmod +x ./gradlew
           rm -rf Release/apk

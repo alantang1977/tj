@@ -18,7 +18,8 @@
   [6] versionName 后缀（可选）
   [7] AndroidManifest.xml 硬编码 android:label
   [8] CNB 仓库地址（sync-cnb-release.sh + 工作流 yml 中的 CNB_REPO_SLUG/URL）
-  [9] 工作流注入 GRADLE_OPTS 内存参数（解决 R8 OOM: Java heap space）
+  [9] 内存参数固化到 gradle.properties（org.gradle.jvmargs / workers.max / r8.maxWorkers，
+      解决 R8 OOM: Java heap space；并清理 workflow 中残留的 GRADLE_OPTS，杜绝双源冲突）
 
 【重要警告】
   1. namespace 必须保持上游原值 com.fongmi.android.tv，本脚本绝不修改它。
@@ -1509,6 +1510,8 @@ def modify_author_links(config):
                 content,
             )
         if content != original:
+            # 写回前健全性校验（这些是 .java 文件，防止替换逻辑破坏语法）
+            _java_sanity_check(content, rel_path)
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
             changed_any = True
@@ -1552,6 +1555,8 @@ def modify_update_urls(config):
             content = re.sub(r'cnb\.cool/fish2035/webhtv-release',
                              f'cnb.cool/{cnb_slug}', content)
         if content != original:
+            # 写回前健全性校验（这些是 .java 文件，防止替换逻辑破坏语法）
+            _java_sanity_check(content, rel_path)
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
             changed_any = True
@@ -1562,14 +1567,16 @@ def modify_update_urls(config):
 
 
 # ---------------------------------------------------------------- 通用：Java 代码生成后健全性校验
-def _java_sanity_check(content, label):
+def _java_sanity_check(content, label, require_patterns=None, forbid_patterns=None):
     '''
     在写回 .java 文件前调用，检查字符串拼接生成的 Java 代码是否存在明显语法问题。
     不通过则抛异常，使脚本以非零码退出，避免错误流入 Gradle 编译阶段（1~2 分钟后才报错）。
     检查项：
-      1) 圆括号/花括号/方括号平衡
+      1) 圆括号/花括号/方括号平衡（跳过字符串/字符字面量内的括号）
       2) 生成代码中使用的常见类型是否有对应 import（ArrayList, List, Map, HashMap 等）
       3) 含方法调用的非空行是否以 ; 或 { 或 } 结尾（排除注释和控制结构）
+      4) require_patterns：每个正则必须能在代码中找到（生成代码块完整性校验）
+      5) forbid_patterns：每个正则不得在代码中出现（残留/重复块校验）
     '''
     errors = []
 
@@ -1653,13 +1660,23 @@ def _java_sanity_check(content, label):
             if not stripped.startswith('package ') and not stripped.startswith('import '):
                 errors.append(f"第{_lineno}行语句可能未正确结尾（期望 ; 或 {{/}}）：{stripped[:80]}")
 
+    # 4) 必现模式校验（生成代码块完整性）
+    for _pat in (require_patterns or []):
+        if not re.search(_pat, content):
+            errors.append(f"必须包含的模式缺失：{_pat}")
+
+    # 5) 禁止模式校验（残留/重复块）
+    for _pat in (forbid_patterns or []):
+        if re.search(_pat, content):
+            errors.append(f"禁止出现的模式仍存在：{_pat}")
+
     if errors:
         raise RuntimeError(
             f"[FATAL] Java 健全性校验未通过 ({label})：\n"
             + "\n".join(f"  - {e}" for e in errors)
             + "\n  请检查 local_customize.py 中的字符串拼接逻辑，修复后重新运行。"
         )
-    print(f"[SANITY] {label}: Java 健全性校验通过（括号平衡 + import 完整 + 语句收尾）")
+    print(f"[SANITY] {label}: Java 健全性校验通过（括号平衡 + import 完整 + 语句收尾 + 模式校验）")
 
 
 # ---------------------------------------------------------------- 8. 更新顺序：CNB 优先
@@ -1729,6 +1746,17 @@ def modify_update_order(config):
                     lines = lines[:gu_start] + new_method + lines[gu_end+1:]
                     content = '\n'.join(lines)
                     if content != _before:
+                        # 注入后模式校验：确保新方法体完整落盘
+                        _missing = [p for p in
+                                    ['private Update getUpdate(String channel)',
+                                     'getCnbMirrorAsset(getManifestName(channel))',
+                                     'getGithubBetaUpdate(channel)',
+                                     'getGithubStableUpdate(channel)']
+                                    if p not in content]
+                        if _missing:
+                            raise RuntimeError(
+                                f"[FATAL] {rel_path}: getUpdate() 注入后模式校验失败，缺失：{_missing}。"
+                                f"请检查 Updater.java 上游结构或本脚本 A1 逻辑。")
                         print(f"[OK] {rel_path}: getUpdate() 改为 CNB raw manifest 优先（GitHub API 兜底）")
                         changed_any = True
                     else:
@@ -1780,6 +1808,16 @@ def modify_update_order(config):
                 lines = lines[:pd_idx+1] + insertion + lines[pd_idx+1:]
                 content = '\n'.join(lines)
                 if content != _before:
+                    # 注入后模式校验：apkField 声明 + CNB 直链判断必须成对出现
+                    _missing = [p for p in
+                                ['String apkField = update.apk;',
+                                 'apkField != null && apkField.startsWith("https://cnb.cool/")',
+                                 'update.apkUrl = apkField;']
+                                if p not in content]
+                    if _missing:
+                        raise RuntimeError(
+                            f"[FATAL] {rel_path}: parseDownloads() 注入后模式校验失败，缺失：{_missing}。"
+                            f"请检查 Updater.java 上游结构或本脚本 A2 逻辑。")
                     print(f"[OK] {rel_path}: parseDownloads() APK 下载改为 CNB Release 直链优先（GitHub 兜底）")
                     changed_any = True
                 else:
@@ -1867,27 +1905,36 @@ def modify_update_order(config):
                                         break
                 _before = content
                 indent = lines[gr_idx][:len(lines[gr_idx]) - len(lines[gr_idx].lstrip())]
+                _skip_reason = None
                 if gr_mode == 'return_plan':
                     # 格式：return UpdateRoutePlanner.plan(..., update.githubUrl, ...);
                     # 替换为：创建列表 + CNB 第一路由 + addAll(用 update.apkUrl) + return routes
-                    old_line = lines[gr_idx]
-                    new_line = old_line.replace('update.githubUrl', 'update.apkUrl')
-                    new_line = new_line.replace('return UpdateRoutePlanner.plan', 'routes.addAll(UpdateRoutePlanner.plan')
-                    # addAll( 比原 return 多一层左括号，需补右括号闭合 addAll，并保留语句分号
-                    if new_line.rstrip().endswith(';'):
-                        new_line = new_line.rstrip()[:-1] + ');'
+                    # 注意：return 语句可能跨行（参数折行），先合并成完整语句再转换，
+                    #       避免只取首行导致生成括号残缺/参数丢失的坏代码（历史教训）
+                    stmt = lines[gr_idx]
+                    stmt_end = gr_idx
+                    while stmt_end < len(lines) - 1 and not stmt.rstrip().endswith(';'):
+                        stmt_end += 1
+                        stmt += ' ' + lines[stmt_end].strip()
+                    if not stmt.rstrip().endswith(';'):
+                        _skip_reason = (f"return UpdateRoutePlanner.plan 语句扫描到文件末尾仍未以分号闭合"
+                                        f"（首行：{lines[gr_idx].strip()[:60]}）")
                     else:
-                        new_line = new_line.rstrip() + ');'
-                    replacement = [
-                        f'{indent}List<UpdateTarget> routes = new ArrayList<>();',
-                        f'{indent}String cnbUrl = update.apkUrl;',
-                        f'{indent}if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {{',
-                        f'{indent}    routes.add(UpdateTarget.github(cnbUrl));',
-                        f'{indent}}}',
-                        f'{indent}{new_line}',
-                        f'{indent}return routes;',
-                    ]
-                    lines = lines[:gr_idx] + replacement + lines[gr_idx+1:]
+                        new_line = stmt.replace('update.githubUrl', 'update.apkUrl')
+                        new_line = new_line.replace('return UpdateRoutePlanner.plan',
+                                                    'routes.addAll(UpdateRoutePlanner.plan')
+                        # addAll( 比原 return 多一层左括号，需补右括号闭合 addAll，并保留语句分号
+                        new_line = new_line.rstrip()[:-1] + ');'
+                        replacement = [
+                            f'{indent}List<UpdateTarget> routes = new ArrayList<>();',
+                            f'{indent}String cnbUrl = update.apkUrl;',
+                            f'{indent}if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {{',
+                            f'{indent}    routes.add(UpdateTarget.github(cnbUrl));',
+                            f'{indent}}}',
+                            f'{indent}{new_line}',
+                            f'{indent}return routes;',
+                        ]
+                        lines = lines[:gr_idx] + replacement + lines[stmt_end+1:]
                 else:
                     # 格式：routes.addAll(...) 或 return routes;
                     # 把 update.githubUrl 改成 update.apkUrl（如果有）
@@ -1901,7 +1948,20 @@ def modify_update_order(config):
                     ]
                     lines = lines[:gr_idx] + cnb_route_code + lines[gr_idx:]
                 content = '\n'.join(lines)
-                if content != _before:
+                if _skip_reason:
+                    print(f"[WARN] {rel_path}: 跳过 getRoutes() CNB 注入——{_skip_reason}（请人工检查后处理）")
+                elif content != _before:
+                    # 注入后模式校验：routes 声明 + CNB 路由块 + 兜底 addAll/return 必须成对存在
+                    _missing = [p for p in
+                                ['List<UpdateTarget> routes',
+                                 'String cnbUrl = update.apkUrl;',
+                                 'cnbUrl.startsWith("https://cnb.cool/")',
+                                 'routes.add(UpdateTarget.github(cnbUrl))']
+                                if p not in content]
+                    if _missing:
+                        raise RuntimeError(
+                            f"[FATAL] {rel_path}: getRoutes() 注入后模式校验失败，缺失：{_missing}。"
+                            f"请检查 Updater.java 上游结构或本脚本 A3 逻辑。")
                     print(f"[OK] {rel_path}: getRoutes() 注入 CNB 第一路由（{gr_mode} 模式，apkUrl 优先）")
                     changed_any = True
                 else:
@@ -2168,12 +2228,96 @@ def modify_cnb_release_script(config):
     return False
 
 
-# ---------------------------------------------------------------- 7. 工作流 yml
+# ---------------------------------------------------------------- 7. gradle.properties 内存参数固化
+def ensure_gradle_properties(config=None):
+    """
+    将 R8 内存参数固化到 gradle.properties（幂等，已存在且值正确则不改动）。
+
+    背景：R8 OOM（java.lang.OutOfMemoryError: Java heap space）曾因堆内存不足 +
+          多 ABI 并行 worker 触发。内存配置只保留 gradle.properties 单一权威：
+            org.gradle.jvmargs   = -Xmx5g（堆） / MaxMetaspaceSize=1g / UTF-8
+            org.gradle.workers.max = 1（R8/javac 等大内存任务串行）
+            android.r8.maxWorkers = 1（R8 内部线程上限）
+          workflow 不再注入 GRADLE_OPTS（由 modify_workflow_files 清理），
+          避免双源冲突导致 OOM 反复出现。
+    策略：缺失的键自动补充；已存在但值与目标不一致的键更新为目标值（固化）。
+    """
+    gp_rel = os.path.join("gradle.properties")
+    gp_path = os.path.join(REPO_ROOT, gp_rel)
+    if not os.path.exists(gp_path):
+        print(f"[SKIP] {gp_rel} 不存在，无法固化内存参数")
+        return False
+
+    expected = {
+        'org.gradle.jvmargs': '-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8',
+        'org.gradle.workers.max': '1',
+        'android.r8.maxWorkers': '1',
+    }
+    with open(gp_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    original = content
+    lines = content.split('\n')
+
+    # 解析现有键值（跳过注释/空行；值去掉行尾 # 注释）
+    found = {}
+    for _i, _line in enumerate(lines):
+        _stripped = _line.strip()
+        if not _stripped or _stripped.startswith('#') or '=' not in _stripped:
+            continue
+        _key, _, _value = _stripped.partition('=')
+        _key = _key.strip()
+        _value = _value.strip().split(' #')[0].strip()
+        if _key in expected:
+            found[_key] = (_i, _value)
+
+    changed_any = False
+    for _key, _want in expected.items():
+        if _key not in found:
+            lines.append(f'{_key}={_want}')
+            print(f"[OK] {gp_rel}: 补充 {_key}={_want}")
+            changed_any = True
+        elif found[_key][1] != _want:
+            lines[found[_key][0]] = f'{_key}={_want}'
+            print(f"[OK] {gp_rel}: 更新 {_key}（{found[_key][1]} -> {_want}）")
+            changed_any = True
+        else:
+            print(f"[SKIP] {gp_rel}: {_key} 已固化")
+
+    if changed_any:
+        new_content = '\n'.join(lines)
+        # 确保有说明注释头（幂等）
+        if 'Gradle daemon' not in new_content:
+            new_content = (
+                '# Gradle daemon 堆内存（R8 跑在 daemon 内，这是关键）\n'
+                '# 5g 堆 + workers.max=1 使 R8/javac 串行，避免多 ABI 构建 OOM\n'
+                '# 内存配置唯一权威：gradle.properties，workflow 不注入 GRADLE_OPTS\n'
+                + new_content
+            )
+        if new_content != original:
+            with open(gp_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            # 读盘验证
+            with open(gp_path, "r", encoding="utf-8") as f:
+                verify = f.read()
+            _ok = all(f'{k}={v}' in verify for k, v in expected.items())
+            if _ok:
+                print(f"[VERIFY] {gp_rel}: 写回验证通过（内存参数已固化）")
+                return True
+            print(f"[ERROR] {gp_rel}: 写回验证失败！请检查文件内容")
+            return False
+    return False
+
+
+# ---------------------------------------------------------------- 7b. 工作流 yml
 def modify_workflow_files(config):
     """
     修改 .github/workflows/android-release.yml 与 cnb-release-sync.yml：
       - 替换 CNB_REPO_SLUG / CNB_REPO_URL
-      - 向 Build four release APKs 步骤注入 GRADLE_OPTS（R8 OOM 修复）
+      - 清理 Build four release APKs 步骤中残留的 GRADLE_OPTS（内存统一由
+        gradle.properties 控制，消除双源，防止 R8 OOM 反复出现）
+      - setup-android 显式 packages / Install Android packages 步骤
+      - 脚本调用前注入 chmod +x（修复 Permission denied）
+      - publish_oci 输入项默认改为 false
     注意：全部使用标准英文半角减号，杜绝 U+2011 非法字符。
     """
     cnb_repo_slug = config.get("CNB_REPO_SLUG", "")
@@ -2315,42 +2459,26 @@ def modify_workflow_files(config):
             )
             print(f"[OK] {rel_path}: 注入 chmod +x（修复 Permission denied）")
 
-        # 仅对 android-release.yml 注入 GRADLE_OPTS
+        # 仅对 android-release.yml 清理 GRADLE_OPTS：
+        # 内存参数唯一权威是 gradle.properties（org.gradle.jvmargs / workers.max / r8.maxWorkers），
+        # workflow 中残留的 GRADLE_OPTS 会造成双源冲突，是 R8 OOM 反复出现的根源之一。
+        # 幂等清理：存在则整行移除，不存在则跳过。
         if rel_path.endswith("android-release.yml"):
-            gradle_line = '          GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=512m"'
             if "GRADLE_OPTS" in content:
-                print("[SKIP] android-release.yml: GRADLE_OPTS 已存在")
-            else:
-                # 分支1：步骤已有 env 块 -> 在 env 块末尾追加 GRADLE_OPTS
-                pat_has_env = re.compile(
-                    r'(- name: Build four release APKs[ \t]*\r?\n( +)env:[ \t]*\r?\n(?:\2 +.+\r?\n)*)(\2)run:',
-                    re.MULTILINE,
-                )
-                if pat_has_env.search(content):
-                    content = pat_has_env.sub(
-                        rf'\g<1>{gradle_line}\n\g<3>run:',
-                        content,
-                    )
-                    print("[OK] android-release.yml: 已有 env 块，追加 GRADLE_OPTS")
+                cleaned_lines = []
+                removed = False
+                for wline in content.split('\n'):
+                    if wline.strip().startswith('GRADLE_OPTS:'):
+                        removed = True
+                        continue
+                    cleaned_lines.append(wline)
+                if removed:
+                    content = '\n'.join(cleaned_lines)
+                    print("[OK] android-release.yml: 已移除 GRADLE_OPTS（内存统一由 gradle.properties 控制，消除双源）")
                 else:
-                    # 分支2：步骤没有 env 块 -> 插入完整 env 块
-                    pat_no_env = re.compile(
-                        r'(- name: Build four release APKs[ \t]*\r?\n)( +)(run:)',
-                        re.MULTILINE,
-                    )
-                    if pat_no_env.search(content):
-                        insert_env = """        env:
-          WEBHTV_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
-          WEBHTV_APK_SUFFIX: ${{ steps.meta.outputs.apk_suffix }}
-          GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=512m"
-"""
-                        content = pat_no_env.sub(
-                            rf"\g<1>{insert_env}\g<2>\g<3>",
-                            content,
-                        )
-                        print("[OK] android-release.yml: 注入 env 块 + GRADLE_OPTS")
-                    else:
-                        print("[WARN] android-release.yml: 未找到 Build four release APKs 步骤，跳过 GRADLE_OPTS 注入")
+                    print("[SKIP] android-release.yml: 检测到 GRADLE_OPTS 但未能按行移除，请人工检查")
+            else:
+                print("[SKIP] android-release.yml: 无 GRADLE_OPTS（内存由 gradle.properties 统一控制）")
 
             # publish_oci 输入项默认改为 false（GitHub Actions 触发时默认不打勾，需要时再手动勾选）
             # 用逐行扫描实现，零正则回溯风险，保证不卡死
@@ -2394,13 +2522,14 @@ def modify_workflow_files(config):
                 wf_verify = f.read()
             v_sa = (not has_sa) or ("packages: 'platform-tools'" in wf_verify or 'packages: "platform-tools"' in wf_verify)
             v_chmod = "chmod +x .github/scripts/sync-cnb-release.sh" in wf_verify or "sync-cnb-release.sh" not in wf_verify
-            if v_sa and v_chmod:
+            v_grace = "GRADLE_OPTS" not in wf_verify
+            if v_sa and v_chmod and v_grace:
                 sa_note = "" if has_sa else "（无 setup-android 步骤，跳过该项验证）"
-                print(f"[VERIFY] {rel_path}: 写回验证通过（setup-android packages + chmod）{sa_note}")
+                print(f"[VERIFY] {rel_path}: 写回验证通过（setup-android packages + chmod + 无 GRADLE_OPTS）{sa_note}")
             else:
-                print(f"[ERROR] {rel_path}: 写回验证失败！setup-android packages={v_sa}, chmod={v_chmod} —— 文件可能未正确写入")
+                print(f"[ERROR] {rel_path}: 写回验证失败！setup-android packages={v_sa}, chmod={v_chmod}, GRADLE_OPTS已清理={v_grace} —— 文件可能未正确写入")
             changed_any = True
-            print(f"[OK] {rel_path}: CNB 配置 / GRADLE_OPTS 已更新")
+            print(f"[OK] {rel_path}: CNB 配置已更新（GRADLE_OPTS 已清理/保持无）")
         else:
             print(f"[SKIP] {rel_path}: 已是目标值")
     return changed_any
@@ -2457,10 +2586,13 @@ def main():
     print("\n--- [9/11] sync-cnb-release.sh（CNB_REPO_SLUG）---")
     results.append(modify_cnb_release_script(config))
 
-    print("\n--- [10/11] 工作流 yml（CNB 地址 + chmod +x 权限 + GRADLE_OPTS 内存修复 + publish_oci 默认关闭）---")
+    print("\n--- [10/12] 工作流 yml（CNB 地址 + chmod +x 权限 + GRADLE_OPTS 清理 + publish_oci 默认关闭）---")
     results.append(modify_workflow_files(config))
 
-    print("\n--- [11/11] 最终校验：namespace 是否保持上游原值 ---")
+    print("\n--- [11/12] gradle.properties 内存参数固化（R8 OOM 防护，单一权威）---")
+    results.append(ensure_gradle_properties(config))
+
+    print("\n--- [12/12] 最终校验：namespace 是否保持上游原值 ---")
     ns_ok = True
     ns_pattern = re.compile(r'namespace\s*=\s*[\'"]com\.fongmi\.android\.tv[\'"]')
     for path in [os.path.join(REPO_ROOT, "app", "build.gradle"),
