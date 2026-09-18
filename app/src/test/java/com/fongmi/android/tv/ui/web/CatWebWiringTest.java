@@ -164,6 +164,19 @@ public class CatWebWiringTest {
                 !body.contains("getFlags()"));
     }
 
+    /** 带元数据但没有可播放线路的设置动作也不得缓存。 */
+    @Test
+    public void metadataOnlyActionDetailIsNotCached() throws IOException {
+        String source = read("com/fongmi/android/tv/api/SiteApi.java");
+        int store = source.indexOf("VodDetailCache.putContent(sourceKey, id, content)");
+        assertTrue("SiteApi 必须有详情缓存写入", store > 0);
+
+        int guard = source.lastIndexOf("result.getVod().getFlags().isEmpty()", store);
+        assertTrue("写缓存前必须排除没有可播放线路的动作详情", guard > 0 && guard < store);
+        assertTrue("跳过原因必须可从设备日志验证",
+                source.substring(guard, store).contains("reason=noPlayableContent"));
+    }
+
     /**
      * 这次 spider 调用顺带开了网页，这条详情就绝不能进缓存。
      *

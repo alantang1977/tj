@@ -249,7 +249,7 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         selectedGroup = group.equals(selectedGroup) ? "" : group;
         updateGroupView();
         filter();
-        binding.recycler.scrollToPosition(0);
+        binding.recycler.post(() -> binding.recycler.scrollToPosition(adapter.getSelectedPosition()));
         if (!TextUtils.isEmpty(selectedGroup)) centerGroup(view);
     }
 

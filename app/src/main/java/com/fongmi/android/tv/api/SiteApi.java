@@ -187,6 +187,10 @@ public class SiteApi {
             SpiderDebug.log("detail-cache", "skip key=%s,id=%s reason=noMetadata", key, id);
             return;
         }
+        if (result.getVod().getFlags().isEmpty()) {
+            SpiderDebug.log("detail-cache", "skip key=%s,id=%s reason=noPlayableContent", key, id);
+            return;
+        }
         if (CatWebEvent.requestedAfter(beforeSpider)) {
             SpiderDebug.log("detail-cache", "skip key=%s,id=%s reason=webOpened", key, id);
             return;

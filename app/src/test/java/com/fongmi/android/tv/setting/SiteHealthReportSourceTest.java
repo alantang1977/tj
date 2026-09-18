@@ -117,6 +117,19 @@ public class SiteHealthReportSourceTest {
         assertTrue(strings.contains("name=\"site_health_stage_parse\""));
     }
 
+    @Test
+    public void healthReportExposesSiteRuleAndPipelineAdDimensions() throws Exception {
+        String store = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "setting", "SiteHealthStore.java")));
+        String dialog = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "dialog", "SiteHealthReportDialog.java")));
+
+        assertTrue(store.contains("public final Map<String, Long> adBlockedBySite;"));
+        assertTrue(store.contains("public final Map<String, Long> adBlockedByRule;"));
+        assertTrue(store.contains("public final Map<String, Long> adBlockedByPipeline;"));
+        assertTrue(dialog.contains("R.string.ad_site_rank"));
+        assertTrue(dialog.contains("R.string.ad_rule_rank"));
+        assertTrue(dialog.contains("R.string.ad_pipeline_rank"));
+    }
+
     private static String methodBody(String source, String signature) {
         int start = source.indexOf(signature);
         assertTrue(signature + " is missing", start >= 0);

@@ -168,11 +168,17 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     }
 
     private Update getUpdate(String channel) {
-        Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);
-        if (cnb.hasManifest()) return cnb;
-        Update update = readUpdate(channel, Github.getChannelAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);
+        String manifestName = getManifestName(channel);
+        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
         if (update.hasManifest()) return update;
-        return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
+        if (Update.CHANNEL_BETA.equals(channel)) {
+            update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
+            if (update.hasManifest()) return update;
+            return getGithubBetaUpdate(channel);
+        }
+        update = readUpdate(channel, Github.getGithubLatestAsset(manifestName), SOURCE_GITHUB);
+        if (update.hasManifest()) return update;
+        return getGithubStableUpdate(channel);
     }
 
     private Update getGithubStableUpdate(String channel) {
@@ -437,7 +443,13 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         try {
             GithubProxy.Config github = GithubProxy.config();
             String endpoint = update.oci == null ? "" : OciMirror.resolve(Setting.getUpdateOciMirror(), Setting.getUpdateOciMirrorUrl(), update.oci);
-            return UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint);
+            List<UpdateTarget> routes = new ArrayList<>();
+            String cnbUrl = update.apkUrl;
+            if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
+                routes.add(UpdateTarget.github(cnbUrl));
+            }
+                        routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.apkUrl, update.oci, github, endpoint)
+            return routes;
         } catch (Exception e) {
             return List.of();
         }

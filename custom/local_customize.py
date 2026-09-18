@@ -1618,7 +1618,7 @@ def modify_update_order(config):
                     indent = lines[gu_start][:len(lines[gu_start]) - len(lines[gu_start].lstrip())]
                     new_method = [
                         f'{indent}private Update getUpdate(String channel) {{',
-                        f'{indent}    Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
+                        f'{indent}    Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), SOURCE_CNB, GITHUB_API_HEADERS, null);',
                         f'{indent}    if (cnb.hasManifest()) return cnb;',
                         f'{indent}    Update update = readUpdate(channel, Github.getChannelAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
                         f'{indent}    if (update.hasManifest()) return update;',
@@ -1694,20 +1694,33 @@ def modify_update_order(config):
             print(f"[SKIP] {rel_path}: getRoutes() 已具备 CNB 第一路由（GitHub/OCI 兜底）")
         else:
             gr_idx = None
+            gr_mode = None  # 'addAll' 或 'return_plan'
             for i, line in enumerate(lines):
                 if 'routes.addAll(UpdateRoutePlanner.plan' in line:
                     for j in range(max(0, i-30), i):
                         if 'getRoutes' in lines[j]:
                             gr_idx = i
+                            gr_mode = 'addAll'
                             break
                     if gr_idx is not None:
                         break
+            if gr_idx is None:
+                for i, line in enumerate(lines):
+                    if 'return UpdateRoutePlanner.plan' in line:
+                        for j in range(max(0, i-30), i):
+                            if 'getRoutes' in lines[j]:
+                                gr_idx = i
+                                gr_mode = 'return_plan'
+                                break
+                        if gr_idx is not None:
+                            break
             if gr_idx is None:
                 for i, line in enumerate(lines):
                     if 'return routes;' in line:
                         for j in range(max(0, i-30), i):
                             if 'getRoutes' in lines[j]:
                                 gr_idx = i
+                                gr_mode = 'return_routes'
                                 break
                         if gr_idx is not None:
                             break
@@ -1753,21 +1766,45 @@ def modify_update_order(config):
                                         break
                 _before = content
                 indent = lines[gr_idx][:len(lines[gr_idx]) - len(lines[gr_idx].lstrip())]
-                cnb_route_code = [
-                    f'{indent}String cnbUrl = update.apkUrl;',
-                    f'{indent}if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {{',
-                    f'{indent}    routes.add(UpdateTarget.github(cnbUrl));',
-                    f'{indent}}}',
-                ]
-                lines = lines[:gr_idx] + cnb_route_code + lines[gr_idx:]
+                if gr_mode == 'return_plan':
+                    # 格式：return UpdateRoutePlanner.plan(..., update.githubUrl, ...);
+                    # 替换为：创建列表 + CNB 第一路由 + addAll(用 update.apkUrl) + return routes
+                    old_line = lines[gr_idx]
+                    new_line = old_line.replace('update.githubUrl', 'update.apkUrl')
+                    new_line = new_line.replace('return UpdateRoutePlanner.plan', 'routes.addAll(UpdateRoutePlanner.plan')
+                    # 去掉末尾的分号，addAll 后不需要分号（后面还有 return routes;）
+                    if new_line.rstrip().endswith(';'):
+                        new_line = new_line.rstrip()[:-1]
+                    replacement = [
+                        f'{indent}List<UpdateTarget> routes = new ArrayList<>();',
+                        f'{indent}String cnbUrl = update.apkUrl;',
+                        f'{indent}if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {{',
+                        f'{indent}    routes.add(UpdateTarget.github(cnbUrl));',
+                        f'{indent}}}',
+                        f'{indent}{new_line}',
+                        f'{indent}return routes;',
+                    ]
+                    lines = lines[:gr_idx] + replacement + lines[gr_idx+1:]
+                else:
+                    # 格式：routes.addAll(...) 或 return routes;
+                    # 把 update.githubUrl 改成 update.apkUrl（如果有）
+                    if 'update.githubUrl' in lines[gr_idx]:
+                        lines[gr_idx] = lines[gr_idx].replace('update.githubUrl', 'update.apkUrl')
+                    cnb_route_code = [
+                        f'{indent}String cnbUrl = update.apkUrl;',
+                        f'{indent}if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {{',
+                        f'{indent}    routes.add(UpdateTarget.github(cnbUrl));',
+                        f'{indent}}}',
+                    ]
+                    lines = lines[:gr_idx] + cnb_route_code + lines[gr_idx:]
                 content = '\n'.join(lines)
                 if content != _before:
-                    print(f"[OK] {rel_path}: getRoutes() 注入 CNB 第一路由（GitHub/OCI 兜底）")
+                    print(f"[OK] {rel_path}: getRoutes() 注入 CNB 第一路由（{gr_mode} 模式，apkUrl 优先）")
                     changed_any = True
                 else:
                     print(f"[SKIP] {rel_path}: getRoutes() 已具备 CNB 第一路由（--force 下形态不变）")
             else:
-                print(f"[WARN] {rel_path}: getRoutes() 未找到注入点（routes.addAll 或 return routes），请人工检查")
+                print(f"[WARN] {rel_path}: getRoutes() 未找到注入点（routes.addAll / return plan / return routes），请人工检查")
 
         # 写回 + 读盘验证（确保修改真正落盘，避免假阳性）
         if content != original:
@@ -2072,6 +2109,7 @@ def modify_workflow_files(config):
             if 'android-actions/setup-android@' in line and 'uses:' in line:
                 sa_idx = i
                 break
+        has_sa = sa_idx is not None
         if sa_idx is not None:
             sa_line = wf_lines[sa_idx]
             sa_indent = sa_line[:len(sa_line) - len(sa_line.lstrip())]
@@ -2218,10 +2256,11 @@ def modify_workflow_files(config):
             # 读盘验证：确认关键修改确实落盘
             with open(full_path, "r", encoding="utf-8") as f:
                 wf_verify = f.read()
-            v_sa = "packages: 'platform-tools'" in wf_verify or 'packages: "platform-tools"' in wf_verify
+            v_sa = (not has_sa) or ("packages: 'platform-tools'" in wf_verify or 'packages: "platform-tools"' in wf_verify)
             v_chmod = "chmod +x .github/scripts/sync-cnb-release.sh" in wf_verify or "sync-cnb-release.sh" not in wf_verify
             if v_sa and v_chmod:
-                print(f"[VERIFY] {rel_path}: 写回验证通过（setup-android packages + chmod）")
+                sa_note = "" if has_sa else "（无 setup-android 步骤，跳过该项验证）"
+                print(f"[VERIFY] {rel_path}: 写回验证通过（setup-android packages + chmod）{sa_note}")
             else:
                 print(f"[ERROR] {rel_path}: 写回验证失败！setup-android packages={v_sa}, chmod={v_chmod} —— 文件可能未正确写入")
             changed_any = True

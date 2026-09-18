@@ -150,6 +150,11 @@ public class VideoActivityLayoutTest {
         for (String requiredId : REQUIRED_FULLSCREEN_CONTROL_IDS) {
             assertTrue(controlLayout + " is missing @+id/" + requiredId, ids.contains(requiredId));
         }
+        assertFalse("the fullscreen overlay must not expose a duplicate danmaku toggle",
+                ids.contains("danmaku"));
+        Path actionLayout = findMobileResPath().resolve(Path.of("layout", "view_control_vod_action.xml"));
+        assertTrue(actionLayout + " must keep the danmaku action-bar button",
+                collectAndroidIds(actionLayout.toFile()).contains("danmaku"));
     }
 
     @Test
@@ -171,7 +176,7 @@ public class VideoActivityLayoutTest {
         Path sourcePath = findMobileJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java"));
         String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
 
-        // 悬浮/图标按钮（中间上下集、进度条旁全屏、顶部弹幕/投屏）只受集数、锁定、功能可用性控制，
+        // 悬浮/图标按钮（中间上下集、进度条旁全屏、顶部投屏）只受集数、锁定、功能可用性控制，
         // 不受「播放器按钮设置」影响——那是仅面向底部横向动作栏的偏好。锁定这些可见性表达式，
         // 防止有人再次把 PlayerButtonSetting 判断加回悬浮按钮（历史回归点）。
         assertTrue("middle overlay next button must depend only on episode count",
@@ -182,10 +187,8 @@ public class VideoActivityLayoutTest {
                 source.contains("mBinding.control.fullscreen.setVisibility(isLock() || shortDrama ? View.GONE : View.VISIBLE);"));
         assertTrue("top cast button must depend only on fullscreen and playback state",
                 source.contains("mBinding.control.cast.setVisibility(isFullscreen() && mHistory != null && !player().isEmpty() ? View.VISIBLE : View.GONE);"));
-        assertTrue("top danmaku button must depend only on lock and danmaku availability",
-                source.contains("mBinding.control.danmaku.setVisibility(isLock() || !player().haveDanmaku() ? View.GONE : View.VISIBLE);"));
 
-        for (String id : List.of("next", "prev", "fullscreen", "cast", "danmaku")) {
+        for (String id : List.of("next", "prev", "fullscreen", "cast")) {
             int line = source.indexOf("mBinding.control." + id + ".setVisibility(");
             assertTrue("missing overlay visibility line for mBinding.control." + id, line >= 0);
             String stmt = source.substring(line, source.indexOf(';', line));
@@ -233,15 +236,13 @@ public class VideoActivityLayoutTest {
         String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
         int method = source.indexOf("private void refreshDanmakuControls()");
         int action = source.indexOf("mBinding.control.action.danmaku.setVisibility", method);
-        int quick = source.indexOf("mBinding.control.danmaku.setVisibility", method);
         int apiSearch = source.indexOf("DanmakuApi.search");
         int apiRefresh = source.indexOf("refreshDanmakuControls();", apiSearch);
         int event = source.indexOf("RefreshEvent.Type.DANMAKU");
         int eventRefresh = source.indexOf("refreshDanmakuControls();", event);
 
         assertTrue(sourcePath + " is missing refreshDanmakuControls", method >= 0);
-        assertTrue("late danmaku refresh must update the fullscreen action button", action > method);
-        assertTrue("late danmaku refresh must update the quick toggle button", quick > method);
+        assertTrue("late danmaku refresh must update the action-bar button", action > method);
         assertTrue("auto danmaku search must refresh controls after loading", apiRefresh > apiSearch);
         assertTrue("manual danmaku refresh event must refresh controls after loading", eventRefresh > event);
     }

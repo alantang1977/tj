@@ -328,6 +328,8 @@ public class SiteHealthStore {
         public final List<Row> rows;
         public final String cid;
         public final long adBlockedTotal;
+        public final Map<String, Long> adBlockedBySite;
+        public final Map<String, Long> adBlockedByRule;
         public final Map<String, Long> adBlockedByPipeline;
 
         private Report(String cid, List<Row> rows, com.fongmi.android.tv.bean.AdBlockStats adStats) {
@@ -335,6 +337,8 @@ public class SiteHealthStore {
             this.rows = Collections.unmodifiableList(rows);
             this.summary = Summary.from(rows);
             this.adBlockedTotal = adStats.getTotalBlocked();
+            this.adBlockedBySite = Collections.unmodifiableMap(new LinkedHashMap<>(adStats.getSiteBlocked()));
+            this.adBlockedByRule = Collections.unmodifiableMap(new LinkedHashMap<>(adStats.getRuleCounts()));
             this.adBlockedByPipeline = Collections.unmodifiableMap(new LinkedHashMap<>(adStats.getPipelineCounts()));
         }
 
