@@ -448,7 +448,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
                 routes.add(UpdateTarget.github(cnbUrl));
             }
-                        routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.apkUrl, update.oci, github, endpoint)
+                        routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.apkUrl, update.oci, github, endpoint));
             return routes;
         } catch (Exception e) {
             return List.of();
