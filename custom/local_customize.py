@@ -1561,6 +1561,107 @@ def modify_update_urls(config):
     return changed_any
 
 
+# ---------------------------------------------------------------- 通用：Java 代码生成后健全性校验
+def _java_sanity_check(content, label):
+    '''
+    在写回 .java 文件前调用，检查字符串拼接生成的 Java 代码是否存在明显语法问题。
+    不通过则抛异常，使脚本以非零码退出，避免错误流入 Gradle 编译阶段（1~2 分钟后才报错）。
+    检查项：
+      1) 圆括号/花括号/方括号平衡
+      2) 生成代码中使用的常见类型是否有对应 import（ArrayList, List, Map, HashMap 等）
+      3) 含方法调用的非空行是否以 ; 或 { 或 } 结尾（排除注释和控制结构）
+    '''
+    errors = []
+
+    # 1) 括号平衡（忽略字符串字面量中的括号——简单处理：逐字符扫描，遇到 " 切换字符串状态）
+    in_str = False
+    in_char = False
+    escape = False
+    depth = {'()': 0, '{}': 0, '[]': 0}
+    for ch in content:
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and (in_str or in_char):
+            escape = True
+            continue
+        if ch == '"' and not in_char:
+            in_str = not in_str
+            continue
+        if ch == "'" and not in_str:
+            in_char = not in_char
+            continue
+        if in_str or in_char:
+            continue
+        if ch == '(':
+            depth['()'] += 1
+        elif ch == ')':
+            depth['()'] -= 1
+        elif ch == '{':
+            depth['{}'] += 1
+        elif ch == '}':
+            depth['{}'] -= 1
+        elif ch == '[':
+            depth['[]'] += 1
+        elif ch == ']':
+            depth['[]'] -= 1
+        for k, v in depth.items():
+            if v < 0:
+                errors.append(f"括号 {k} 出现未匹配的闭合（深度={v}）")
+                depth[k] = 0  # 重置避免重复报错
+    for k, v in depth.items():
+        if v != 0:
+            errors.append(f"括号 {k} 不平衡，剩余深度={v}")
+
+    # 2) 常见类型 import 检查（仅当代码中确实使用了该类型时）
+    _type_import_map = {
+        'ArrayList': 'import java.util.ArrayList;',
+        'List': 'import java.util.List;',
+        'Map': 'import java.util.Map;',
+        'HashMap': 'import java.util.HashMap;',
+        'Set': 'import java.util.Set;',
+        'HashSet': 'import java.util.HashSet;',
+        'Collections': 'import java.util.Collections;',
+        'Objects': 'import java.util.Objects;',
+        'Optional': 'import java.util.Optional;',
+    }
+    # 去掉注释和字符串后再检查类型使用，避免误报
+    _code_only = re.sub(r'//.*', '', content)
+    _code_only = re.sub(r'/\*.*?\*/', '', _code_only, flags=re.DOTALL)
+    for _type, _import in _type_import_map.items():
+        # 匹配作为类型使用的情况（前面是非字母数字，后面是 < 或空格或 .）
+        if re.search(r'(?<![A-Za-z0-9_])' + re.escape(_type) + r'[<\s.]', _code_only):
+            if _import not in content:
+                errors.append(f"使用了 {_type} 但缺少 {_import}")
+
+    # 3) 语句结尾检查：含方法调用( 的非空行，若不是注释/控制结构/注解，应以 ; { } 结尾
+    for _lineno, _line in enumerate(content.split('\n'), 1):
+        stripped = _line.strip()
+        if not stripped or stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
+            continue
+        if stripped.startswith('@'):  # 注解
+            continue
+        # 控制结构行（if/for/while/else/switch/case/try/catch/finally/do/synchronized）
+        if re.match(r'^(if|for|while|else|switch|case|try|catch|finally|do|synchronized)\b', stripped):
+            continue
+        # 类/方法/接口声明行
+        if re.match(r'^(public|private|protected|static|final|abstract|class|interface|enum|void|return)\b', stripped) and stripped.endswith('{'):
+            continue
+        # 只检查含 '(' 且不含 '{' 开头的行（可能是方法调用语句）
+        if '(' in stripped and not stripped.endswith(';') and not stripped.endswith('{') and not stripped.endswith('}') and not stripped.endswith(','):
+            # 排除 package/import 行
+            if not stripped.startswith('package ') and not stripped.startswith('import '):
+                errors.append(f"第{_lineno}行语句可能未正确结尾（期望 ; 或 {{/}}）：{stripped[:80]}")
+
+    if errors:
+        raise RuntimeError(
+            f"[FATAL] Java 健全性校验未通过 ({label})：\n"
+            + "\n".join(f"  - {e}" for e in errors)
+            + "\n  请检查 local_customize.py 中的字符串拼接逻辑，修复后重新运行。"
+        )
+    print(f"[SANITY] {label}: Java 健全性校验通过（括号平衡 + import 完整 + 语句收尾）")
+
+
 # ---------------------------------------------------------------- 8. 更新顺序：CNB 优先
 def modify_update_order(config):
     '''
@@ -1833,6 +1934,10 @@ def modify_update_order(config):
             content = '\n'.join(_lines)
             print(f"[OK] {rel_path}: 补充 import {', '.join(_needed_imports)}")
 
+        # 写回前健全性校验：括号平衡 / import 完整 / 语句收尾，不通过则脚本直接失败
+        if content != original:
+            _java_sanity_check(content, rel_path)
+
         # 写回 + 读盘验证（确保修改真正落盘，避免假阳性）
         if content != original:
             with open(full_path, "w", encoding="utf-8") as f:
@@ -1995,6 +2100,10 @@ def modify_update_order(config):
                     print(f"[WARN] {github_rel}: getCnbMirrorAsset 方法未找到闭合大括号，跳过 getCnbReleaseAsset 注入")
             else:
                 print(f"[WARN] {github_rel}: 未找到 getCnbMirrorAsset 方法，跳过 getCnbReleaseAsset 注入")
+
+        # 写回前健全性校验
+        if g_content != g_original:
+            _java_sanity_check(g_content, github_rel)
 
         # 写回 + 读盘验证
         if g_content != g_original:
