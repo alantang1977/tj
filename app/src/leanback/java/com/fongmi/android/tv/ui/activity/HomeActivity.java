@@ -76,6 +76,7 @@ import com.fongmi.android.tv.ui.presenter.HistoryPresenter;
 import com.fongmi.android.tv.ui.presenter.ProgressPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
 import com.fongmi.android.tv.utils.Clock;
+import com.fongmi.android.tv.utils.CrashRestartMode;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -587,6 +588,11 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
     }
 
     private void initConfig() {
+        if (CrashRestartMode.consume()) {
+            SpiderDebug.log("startup", "skip config load once after crash restart");
+            showContent();
+            return;
+        }
         SpiderDebug.log("startup", "config load start cost=%sms", System.currentTimeMillis() - App.time());
         VodConfig.get().init().load(getCallback());
         LiveConfig.get().init().load();

@@ -804,7 +804,7 @@ public final class MpvHlsProxy extends NanoHTTPD {
         if (HlsAdblockPipeline.isCoreM3u8Proxy(url)) return text;
         try {
             List<HlsManifestCleaner.Rule> rules = HlsRuleConfig.getRules();
-            boolean legacyFallback = !rules.isEmpty() && HlsRuleConfig.isLegacyFallbackEnabled();
+            boolean legacyFallback = HlsRuleConfig.isLegacyFallbackEnabled();
             HlsAdblockPipeline.Outcome outcome = HlsAdblockPipeline.apply(url, text, rules, legacyFallback);
             if (!TextUtils.equals(outcome.manifest(), text)) {
                 if (kernel == PlayerSetting.MPV) {

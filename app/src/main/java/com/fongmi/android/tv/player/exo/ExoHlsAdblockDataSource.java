@@ -52,7 +52,7 @@ final class ExoHlsAdblockDataSource implements DataSource {
             boolean legacyFallback = false;
             if (Setting.isAdblock()) {
                 rules = HlsRuleConfig.getRules();
-                legacyFallback = !rules.isEmpty() && HlsRuleConfig.isLegacyFallbackEnabled();
+                legacyFallback = HlsRuleConfig.isLegacyFallbackEnabled();
             }
             HlsAdblockPipeline.Outcome outcome = HlsAdblockPipeline.apply(
                     dataSpec.uri.toString(), text, rules, legacyFallback);

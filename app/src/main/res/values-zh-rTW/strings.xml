@@ -1557,8 +1557,9 @@ TVData</string>
     <string name="update_download_source_unavailable">此版本沒有可用的更新來源。</string>
 
     
-    <string name="crash_info">發生意外錯誤\n抱歉給您帶來不便</string>
+    <string name="crash_info">發生意外錯誤\n即將自動重新啟動，本次不重新載入介面</string>
     <string name="crash_restart">重新啟動</string>
+    <string name="crash_silent_restart">靜默重新啟動</string>
     <string name="crash_details">錯誤訊息</string>
     <string name="crash_details_title">錯誤訊息</string>
     <string name="crash_details_message">應用版本：%1$s\n\n%2$s</string>

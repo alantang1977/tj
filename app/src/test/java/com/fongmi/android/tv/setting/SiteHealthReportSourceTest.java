@@ -118,6 +118,18 @@ public class SiteHealthReportSourceTest {
     }
 
     @Test
+    public void healthReportUsesAdStatsStyleNearFullScreenSizing() throws Exception {
+        String dialog = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "dialog", "SiteHealthReportDialog.java")));
+
+        assertTrue(dialog.contains("int margin = ResUtil.dp2px(ResUtil.isLand(requireContext()) ? 24 : 16);"));
+        assertTrue(dialog.contains("ResUtil.getScreenWidth(requireContext()) - margin * 2"));
+        assertTrue(dialog.contains("ResUtil.getScreenHeight(requireContext()) - margin * 2"));
+        assertTrue(dialog.contains("window.getDecorView().setPadding(0, 0, 0, 0)"));
+        assertTrue(!dialog.contains("ResUtil.getScreenWidth(requireContext()) * (ResUtil.isLand(requireContext()) ? 0.62f : 0.94f)"));
+        assertTrue(!dialog.contains("ResUtil.getScreenHeight(requireContext()) * (ResUtil.isLand(requireContext()) ? 0.78f : 0.82f)"));
+    }
+
+    @Test
     public void healthReportExposesSiteRuleAndPipelineAdDimensions() throws Exception {
         String store = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "setting", "SiteHealthStore.java")));
         String dialog = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "dialog", "SiteHealthReportDialog.java")));

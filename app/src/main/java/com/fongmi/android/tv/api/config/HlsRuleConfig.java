@@ -21,6 +21,7 @@ public final class HlsRuleConfig {
     private static List<HlsManifestCleaner.Rule> rules = List.of();
     private static List<Entry> entries = List.of();
     public static final String LEGACY_FALLBACK_KEY = "hls.legacy-fallback";
+    private static final String LEGACY_RULE_PREFIX = "legacy:";
     public static final String LEGACY_FALLBACK_SUMMARY = "仅完整 HLS 点播清单 · 路径/文件名前缀少数组 · 不连续标签明显短块";
     public static final String LEGACY_FALLBACK_DETAIL = "策略一：按分片路径或文件名前缀分组，仅移除明显少数组。\n"
             + "策略二：按 #EXT-X-DISCONTINUITY 分块，仅移除相对主块明显偏短的少数块。\n"
@@ -71,18 +72,22 @@ public final class HlsRuleConfig {
     static void compileLegacyRules(List<Rule> legacyRules, List<HlsManifestCleaner.Rule> output) {
         if (legacyRules == null) return;
         for (Rule rule : legacyRules) {
-            if (rule == null || rule.getRegex().isEmpty()) continue;
+            if (rule == null || rule.getExclude().isEmpty()) continue;
             try {
                 output.add(HlsManifestCleaner.Rule.builder()
-                        .id("legacy:" + RuleIdUtil.computeRuleId(rule))
+                        .id(legacyRuleId(rule))
                         .playlistHostPatterns(rule.getHosts())
-                        .segmentUrlPatterns(rule.getRegex())
+                        .segmentUrlPatterns(rule.getExclude())
                         .minimumSignals(1)
                         .build());
             } catch (RuntimeException e) {
                 SpiderDebug.log(TAG, "Skip invalid legacy rule %s: %s", rule.getName(), e.getMessage());
             }
         }
+    }
+
+    static String legacyRuleId(Rule rule) {
+        return LEGACY_RULE_PREFIX + RuleIdUtil.computeRuleId(rule);
     }
 
     private static void compileBuiltin(HlsRulePackage rulePackage, Map<String, Boolean> overrides,

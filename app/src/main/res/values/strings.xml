@@ -1630,8 +1630,9 @@ TVData</string>
     <string name="update_download_source_unavailable">The selected update source is not available for this release.</string>
 
     
-    <string name="crash_info">An unexpected error occurred.\nSorry for the inconvenience.</string>
+    <string name="crash_info">An unexpected error occurred.\nRestarting automatically without reloading the interface.</string>
     <string name="crash_restart">Restart app</string>
+    <string name="crash_silent_restart">Silent restart</string>
     <string name="crash_details">Error details</string>
     <string name="crash_details_title">Error details</string>
     <string name="crash_details_message">App version: %1$s\n\n%2$s</string>

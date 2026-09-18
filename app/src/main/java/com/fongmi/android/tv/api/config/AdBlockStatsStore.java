@@ -253,29 +253,34 @@ public class AdBlockStatsStore {
             }
         }
 
-        // 查找用户自定义规则（用户规则以 UUID 作为 id）
-        List<UserAdRule> userRules = UserAdRuleStore.load();
-        for (UserAdRule rule : userRules) {
-            if (ruleId.equals(rule.getId())) {
-                record.setRuleName(rule.getName());
-                record.setRuleSource("ai".equals(rule.getSource()) ? "AI" : "手动");
-                return;
-            }
-        }
-
-        // 查找默认规则（默认规则以 computeRuleId 计算的 id 标识）
-        List<Rule> defaultRules = RuleConfig.get().getDefaultRules();
-        for (Rule rule : defaultRules) {
-            if (ruleId.equals(RuleIdUtil.computeRuleId(rule))) {
-                record.setRuleName(rule.getName());
-                record.setRuleSource("默认");
-                return;
-            }
-        }
+        if (fillConfiguredRuleInfo(record, ruleId, UserAdRuleStore.load(), RuleConfig.get().getDefaultRules())) return;
 
         // 未找到规则
         record.setRuleName("未知规则");
         record.setRuleSource("未知");
+    }
+
+    static boolean fillConfiguredRuleInfo(RuleHitRecord record, String ruleId,
+                                          List<UserAdRule> userRules, List<Rule> defaultRules) {
+        // WebView 日志使用 UUID；HLS 清理日志使用由同一自定义规则生成的 legacy 指纹。
+        for (UserAdRule rule : userRules) {
+            if (ruleId.equals(rule.getId()) || ruleId.equals(HlsRuleConfig.legacyRuleId(rule.toRule()))) {
+                record.setRuleName(rule.getName());
+                record.setRuleSource("ai".equals(rule.getSource()) ? "AI" : "手动");
+                return true;
+            }
+        }
+
+        // 默认规则兼容 WebView 的原始指纹与 HLS 的 legacy 指纹。
+        for (Rule rule : defaultRules) {
+            String id = RuleIdUtil.computeRuleId(rule);
+            if (ruleId.equals(id) || ruleId.equals(HlsRuleConfig.legacyRuleId(rule))) {
+                record.setRuleName(rule.getName());
+                record.setRuleSource("默认");
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

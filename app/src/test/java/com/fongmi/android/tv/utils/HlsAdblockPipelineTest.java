@@ -127,4 +127,5 @@ public class HlsAdblockPipelineTest {
         assertFalse(outcome.legacy());
         assertEquals(manifest, outcome.manifest());
     }
+
 }

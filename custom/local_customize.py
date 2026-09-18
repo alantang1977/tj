@@ -1642,7 +1642,67 @@ def _java_sanity_check(content, label, require_patterns=None, forbid_patterns=No
                 errors.append(f"使用了 {_type} 但缺少 {_import}")
 
     # 3) 语句结尾检查：含方法调用( 的非空行，若不是注释/控制结构/注解，应以 ; { } 结尾
-    for _lineno, _line in enumerate(content.split('\n'), 1):
+    #    关键：用跨行括号深度追踪识别跨行表达式（assertEquals(\n  a,\n  b\n);）
+    #    行末深度 > 0 说明在跨行方法调用/参数列表内，跳过收尾检查。
+    _lines = content.split('\n')
+    _line_end_depth = [0] * len(_lines)
+    _d = 0
+    _in_str = False
+    _in_char = False
+    _in_line_comment = False
+    _in_block_comment = False
+    _escape = False
+    for _li, _raw_line in enumerate(_lines):
+        _in_line_comment = False
+        _i = 0
+        while _i < len(_raw_line):
+            _ch = _raw_line[_i]
+            _nxt = _raw_line[_i + 1] if _i + 1 < len(_raw_line) else ''
+            if _escape:
+                _escape = False
+                _i += 1
+                continue
+            if _in_line_comment:
+                break
+            if _in_block_comment:
+                if _ch == '*' and _nxt == '/':
+                    _in_block_comment = False
+                    _i += 2
+                    continue
+                _i += 1
+                continue
+            if _ch == '\\' and (_in_str or _in_char):
+                _escape = True
+                _i += 1
+                continue
+            if _ch == '/' and _nxt == '/':
+                _in_line_comment = True
+                break
+            if _ch == '/' and _nxt == '*':
+                _in_block_comment = True
+                _i += 2
+                continue
+            if _ch == '"' and not _in_char:
+                _in_str = not _in_str
+                _i += 1
+                continue
+            if _ch == "'" and not _in_str:
+                _in_char = not _in_char
+                _i += 1
+                continue
+            if _in_str or _in_char:
+                _i += 1
+                continue
+            # 仅追踪圆括号 () 深度——用于识别跨行方法调用/参数列表
+            # 花括号 {}（类/方法体）和方括号 [] 不参与，否则方法内所有行深度都 >0
+            if _ch == '(':
+                _d += 1
+            elif _ch == ')':
+                _d -= 1
+            _i += 1
+        _line_end_depth[_li] = _d
+
+    for _lineno, _line in enumerate(_lines, 1):
         stripped = _line.strip()
         if not stripped or stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
             continue
@@ -1653,6 +1713,21 @@ def _java_sanity_check(content, label, require_patterns=None, forbid_patterns=No
             continue
         # 类/方法/接口声明行
         if re.match(r'^(public|private|protected|static|final|abstract|class|interface|enum|void|return)\b', stripped) and stripped.endswith('{'):
+            continue
+        # 跨行表达式：行末括号深度 > 0，说明在跨行方法调用/参数列表内（如 assertEquals(\n  a,\n  b\n);）
+        if _line_end_depth[_lineno - 1] > 0:
+            continue
+        # 跨行表达式/链式调用续行：以运算符或 . 开头（如 || foo()、.bar()、+ baz）
+        if re.match(r'^(\|\||&&|\+|-|\*|/|%|\?|:|==|!=|<=|>=|<|>|instanceof|\.)', stripped):
+            continue
+        # 待续行：以运算符结尾且无分号（如 foo() ||、bar() +）
+        if re.search(r'(\|\||&&|\+|-|\*|/|%|\?|:)$', stripped) and not stripped.endswith(';'):
+            continue
+        # return 开头但不以 ; 结尾（跨行 return 第一行，如 return foo()）
+        if stripped.startswith('return ') and not stripped.endswith(';'):
+            continue
+        # 以 ( 结尾：跨行方法调用/构造的开始（深度追踪已覆盖，此处为双重保险）
+        if stripped.endswith('('):
             continue
         # 只检查含 '(' 且不含 '{' 开头的行（可能是方法调用语句）
         if '(' in stripped and not stripped.endswith(';') and not stripped.endswith('{') and not stripped.endswith('}') and not stripped.endswith(','):

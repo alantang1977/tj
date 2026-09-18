@@ -239,8 +239,7 @@ public class ExoUtil {
         builder.setDrmConfiguration(buildDrmConfig(spec.getDrm()));
         builder.setRequestMetadata(buildRequestMetadata(spec));
         builder.setMediaMetadata(spec.getMetadata());
-        builder.setAdblock(Setting.isAdblock() && !HlsRuleConfig.getRules().isEmpty()
-                && HlsRuleConfig.isLegacyFallbackEnabled());
+        builder.setAdblock(Setting.isAdblock() && HlsRuleConfig.isLegacyFallbackEnabled());
         builder.setMimeType(spec.getFormat());
         builder.setImageDurationMs(15000);
         builder.setMediaId(mediaId == null || mediaId.isEmpty() ? spec.getKey() : mediaId);

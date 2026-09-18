@@ -1780,7 +1780,7 @@ public class PlayerManager implements ParseCallback {
         }
         player.seekTo(time);
         cancelBufferingStallWatchdog();
-        armBufferingStallWatchdog();
+        if (isExo()) armBufferingStallWatchdog();
     }
 
     public long getTextOffsetMs() {
@@ -8497,7 +8497,7 @@ public void resetTrack(int type) {
                 applyLutForCurrentItem();
                 scheduleNetworkProtection(0);
             } else if (state == Player.STATE_BUFFERING) {
-                armBufferingStallWatchdog();
+                if (isExo()) armBufferingStallWatchdog();
                 App.removeCallbacks(networkProtectionRunnable);
                 // Do not reset/disrupt the network guard here. BUFFERING is transient and
                 // clearing its trend makes repeated stalls permanently outrun the 10 s

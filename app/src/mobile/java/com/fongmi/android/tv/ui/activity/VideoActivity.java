@@ -1522,6 +1522,9 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         mBinding.control.right.rotate.setOnClickListener(view -> onRotate());
         mBinding.control.right.pip.setOnClickListener(guarded(this::onPiP));
         mBinding.control.fullscreen.setOnClickListener(guarded(this::onFullscreen));
+        mBinding.control.shortDramaChangeSource.setOnClickListener(view -> onChange());
+        mBinding.control.shortDramaQuality.setOnClickListener(guarded(this::onQuality));
+        mBinding.control.shortDramaEpisodes.setOnClickListener(guarded(this::onEpisodes));
         mBinding.control.action.text.setOnClickListener(guardedView(this::onTrack));
         mBinding.control.action.audio.setOnClickListener(guardedView(this::onTrack));
         mBinding.control.action.video.setOnClickListener(guardedView(this::onTrack));

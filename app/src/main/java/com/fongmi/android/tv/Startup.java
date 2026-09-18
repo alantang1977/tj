@@ -29,7 +29,7 @@ public class Startup implements Initializer<Void> {
     @NonNull
     @Override
     public Void create(@NonNull Context context) {
-        CaocConfig.Builder.create().trackActivities(true).backgroundMode(CaocConfig.BACKGROUND_MODE_SILENT).errorActivity(CrashActivity.class).apply();
+        CaocConfig.Builder.create().trackActivities(true).backgroundMode(CaocConfig.BACKGROUND_MODE_SHOW_CUSTOM).errorActivity(CrashActivity.class).apply();
         Logger.addLogAdapter(new AndroidLogAdapter(PrettyFormatStrategy.newBuilder().methodCount(0).showThreadInfo(false).tag("TV").build()));
         installEventBus();
         OkHttp.dns().setDoh(() -> Doh.objectFrom(Setting.getDoh()));

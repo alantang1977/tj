@@ -71,12 +71,14 @@ public class PlayerManagerLifecycleSourceTest {
         int nextBranch = source.indexOf("\n            } else {", buffering);
         assertTrue("state listener must contain the buffering branch", buffering >= 0);
         assertTrue("state listener buffering branch must have a closing boundary", nextBranch > buffering);
-        int arm = source.indexOf("armBufferingStallWatchdog();", buffering);
-        assertTrue("entering Exo BUFFERING must start the stall watchdog", arm > buffering && arm < nextBranch);
+        int arm = source.indexOf("if (isExo()) armBufferingStallWatchdog();", buffering);
+        assertTrue("entering Exo BUFFERING must start only the Exo stall watchdog", arm > buffering && arm < nextBranch);
         assertTrue("watchdog arming must be restricted to Exo playback",
                 source.contains("if (!isExo() || player == null || spec == null) return;"));
         assertTrue("watchdog polling must stop for non-Exo playback",
                 source.contains("if (!isExo() || player == null || spec == null) {"));
+        assertTrue("seeking must only re-arm the stall watchdog for Exo playback",
+                source.contains("player.seekTo(time);\n        cancelBufferingStallWatchdog();\n        if (isExo()) armBufferingStallWatchdog();"));
         int polling = source.indexOf("private void checkBufferingStall()");
         int observe = source.indexOf("bufferingStallWatchdog.observe(", polling);
         int timeout = source.indexOf("bufferingStallWatchdog.shouldTimeout(", polling);

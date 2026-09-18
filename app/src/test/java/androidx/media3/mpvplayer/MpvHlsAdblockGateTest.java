@@ -12,10 +12,11 @@ import java.nio.file.Path;
 public class MpvHlsAdblockGateTest {
 
     @Test
-    public void legacyFallbackRequiresConfiguredRulesAndItsToggle() throws Exception {
+    public void legacyFallbackRequiresItsToggleWithoutStructuredRules() throws Exception {
         String source = readSource();
 
-        assertTrue(source.contains("legacyFallback = !rules.isEmpty() && HlsRuleConfig.isLegacyFallbackEnabled()"));
+        assertTrue(source.contains("legacyFallback = HlsRuleConfig.isLegacyFallbackEnabled()"));
+        assertFalse(source.contains("legacyFallback = !rules.isEmpty()"));
         assertTrue(source.contains("HlsAdblockPipeline.apply(url, text, rules, legacyFallback)"));
         assertFalse(source.contains("HlsAdblockPipeline.apply(url, text, HlsRuleConfig.getRules(), HlsRuleConfig.isLegacyFallbackEnabled())"));
     }

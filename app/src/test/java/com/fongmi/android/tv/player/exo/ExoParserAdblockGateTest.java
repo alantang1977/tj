@@ -8,15 +8,15 @@ import org.junit.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** MediaItem must not enable the patched Exo ad parser without configured rules. */
+/** MediaItem enables the patched Exo ad parser only when both ad blocking and its fallback toggle are enabled. */
 public class ExoParserAdblockGateTest {
 
     @Test
-    public void parserAdblockRequiresConfiguredRules() throws Exception {
+    public void parserAdblockRequiresMasterSwitchAndFallbackToggle() throws Exception {
         String source = Files.readString(Path.of("src/main/java/com/fongmi/android/tv/player/exo/ExoUtil.java"));
 
-        assertTrue(source.contains("Setting.isAdblock() && !HlsRuleConfig.getRules().isEmpty()")
-                && source.contains("&& HlsRuleConfig.isLegacyFallbackEnabled()"));
+        assertTrue(source.contains("builder.setAdblock(Setting.isAdblock() && HlsRuleConfig.isLegacyFallbackEnabled())"));
+        assertFalse(source.contains("!HlsRuleConfig.getRules().isEmpty()"));
         assertFalse(source.contains("builder.setAdblock(Setting.isAdblock())"));
     }
 }

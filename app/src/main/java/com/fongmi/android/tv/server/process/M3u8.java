@@ -95,7 +95,7 @@ public class M3u8 implements Process {
             boolean legacyFallback = false;
             if (Setting.isAdblock()) {
                 rules = hlsRules();
-                legacyFallback = !rules.isEmpty() && HlsRuleConfig.isLegacyFallbackEnabled();
+                legacyFallback = HlsRuleConfig.isLegacyFallbackEnabled();
             }
             HlsAdblockPipeline.Outcome clean = Setting.isAdblock()
                     ? HlsAdblockPipeline.apply(upstream.request().url().toString(), text, rules, legacyFallback)
