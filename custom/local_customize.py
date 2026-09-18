@@ -1808,6 +1808,31 @@ def modify_update_order(config):
             else:
                 print(f"[WARN] {rel_path}: getRoutes() 未找到注入点（routes.addAll / return plan / return routes），请人工检查")
 
+        # A4. 确保生成代码依赖的 import 存在（List / ArrayList）
+        _needed_imports = []
+        if 'import java.util.List;' not in content:
+            _needed_imports.append('import java.util.List;')
+        if 'import java.util.ArrayList;' not in content:
+            _needed_imports.append('import java.util.ArrayList;')
+        if _needed_imports:
+            _lines = content.split('\n')
+            _last_import_idx = -1
+            for _i, _line in enumerate(_lines):
+                if _line.strip().startswith('import '):
+                    _last_import_idx = _i
+            if _last_import_idx >= 0:
+                _insert_at = _last_import_idx + 1
+            else:
+                # 无 import 时插到 package 声明之后
+                _insert_at = 0
+                for _i, _line in enumerate(_lines):
+                    if _line.strip().startswith('package '):
+                        _insert_at = _i + 1
+                        break
+            _lines = _lines[:_insert_at] + _needed_imports + _lines[_insert_at:]
+            content = '\n'.join(_lines)
+            print(f"[OK] {rel_path}: 补充 import {', '.join(_needed_imports)}")
+
         # 写回 + 读盘验证（确保修改真正落盘，避免假阳性）
         if content != original:
             with open(full_path, "w", encoding="utf-8") as f:
