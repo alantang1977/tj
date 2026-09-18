@@ -433,12 +433,12 @@ def _mask(size, shape, radius_ratio=0.0):
 
 # ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
 import math as _math
-CAT_BLUE_TOP = (192, 228, 252, 255)
-CAT_BLUE_MID = (116, 168, 240, 255)
-CAT_BLUE_BOT = (58, 104, 196, 255)
-CAT_BLUE_SIDE = (32, 74, 150, 255)
+CAT_BLUE_TOP = (190, 245, 235, 255)
+CAT_BLUE_MID = (100, 205, 195, 255)
+CAT_BLUE_BOT = (40, 150, 145, 255)
+CAT_BLUE_SIDE = (20, 100, 95, 255)
 CAT_PINK = (255, 150, 180, 255)
-CAT_DARK = (35, 50, 85, 255)
+CAT_DARK = (15, 60, 60, 255)
 CAT_NOSE = (247, 122, 152, 255)
 CAT_COLLAR = (7, 193, 96, 255)
 CAT_COLLAR_HL = (120, 230, 190, 255)
@@ -494,35 +494,61 @@ def draw_cat(size):
     halo_in = halo_in.filter(ImageFilter.GaussianBlur(radius=r * 0.18))
     layer.alpha_composite(halo_in)
 
-    # ===== 耳朵（圆角三角）=====
-    def ear_pts(side):
-        if side < 0:
-            outer = (cx - r * 0.96, head_cy - r * 0.45)
-            tip = (cx - r * 1.24, head_cy - r * 1.15)
-            inner = (cx - r * 0.46, head_cy - r * 0.78)
-        else:
-            outer = (cx + r * 0.96, head_cy - r * 0.45)
-            tip = (cx + r * 1.24, head_cy - r * 1.15)
-            inner = (cx + r * 0.46, head_cy - r * 0.78)
-        return outer, tip, inner
+    # ===== 耳朵（圆角三角，耳根沿头圆圆弧贴合）=====
+    # 把耳根两端投影到头圆（半径 r）上，耳底边不再是直线弦，
+    # 而是沿头圆走的短弧；耳尖位置 / 里外分色 / 颜色保持不变。
+    def _round_tip(pts, tip_idx, radius):
+        """只把多边形第 tip_idx 个顶点用二次贝塞尔圆角（其余边保持原样）。"""
+        V = pts[tip_idx]; A = pts[tip_idx - 1]; B = pts[tip_idx + 1]
+        vlen = _math.hypot(V[0] - A[0], V[1] - A[1])
+        alen = _math.hypot(V[0] - B[0], V[1] - B[1])
+        ra = min(radius, vlen * 0.5); rb = min(radius, alen * 0.5)
+        P1 = (V[0] + (A[0] - V[0]) * ra / vlen, V[1] + (A[1] - V[1]) * ra / vlen)
+        P2 = (V[0] + (B[0] - V[0]) * rb / alen, V[1] + (B[1] - V[1]) * rb / alen)
+        out = list(pts[:tip_idx])
+        for s in range(13):
+            t = s / 12
+            x = (1 - t) * (1 - t) * P1[0] + 2 * (1 - t) * t * V[0] + t * t * P2[0]
+            y = (1 - t) * (1 - t) * P1[1] + 2 * (1 - t) * t * V[1] + t * t * P2[1]
+            out.append((x, y))
+        out.extend(pts[tip_idx + 1:])
+        return out
 
-    def inner_pink(side):
+    def ear_geom(side):
         if side < 0:
-            return [(cx - r * 0.84, head_cy - r * 0.55),
-                    (cx - r * 1.08, head_cy - r * 0.98),
-                    (cx - r * 0.56, head_cy - r * 0.74)]
-        return [(cx + r * 0.84, head_cy - r * 0.55),
-                (cx + r * 1.08, head_cy - r * 0.98),
-                (cx + r * 0.56, head_cy - r * 0.74)]
+            tip = (cx - r * 1.24, head_cy - r * 1.15)
+            outer_raw = (cx - r * 0.96, head_cy - r * 0.45)
+            inner_raw = (cx - r * 0.46, head_cy - r * 0.78)
+        else:
+            tip = (cx + r * 1.24, head_cy - r * 1.15)
+            outer_raw = (cx + r * 0.96, head_cy - r * 0.45)
+            inner_raw = (cx + r * 0.46, head_cy - r * 0.78)
+        # 耳根两点投影到头圆上（方位角不变，半径统一为 r）
+        def proj(pt):
+            dx = pt[0] - cx; dy = pt[1] - head_cy
+            dist = _math.hypot(dx, dy)
+            return (cx + dx * r / dist, head_cy + dy * r / dist)
+        outer = proj(outer_raw); inner = proj(inner_raw)
+        a_outer = _math.atan2(outer[1] - head_cy, outer[0] - cx)
+        a_inner = _math.atan2(inner[1] - head_cy, inner[0] - cx)
+        da = a_inner - a_outer
+        while da > _math.pi: da -= 2 * _math.pi
+        while da < -_math.pi: da += 2 * _math.pi
+        n_arc = 24
+        arc_pts = [(cx + r * _math.cos(a_outer + da * (i / n_arc)),
+                    head_cy + r * _math.sin(a_outer + da * (i / n_arc))) for i in range(n_arc + 1)]
+        mid_idx = n_arc // 2
+        return tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da
 
     for side in (-1, 1):
-        outer, tip, inner = ear_pts(side)
-        mid = ((outer[0] + inner[0]) / 2, (outer[1] + inner[1]) / 2)
-        _rounded_poly(d, [tip, inner, mid], ER, CAT_BLUE_MID)
-        _rounded_poly(d, [tip, mid, outer], ER, CAT_BLUE_SIDE)
-        # 耳朵与头交接处深色线
-        d.line([outer[0], outer[1], inner[0], inner[1]],
-               fill=CAT_BLUE_SIDE, width=max(1, int(r * 0.025)))
+        tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da = ear_geom(side)
+        # 外侧半（深青）：tip -> outer -> 沿弧 -> mid -> tip
+        outer_half = _round_tip([tip] + arc_pts[:mid_idx + 1], 0, ER)
+        d.polygon(outer_half, fill=CAT_BLUE_SIDE)
+        # 内侧半（浅青）：tip -> mid -> 沿弧 -> inner -> tip
+        inner_half = _round_tip([tip] + arc_pts[mid_idx:], 0, ER)
+        d.polygon(inner_half, fill=CAT_BLUE_MID)
+        # 耳根即头圆圆弧，不再画直线弦 / 深色缝线
 
     # ===== 球体头：径向渐变（主光左上）=====
     head_mask = Image.new("L", (size, size), 0)
@@ -550,9 +576,20 @@ def draw_cat(size):
             hgd.point((xx, yy), fill=c + (255,))
     layer.paste(hgrad, (0, 0), head_mask)
 
-    # 纯白亮光耳内（渐变：上纯白 -> 下极淡冷白，亮光质感）
+    # 纯白亮光耳内（内嵌小楔子：白尖朝耳尖，底边沿头圆弧、与外耳根对齐）
     for side in (-1, 1):
-        pts = inner_pink(side)
+        tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da = ear_geom(side)
+        r_white_base = r * 0.99            # 白底贴头圆，与外耳根对齐
+        a_ws = a_outer + da * 0.12         # 两侧各内收 12%，白耳整体小一号
+        a_we = a_inner - da * 0.12
+        n_w = 12
+        base_arc = [(cx + r_white_base * _math.cos(a_ws + (a_we - a_ws) * (i / n_w)),
+                     head_cy + r_white_base * _math.sin(a_ws + (a_we - a_ws) * (i / n_w)))
+                    for i in range(n_w + 1)]
+        a_mid = a_ws + (a_we - a_ws) * 0.5
+        r_wtip = r * 1.45                  # 白尖半径，收尖朝耳尖
+        wtip = (cx + r_wtip * _math.cos(a_mid), head_cy + r_wtip * _math.sin(a_mid))
+        pts = _round_tip([wtip] + base_arc, 0, r * 0.06)
         ear_mask = Image.new("L", (size, size), 0)
         ImageDraw.Draw(ear_mask).polygon(pts, fill=255)
         ear_grad = Image.new("RGBA", (size, size), HOLE)
@@ -575,7 +612,7 @@ def draw_cat(size):
     # 底部暗边
     rim = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(rim).arc([hx, hy, hx + 2 * r, hy + 2 * r],
-                             start=20, end=160, fill=(15, 45, 120, 130), width=int(r * 0.10))
+                             start=20, end=160, fill=(10, 60, 70, 130), width=int(r * 0.10))
     rim = rim.filter(ImageFilter.GaussianBlur(radius=r * 0.06))
     layer.alpha_composite(rim)
 
@@ -587,7 +624,7 @@ def draw_cat(size):
     face_sh = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(face_sh).ellipse([face_box[0] + r * 0.015, face_box[1] + r * 0.02,
                                       face_box[2] + r * 0.015, face_box[3] + r * 0.02],
-                                     fill=(0, 20, 80, 40))
+                                     fill=(0, 40, 50, 40))
     face_sh = face_sh.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(face_sh)
     d.ellipse(face_box, fill=(248, 236, 208, 255))
@@ -812,32 +849,72 @@ def draw_cat_silhouette(size):
     head_cy = size * 0.5 + r * 0.08
     hx, hy = cx - r, head_cy - r
     for side in (-1, 1):
+        # 与 draw_cat 一致：耳根投影到头圆、底边沿头圆弧，去掉外侧小凸角
         if side < 0:
-            pts = [(cx - r * 0.96, head_cy - r * 0.45),
-                   (cx - r * 1.24, head_cy - r * 1.15),
-                   (cx - r * 0.46, head_cy - r * 0.78)]
+            tip = (cx - r * 1.24, head_cy - r * 1.15)
+            outer_raw = (cx - r * 0.96, head_cy - r * 0.45)
+            inner_raw = (cx - r * 0.46, head_cy - r * 0.78)
         else:
-            pts = [(cx + r * 0.96, head_cy - r * 0.45),
-                   (cx + r * 1.24, head_cy - r * 1.15),
-                   (cx + r * 0.46, head_cy - r * 0.78)]
-        _rounded_poly(d, pts, r * 0.10, WHITE)
+            tip = (cx + r * 1.24, head_cy - r * 1.15)
+            outer_raw = (cx + r * 0.96, head_cy - r * 0.45)
+            inner_raw = (cx + r * 0.46, head_cy - r * 0.78)
+        def _proj(pt):
+            dx = pt[0] - cx; dy = pt[1] - head_cy
+            dist = _math.hypot(dx, dy)
+            return (cx + dx * r / dist, head_cy + dy * r / dist)
+        outer = _proj(outer_raw); inner = _proj(inner_raw)
+        a_outer = _math.atan2(outer[1] - head_cy, outer[0] - cx)
+        a_inner = _math.atan2(inner[1] - head_cy, inner[0] - cx)
+        da = a_inner - a_outer
+        while da > _math.pi: da -= 2 * _math.pi
+        while da < -_math.pi: da += 2 * _math.pi
+        arc = [(cx + r * _math.cos(a_outer + da * (i / 16)),
+                head_cy + r * _math.sin(a_outer + da * (i / 16))) for i in range(17)]
+        pts = [tip] + arc
+        # 只圆耳尖
+        V = tip; A = arc[-1]; B = arc[0]
+        vlen = _math.hypot(V[0] - A[0], V[1] - A[1]); alen = _math.hypot(V[0] - B[0], V[1] - B[1])
+        rad = r * 0.10
+        ra = min(rad, vlen * 0.5); rb = min(rad, alen * 0.5)
+        P1 = (V[0] + (A[0] - V[0]) * ra / vlen, V[1] + (A[1] - V[1]) * ra / vlen)
+        P2 = (V[0] + (B[0] - V[0]) * rb / alen, V[1] + (B[1] - V[1]) * rb / alen)
+        rounded = []
+        for s in range(13):
+            t = s / 12
+            rounded.append(((1 - t) * (1 - t) * P1[0] + 2 * (1 - t) * t * V[0] + t * t * P2[0],
+                            (1 - t) * (1 - t) * P1[1] + 2 * (1 - t) * t * V[1] + t * t * P2[1]))
+        d.polygon(rounded + arc[1:], fill=WHITE)
     d.ellipse([hx, hy, hx + 2 * r, hy + 2 * r], fill=WHITE)
     return layer
 
 
 def vector_cat(color="#FFFFFF", size_dp=108):
-    """猫头剪影的 VectorDrawable（圆头 + 两耳），用于 adaptive 前景 / monochrome / 通知。"""
+    """猫头剪影的 VectorDrawable（圆头 + 两耳，耳根沿头圆弧），用于 adaptive 前景 / monochrome / 通知。"""
     vp = VIEWPORT
     cx, cy = vp * 0.5, vp * 0.5 + vp * 0.0224
     rr = vp * 0.25
-    # 左耳
-    le = (f"M{_p(cx - rr * 0.96)},{_p(cy - rr * 0.45)}"
-          f"L{_p(cx - rr * 1.24)},{_p(cy - rr * 1.15)}"
-          f"L{_p(cx - rr * 0.46)},{_p(cy - rr * 0.78)}z")
-    # 右耳
-    re_ = (f"M{_p(cx + rr * 0.96)},{_p(cy - rr * 0.45)}"
-           f"L{_p(cx + rr * 1.24)},{_p(cy - rr * 1.15)}"
-           f"L{_p(cx + rr * 0.46)},{_p(cy - rr * 0.78)}z")
+
+    def _ear_path(side):
+        if side < 0:
+            tip = (cx - rr * 1.24, cy - rr * 1.15)
+            outer_raw = (cx - rr * 0.96, cy - rr * 0.45)
+            inner_raw = (cx - rr * 0.46, cy - rr * 0.78)
+        else:
+            tip = (cx + rr * 1.24, cy - rr * 1.15)
+            outer_raw = (cx + rr * 0.96, cy - rr * 0.45)
+            inner_raw = (cx + rr * 0.46, cy - rr * 0.78)
+        def _proj(pt):
+            dx = pt[0] - cx; dy = pt[1] - cy
+            dist = _math.hypot(dx, dy)
+            return (cx + dx * rr / dist, cy + dy * rr / dist)
+        outer = _proj(outer_raw); inner = _proj(inner_raw)
+        # tip -> outer -> 沿头圆弧 -> inner -> 回 tip
+        return (f"M{_p(tip[0])},{_p(tip[1])}"
+                f"L{_p(outer[0])},{_p(outer[1])}"
+                f"A{_p(rr)},{_p(rr)} 0 0,1 {_p(inner[0])},{_p(inner[1])}z")
+
+    le = _ear_path(-1)
+    re_ = _ear_path(1)
     # 头圆
     head = (f"M{_p(cx)},{_p(cy - rr)}"
             f"A{_p(rr)},{_p(rr)} 0 1 1 {_p(cx)},{_p(cy + rr)}"
@@ -2702,3 +2779,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+#（注：内容由AI生成）
