@@ -1558,6 +1558,9 @@ def modify_android_manifest(config):
     manifest_path = os.path.join(REPO_ROOT, "app", "src", "main", "AndroidManifest.xml")
     if not os.path.exists(manifest_path):
         return False
+    # 必须在 parse 前注册命名空间，否则写回时 android: 前缀会变成 ns0:
+    ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+    ET.register_namespace("tools", "http://schemas.android.com/tools")
     try:
         tree = ET.parse(manifest_path)
         root = tree.getroot()
@@ -1567,7 +1570,7 @@ def modify_android_manifest(config):
     application = root.find("application")
     if application is not None:
         label = application.get(_ANDROID_NS + "label")
-        if label and not label.startswith("@"):
+        if label and not label.startswith("@") and label != app_name:
             application.set(_ANDROID_NS + "label", app_name)
             changed = True
             print(f'[OK] AndroidManifest.xml: android:label "{label}" -> "{app_name}"')
@@ -1602,11 +1605,10 @@ def modify_manifest_banner(config):
         print("[SKIP] AndroidManifest.xml 解析失败，跳过 banner 接线")
         return False
 
-    # 确保 <manifest> 根节点声明 xmlns:tools
-    if "xmlns:tools" not in root.attrib:
-        root.attrib["xmlns:tools"] = TOOLS_NS
-        changed = True
-        print("[OK] <manifest> 添加 xmlns:tools 命名空间")
+    # 注意：不要手动 root.attrib["xmlns:tools"]=...，否则会和 register_namespace
+    # 自动生成的声明重复，导致 AGP manifest merger 解析失败。
+    # 只需在 application 上设 tools:replace 属性，xmlns:tools 会自动加在根节点。
+    TOOLS_REPLACE_KEY = f"{{{TOOLS_NS}}}replace"
 
     application = root.find("application")
     if application is not None:
@@ -1618,13 +1620,13 @@ def modify_manifest_banner(config):
             print(f"[OK] application: android:banner {cur or '未设置'} -> {banner_ref}")
         # 2) tools:replace 让主 manifest 覆盖库 manifest 的冲突属性
         #    （上游 leanback 库声明了 @mipmap/ic_banner，与主 manifest 的 @drawable/ic_banner 冲突）
-        replace_attr = application.get(ET.QName(TOOLS_NS, "replace")) or ""
+        replace_attr = application.get(TOOLS_REPLACE_KEY) or ""
         needed = ["android:banner", "android:icon", "android:roundIcon", "android:label"]
         have = set(x.strip() for x in replace_attr.split(","))
         miss = [x for x in needed if x not in have]
         if miss:
             new_val = ",".join([x for x in (replace_attr.split(",") if replace_attr else []) if x.strip()] + miss)
-            application.set(ET.QName(TOOLS_NS, "replace"), new_val)
+            application.set(TOOLS_REPLACE_KEY, new_val)
             changed = True
             print(f"[OK] application: tools:replace += {','.join(miss)}")
     if changed:
@@ -2873,3 +2875,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+#（注：内容由AI生成）
