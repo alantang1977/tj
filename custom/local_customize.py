@@ -1580,46 +1580,28 @@ def modify_android_manifest(config):
 
 
 # ---------------------------------------------------------------- 5b. TV banner 接线（当贝桌面长方形）
-def modify_manifest_banner(config):
-    """强制 AndroidManifest 的 android:banner 指向 320x180 长方形 PNG drawable。
-
-    问题：当贝桌面读 android:banner，若指向 @mipmap/ic_banner（正方形 adaptive-icon）
-    或根本没写，就回退成方形图标。这里统一改成 @drawable/ic_banner（320x180 PNG），
-    并把 banner PNG 复制一份到主资源 drawable-nodpi，保证各 flavor 下都能解析。
-    """
-    banner_ref = "@drawable/ic_banner"
-    TOOLS_NS = "http://schemas.android.com/tools"
-    ANDROID_URI = "http://schemas.android.com/apk/res/android"  # 裸 URI（无花括号），供 register_namespace
-    manifest_path = os.path.join(REPO_ROOT, "app", "src", "main", "AndroidManifest.xml")
+def _patch_manifest_banner(manifest_path, banner_ref, TOOLS_NS, ANDROID_URI):
+    """对单个 AndroidManifest.xml 做 banner 接线：改 banner + 加 tools:replace。"""
     if not os.path.exists(manifest_path):
-        print("[SKIP] AndroidManifest.xml 不存在，跳过 banner 接线")
         return False
-    changed = False
-    # 必须在 parse 之前注册命名空间，否则写回时 android: 会变成 ns0:
     ET.register_namespace("android", ANDROID_URI)
     ET.register_namespace("tools", TOOLS_NS)
     try:
         tree = ET.parse(manifest_path)
         root = tree.getroot()
     except ET.ParseError:
-        print("[SKIP] AndroidManifest.xml 解析失败，跳过 banner 接线")
+        print(f"[SKIP] {os.path.relpath(manifest_path, REPO_ROOT)} 解析失败")
         return False
 
-    # 注意：不要手动 root.attrib["xmlns:tools"]=...，否则会和 register_namespace
-    # 自动生成的声明重复，导致 AGP manifest merger 解析失败。
-    # 只需在 application 上设 tools:replace 属性，xmlns:tools 会自动加在根节点。
     TOOLS_REPLACE_KEY = f"{{{TOOLS_NS}}}replace"
-
+    changed = False
     application = root.find("application")
     if application is not None:
-        # 1) banner 强制指向 320x180 drawable
         cur = application.get(_ANDROID_NS + "banner")
         if cur != banner_ref:
             application.set(_ANDROID_NS + "banner", banner_ref)
             changed = True
-            print(f"[OK] application: android:banner {cur or '未设置'} -> {banner_ref}")
-        # 2) tools:replace 让主 manifest 覆盖库 manifest 的冲突属性
-        #    （上游 leanback 库声明了 @mipmap/ic_banner，与主 manifest 的 @drawable/ic_banner 冲突）
+            print(f"[OK] {os.path.relpath(manifest_path, REPO_ROOT)}: android:banner {cur or '未设置'} -> {banner_ref}")
         replace_attr = application.get(TOOLS_REPLACE_KEY) or ""
         needed = ["android:banner", "android:icon", "android:roundIcon", "android:label"]
         have = set(x.strip() for x in replace_attr.split(","))
@@ -1628,13 +1610,35 @@ def modify_manifest_banner(config):
             new_val = ",".join([x for x in (replace_attr.split(",") if replace_attr else []) if x.strip()] + miss)
             application.set(TOOLS_REPLACE_KEY, new_val)
             changed = True
-            print(f"[OK] application: tools:replace += {','.join(miss)}")
+            print(f"[OK] {os.path.relpath(manifest_path, REPO_ROOT)}: tools:replace += {','.join(miss)}")
     if changed:
         tree.write(manifest_path, encoding="utf-8", xml_declaration=True)
+    return changed
+
+
+def modify_manifest_banner(config):
+    """强制 AndroidManifest 的 android:banner 指向 320x180 长方形 PNG drawable。
+
+    同时处理 main 和 leanback flavor 两个 manifest（leanback flavor 自己也声明了
+    @mipmap/ic_banner，不改会导致 leanback 变体合并冲突）。
+    """
+    banner_ref = "@drawable/ic_banner"
+    TOOLS_NS = "http://schemas.android.com/tools"
+    ANDROID_URI = "http://schemas.android.com/apk/res/android"
+
+    # 需要处理的 manifest 列表：main + leanback flavor
+    targets = [
+        os.path.join(REPO_ROOT, "app", "src", "main", "AndroidManifest.xml"),
+        os.path.join(REPO_ROOT, "app", "src", "leanback", "AndroidManifest.xml"),
+    ]
+    any_changed = False
+    for mp in targets:
+        if os.path.exists(mp):
+            any_changed = _patch_manifest_banner(mp, banner_ref, TOOLS_NS, ANDROID_URI) or any_changed
 
     # 把 320x180 banner PNG 复制到主资源目录：
-    #  - drawable-xhdpi（Android TV 官方推荐位置，320x180 对应 xhdpi，当贝按密度读取）
-    #  - drawable-nodpi（兜底，保证 @drawable/ic_banner 任意配置下都能解析）
+    #  - drawable-xhdpi（Android TV 官方推荐位置，320x180 对应 xhdpi）
+    #  - drawable-nodpi（兜底）
     src = os.path.join(REPO_ROOT, "app", "src", "leanback", "res", "drawable", "ic_banner.png")
     if os.path.exists(src):
         for sub in ("drawable-xhdpi", "drawable-nodpi"):
@@ -1644,7 +1648,7 @@ def modify_manifest_banner(config):
             print(f"[OK] banner PNG -> {os.path.relpath(dst, REPO_ROOT)}（320x180）")
     else:
         print(f"[WARN] 未找到 leanback banner 源文件: {os.path.relpath(src, REPO_ROOT)}，请先跑图标生成步骤")
-    return changed
+    return any_changed
 
 
 # ---------------------------------------------------------------- 7. 作者链接
