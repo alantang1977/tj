@@ -1,7 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    tools:ignore="ScopedStorage">
+<?xml version='1.0' encoding='utf-8'?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" tools:ignore="ScopedStorage">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -52,107 +50,39 @@
         <package android:name="com.android.settings" />
     </queries>
 
-    <application
-        android:name=".App"
-        android:allowBackup="false"
-        android:appCategory="video"
-        android:enableOnBackInvokedCallback="true"
-        android:hardwareAccelerated="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:largeHeap="true"
-        android:pageSizeCompat="enabled"
-        android:requestLegacyExternalStorage="true"
-        android:resizeableActivity="true"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.App"
-        android:usesCleartextTraffic="true"
-        tools:replace="android:allowBackup">
+    <application android:name=".App" android:allowBackup="false" android:appCategory="video" android:enableOnBackInvokedCallback="true" android:hardwareAccelerated="true" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:largeHeap="true" android:pageSizeCompat="enabled" android:requestLegacyExternalStorage="true" android:resizeableActivity="true" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.App" android:usesCleartextTraffic="true" tools:replace="android:allowBackup" android:banner="@drawable/ic_banner">
 
-        <meta-data
-            android:name="android.max_aspect"
-            android:value="2.5" />
+        <meta-data android:name="android.max_aspect" android:value="2.5" />
 
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.provider"
-            android:exported="false"
-            android:grantUriPermissions="true">
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.provider" android:exported="false" android:grantUriPermissions="true">
 
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
 
         </provider>
 
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="com.fongmi.android.tv.Startup"
-                android:value="androidx.startup" />
+        <provider android:name="androidx.startup.InitializationProvider" android:authorities="${applicationId}.androidx-startup" android:exported="false" tools:node="merge">
+            <meta-data android:name="com.fongmi.android.tv.Startup" android:value="androidx.startup" />
         </provider>
 
-        <activity
-            android:name=".ui.activity.CrashActivity"
-            android:process=":error_activity"
-            android:theme="@style/Theme.Crash" />
+        <activity android:name=".ui.activity.CrashActivity" android:process=":error_activity" android:theme="@style/Theme.Crash" />
 
-        <activity
-            android:name=".ui.web.WebReaderActivity"
-            android:exported="false"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
+        <activity android:name=".ui.web.WebReaderActivity" android:exported="false" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
 
-        <activity
-            android:name=".ui.web.GameWebActivity"
-            android:exported="false"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
+        <activity android:name=".ui.web.GameWebActivity" android:exported="false" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
 
-        <activity
-            android:name=".ui.web.CatWebActivity"
-            android:exported="false"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
+        <activity android:name=".ui.web.CatWebActivity" android:exported="false" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
 
-        <activity
-            android:name=".lab.LabActivity"
-            android:exported="false"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
-            android:theme="@style/Theme.App.Lab" />
+        <activity android:name=".lab.LabActivity" android:exported="false" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" android:theme="@style/Theme.App.Lab" />
 
-        <activity
-            android:name=".lab.LabDetailActivity"
-            android:exported="false"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
-            android:theme="@style/Theme.App.Lab" />
+        <activity android:name=".lab.LabDetailActivity" android:exported="false" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" android:theme="@style/Theme.App.Lab" />
 
-        <activity
-            android:name=".lab.LabOutputActivity"
-            android:exported="false"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
-            android:theme="@style/Theme.App.Lab" />
+        <activity android:name=".lab.LabOutputActivity" android:exported="false" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" android:theme="@style/Theme.App.Lab" />
 
-        <activity
-            android:name=".lab.LabTerminalActivity"
-            android:exported="false"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
-            android:theme="@style/Theme.App.Lab"
-            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".lab.LabTerminalActivity" android:exported="false" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" android:theme="@style/Theme.App.Lab" android:windowSoftInputMode="adjustResize" />
 
-        <activity
-            android:name=".ui.activity.PlaybackRecoveryActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTask"
-            android:process=":playback_recovery"
-            android:taskAffinity="${applicationId}.playback_recovery"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity android:name=".ui.activity.PlaybackRecoveryActivity" android:exported="false" android:excludeFromRecents="true" android:launchMode="singleTask" android:process=":playback_recovery" android:taskAffinity="${applicationId}.playback_recovery" android:theme="@android:style/Theme.Material.NoActionBar" />
 
-        <receiver
-            android:name=".receiver.ActionReceiver"
-            android:exported="false">
+        <receiver android:name=".receiver.ActionReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="${applicationId}.stop" />
                 <action android:name="${applicationId}.prev" />
@@ -163,44 +93,22 @@
             </intent-filter>
         </receiver>
 
-        <service
-            android:name=".service.PlaybackService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
+        <service android:name=".service.PlaybackService" android:exported="true" android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
 
-        <service
-            android:name=".service.ManageService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync|connectedDevice"
-            android:stopWithTask="false" />
+        <service android:name=".service.ManageService" android:exported="false" android:foregroundServiceType="dataSync|connectedDevice" android:stopWithTask="false" />
 
-        <service
-            android:name=".remote.RemoteAgentService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync|connectedDevice"
-            android:stopWithTask="false" />
+        <service android:name=".remote.RemoteAgentService" android:exported="false" android:foregroundServiceType="dataSync|connectedDevice" android:stopWithTask="false" />
 
-        <service
-            android:name=".lab.LabRuntimeService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync"
-            android:stopWithTask="false" />
+        <service android:name=".lab.LabRuntimeService" android:exported="false" android:foregroundServiceType="dataSync" android:stopWithTask="false" />
 
-        <service
-            android:name=".node.NodeService"
-            android:exported="false"
-            android:process=":node"
-            android:foregroundServiceType="dataSync"
-            android:stopWithTask="false" />
+        <service android:name=".node.NodeService" android:exported="false" android:process=":node" android:foregroundServiceType="dataSync" android:stopWithTask="false" />
 
-        <meta-data
-            android:name="com.google.android.gms.car.application"
-            android:resource="@xml/automotive_app_desc" />
+        <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
 
     </application>
 </manifest>
