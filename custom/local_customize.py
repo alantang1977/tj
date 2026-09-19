@@ -143,7 +143,7 @@ GRAD_A_HEX = "#8B5CF6"
 GRAD_B_HEX = "#F472B6"
 WHITE = (255, 255, 255, 255)
 HOLE = (0, 0, 0, 0)
-SS = 4          # 超采样倍率，先大图绘制再降采样得到干净边缘
+SS = 5          # 超采样倍率，先大图绘制再降采样得到干净边缘（5x 比 4x 边缘更锐利）
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
 GRAD_INSET_ADAPTIVE = 1.0 / 6.0
@@ -1033,15 +1033,13 @@ def render_cat_foreground(size):
     """自适应图标前景：完整彩色猫（透明底），超采样后缩放至安全区内。
 
     自适应图标 108dp 中系统只显示中心 72dp 圆（半径 = size/3）。
-    先用 SS=4 倍超采样绘制，再 LANCZOS 缩小，保证所有密度下边缘锐利无锯齿。
+    猫占画布 62%，确保耳尖/项圈/铃铛全部在 72dp 可见区内，圆形/水滴/方形 mask 都不裁切。
+    用 SS=5 倍超采样再 LANCZOS 缩小，所有密度下边缘锐利无锯齿。
     """
-    # 安全区系数：猫占画布 70%，确保耳尖/项圈/铃铛/光晕全在 72dp 圆内
-    inner = int(size * 0.70)
-    # 超采样绘制
+    inner = int(size * 0.62)
     big = inner * SS
     cat = draw_cat(big)
     cat = cat.resize((inner, inner), Image.LANCZOS)
-    # 居中放到 size x size 透明画布
     fg = Image.new("RGBA", (size, size), HOLE)
     offset = (size - inner) // 2
     fg.alpha_composite(cat, (offset, offset))
@@ -1602,15 +1600,22 @@ def _patch_manifest_banner(manifest_path, banner_ref, TOOLS_NS, ANDROID_URI):
             application.set(_ANDROID_NS + "banner", banner_ref)
             changed = True
             print(f"[OK] {os.path.relpath(manifest_path, REPO_ROOT)}: android:banner {cur or '未设置'} -> {banner_ref}")
-        replace_attr = application.get(TOOLS_REPLACE_KEY) or ""
-        needed = ["android:banner", "android:icon", "android:roundIcon", "android:label"]
-        have = set(x.strip() for x in replace_attr.split(","))
-        miss = [x for x in needed if x not in have]
-        if miss:
-            new_val = ",".join([x for x in (replace_attr.split(",") if replace_attr else []) if x.strip()] + miss)
-            application.set(TOOLS_REPLACE_KEY, new_val)
-            changed = True
-            print(f"[OK] {os.path.relpath(manifest_path, REPO_ROOT)}: tools:replace += {','.join(miss)}")
+        # tools:replace 只能列出本 manifest <application> 实际赋值的属性，
+        # 否则 AGP 报 "tools:replace specified ... but no new value specified"。
+        # 检查哪些 android:* 属性实际存在，只把它们加入 tools:replace。
+        present = []
+        for attr in ("banner", "icon", "roundIcon", "label"):
+            if application.get(_ANDROID_NS + attr) is not None:
+                present.append(f"android:{attr}")
+        if present:
+            replace_attr = application.get(TOOLS_REPLACE_KEY) or ""
+            have = set(x.strip() for x in replace_attr.split(","))
+            miss = [x for x in present if x not in have]
+            if miss:
+                new_val = ",".join([x for x in (replace_attr.split(",") if replace_attr else []) if x.strip()] + miss)
+                application.set(TOOLS_REPLACE_KEY, new_val)
+                changed = True
+                print(f"[OK] {os.path.relpath(manifest_path, REPO_ROOT)}: tools:replace = {new_val}")
     if changed:
         tree.write(manifest_path, encoding="utf-8", xml_declaration=True)
     return changed
