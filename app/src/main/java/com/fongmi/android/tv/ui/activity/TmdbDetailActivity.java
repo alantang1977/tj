@@ -92,6 +92,7 @@ import com.fongmi.android.tv.bean.TmdbSeasonProgress;
 import com.fongmi.android.tv.bean.TmdbSeasonScope;
 import com.fongmi.android.tv.bean.TmdbSeasonSegment;
 import com.fongmi.android.tv.bean.TmdbPerson;
+import com.fongmi.android.tv.bean.TmdbSourcePayload;
 import com.fongmi.android.tv.bean.UserAdRule;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityTmdbDetailBinding;
@@ -173,6 +174,7 @@ import com.fongmi.android.tv.ui.helper.EpisodeSeasonSnapshot;
 import com.fongmi.android.tv.ui.helper.PipExitDecision;
 import com.fongmi.android.tv.ui.helper.PlayerControlFocusHelper;
 import com.fongmi.android.tv.ui.helper.TmdbCinemaTheme;
+import com.fongmi.android.tv.ui.helper.TmdbBundle;
 import com.fongmi.android.tv.ui.helper.TmdbDetailLabels;
 import com.fongmi.android.tv.ui.helper.TmdbEpisodeGridPolicy;
 import com.fongmi.android.tv.ui.helper.TmdbEpisodeInfo;
@@ -182,6 +184,10 @@ import com.fongmi.android.tv.ui.helper.TmdbEpisodeMatcher;
 import com.fongmi.android.tv.ui.helper.TmdbMatchPolicy;
 import com.fongmi.android.tv.ui.helper.TmdbMatcher;
 import com.fongmi.android.tv.ui.helper.TmdbRecommendationRows;
+import com.fongmi.android.tv.ui.helper.TmdbSourceAdapter;
+import com.fongmi.android.tv.ui.helper.TmdbSourceCapabilityPlanner;
+import com.fongmi.android.tv.ui.helper.TmdbSourceMerger;
+import com.fongmi.android.tv.ui.helper.TmdbSourcePayloadParser;
 import com.fongmi.android.tv.ui.helper.TmdbUIAdapter;
 import com.fongmi.android.tv.ui.player.VodPlayerChrome;
 import com.fongmi.android.tv.ui.player.VodPlayerUiController;
@@ -330,6 +336,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private History mHistory;
     private TmdbConfig tmdbConfig;
     private TmdbBundle activeTmdbBundle;
+    private TmdbSourcePayload activeSourcePayload;
+    private TmdbItem activeSourceItem;
     private TmdbItem initialTmdbItem;
     private TmdbItem matchedTmdbItem;
     private JsonObject matchedTmdbDetail;
@@ -731,6 +739,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         pendingInlineResult = null;
         currentInlineResult = null;
         activeTmdbBundle = null;
+        activeSourcePayload = null;
+        activeSourceItem = null;
         useParse = false;
         detailTmdbPhotos.clear();
         detailTmdbPosters.clear();
@@ -2322,11 +2332,6 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         detailTasks.submit(() -> {
             if (generation != loadGeneration || Thread.currentThread().isInterrupted()) return;
             boolean tmdbAllowed = isTmdbAllowedForCurrentSite();
-            Future<TmdbLoadResult> tmdbFuture = reusableBundle == null && tmdbConfig.isReady() && tmdbAllowed
-                    ? detailTasks.submitCallable(Task.largeExecutor(), this::loadTmdbResult)
-                    : null;
-            boolean singlePassStandaloneTmdb = shouldLoadInitialStandaloneTmdbDetailInSinglePass(reusableBundle, tmdbFuture);
-            SpiderDebug.log("tmdb-detail-flow", "load tasks mode=%d tmdbAllowed=%s singlePass=%s reusable=%s", mode, tmdbAllowed, singlePassStandaloneTmdb, reusableBundle != null);
             Vod loadedVod = null;
             String error = null;
             long sourceStart = System.currentTimeMillis();
@@ -2337,7 +2342,6 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                 if (com.fongmi.android.tv.api.CatAction.shouldYieldDetail(key, loadStart, result)) {
                     SpiderDebug.log("tmdb-detail-flow", "yield to cat webview key=%s id=%s", key, id);
                     runOnAliveUi(this::finish);
-                    if (tmdbFuture != null) tmdbFuture.cancel(true);
                     return;
                 }
                 if (result != null && !result.getList().isEmpty()) {
@@ -2352,15 +2356,60 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             SpiderDebug.log("tmdb-detail-flow", "source detail cost=%dms mode=%d key=%s id=%s hit=%s error=%s", System.currentTimeMillis() - sourceStart, mode, key, id, loadedVod != null, TextUtils.isEmpty(error) ? "" : error);
 
             if (generation != loadGeneration || Thread.currentThread().isInterrupted()) {
-                if (tmdbFuture != null) tmdbFuture.cancel(true);
                 return;
             }
             Vod finalVod = loadedVod;
             String finalError = error;
-            if (!singlePassStandaloneTmdb || finalVod == null) {
+
+            TmdbSourcePayload sourcePayload = finalVod == null ? null : TmdbSourcePayloadParser.parse(finalVod.getTmdb());
+            TmdbBundle sourceBundle = sourcePayload == null ? null : TmdbSourceAdapter.toBundle(sourcePayload, finalVod, tmdbConfig);
+            if (sourceBundle != null) {
+                if (reusableBundle != null) sourceBundle = TmdbSourceMerger.merge(sourceBundle, sourcePayload, reusableBundle, null).bundle();
+                TmdbBundle initialBundle = sourceBundle;
+                runOnAliveUi(() -> {
+                    if (generation != loadGeneration) return;
+                    activeSourcePayload = sourcePayload;
+                    activeSourceItem = initialBundle.item();
+                    applyLoaded(finalVod, initialBundle, new ArrayList<>(), finalError, false);
+                });
+                if (!tmdbAllowed || !tmdbConfig.isReady()) return;
+                TmdbSourceCapabilityPlanner.Plan plan = TmdbSourceCapabilityPlanner.plan(initialBundle, sourcePayload, TmdbSourceCapabilityPlanner.UiState.initialScreen());
+                SpiderDebug.log("tmdb-detail-flow", "source payload plan required=%s missing=%s total=%dms", plan.required(), plan.missing(), System.currentTimeMillis() - loadStart);
+                if (!plan.hasInitialNetworkGaps()) return;
+                try {
+                    long sourceFillStart = System.currentTimeMillis();
+                    JsonObject detail = tmdbService.detailForSource(initialBundle.item(), sourcePayload.getSeasonNumber(), tmdbConfig, plan.missing());
+                    TmdbBundle networkBundle = TmdbSourceAdapter.fromNetwork(initialBundle.item(), detail, tmdbConfig);
+                    TmdbBundle mergedBundle = TmdbSourceMerger.fillOnly(initialBundle, sourcePayload, networkBundle);
+                    SpiderDebug.log("tmdb-detail-flow", "source payload network fill cost=%dms groups=%s total=%dms", System.currentTimeMillis() - sourceFillStart, plan.missing(), System.currentTimeMillis() - loadStart);
+                    if (generation != loadGeneration || Thread.currentThread().isInterrupted()) return;
+                    runOnAliveUi(() -> {
+                        if (generation != loadGeneration || vod == null || !isSameTmdbItem(mergedBundle.item(), matchedTmdbItem)) return;
+                        applyTmdbResultNow(new TmdbLoadResult(mergedBundle, List.of()));
+                    });
+                } catch (Throwable ignored) {
+                    SpiderDebug.log("tmdb-detail-flow", "source payload network fill failed mode=%d total=%dms", mode, System.currentTimeMillis() - loadStart);
+                }
+                return;
+            }
+
+            if (reusableBundle != null) {
                 runOnAliveUi(() -> {
                     if (generation != loadGeneration) return;
                     applyLoaded(finalVod, reusableBundle, new ArrayList<>(), finalError, false);
+                });
+                return;
+            }
+
+            Future<TmdbLoadResult> tmdbFuture = tmdbConfig.isReady() && tmdbAllowed
+                    ? detailTasks.submitCallable(Task.largeExecutor(), this::loadTmdbResult)
+                    : null;
+            boolean singlePassStandaloneTmdb = shouldLoadInitialStandaloneTmdbDetailInSinglePass(reusableBundle, tmdbFuture);
+            SpiderDebug.log("tmdb-detail-flow", "load tasks mode=%d tmdbAllowed=%s singlePass=%s reusable=%s", mode, tmdbAllowed, singlePassStandaloneTmdb, reusableBundle != null);
+            if (!singlePassStandaloneTmdb || finalVod == null) {
+                runOnAliveUi(() -> {
+                    if (generation != loadGeneration) return;
+                    applyLoaded(finalVod, null, new ArrayList<>(), finalError, false);
                 });
             }
             if (finalVod == null || tmdbFuture == null) {
@@ -2556,6 +2605,23 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         return first.getTmdbId() == second.getTmdbId() && TextUtils.equals(first.getMediaType(), second.getMediaType());
     }
 
+    private boolean hasCompleteSourceSeason(int seasonNumber) {
+        return activeSourcePayload != null && activeSourcePayload.hasCapability(TmdbSourceCapabilityPlanner.season(seasonNumber));
+    }
+
+    private boolean hasCompleteSourceEpisode(int seasonNumber, int episodeNumber) {
+        return activeSourcePayload != null && activeSourcePayload.hasCapability(TmdbSourceCapabilityPlanner.episode(seasonNumber, episodeNumber));
+    }
+
+    private boolean hasCompleteSourceVideos(@Nullable TmdbItem item, int seasonNumber, int episodeNumber) {
+        if (activeSourcePayload == null || item == null) return false;
+        if (item.isMovie()) return activeSourcePayload.hasCapability(TmdbSourceCapabilityPlanner.VIDEOS);
+        if (!item.isTv() || !activeSourcePayload.hasCapability(TmdbSourceCapabilityPlanner.VIDEOS)) return false;
+        if (seasonNumber < 0) return true;
+        if (!activeSourcePayload.hasCapability(TmdbSourceCapabilityPlanner.seasonVideos(seasonNumber))) return false;
+        return episodeNumber <= 0 || activeSourcePayload.hasCapability(TmdbSourceCapabilityPlanner.episodeVideos(seasonNumber, episodeNumber));
+    }
+
     private boolean isInlinePlaybackRequestCurrent(int generation, String key, String flag, String episodeUrl) {
         return generation == inlinePlaybackGeneration
                 && TextUtils.equals(key, getKeyText())
@@ -2736,24 +2802,38 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             List<TmdbItem> personalTmdb = new ArrayList<>();
             List<TmdbItem> personalDouban = new ArrayList<>();
             PersonalRecommendationService recommendationService = new PersonalRecommendationService(tmdbService, tmdbConfig);
-            try {
-                cast = tmdbService.cast(bundle.detail(), tmdbConfig);
-            } catch (Throwable ignored) {
+            if (bundle.cast().isEmpty()) {
+                try {
+                    cast = tmdbService.cast(bundle.detail(), tmdbConfig);
+                } catch (Throwable ignored) {
+                }
+            } else {
+                cast = new ArrayList<>(bundle.cast());
             }
-            try {
-                creators = tmdbService.creators(bundle.detail(), tmdbConfig);
-            } catch (Throwable ignored) {
+            if (bundle.creators().isEmpty()) {
+                try {
+                    creators = tmdbService.creators(bundle.detail(), tmdbConfig);
+                } catch (Throwable ignored) {
+                }
+            } else {
+                creators = new ArrayList<>(bundle.creators());
             }
             try {
                 backdrops = tmdbService.backdrops(bundle.detail(), tmdbConfig);
                 posters = tmdbService.posters(bundle.detail(), tmdbConfig);
-                backgroundSlides = tmdbService.photos(bundle.detail(), tmdbConfig, preferLandscapeBackground());
+                backgroundSlides = bundle.photos().isEmpty()
+                        ? tmdbService.photos(bundle.detail(), tmdbConfig, preferLandscapeBackground())
+                        : new ArrayList<>(bundle.photos());
             } catch (Throwable ignored) {
             }
             try {
-                List<TmdbItem> recommendations = tmdbService.recommendations(bundle.detail(), tmdbConfig);
-                List<TmdbItem> similar = tmdbService.similar(bundle.detail(), tmdbConfig);
-                related = TmdbRecommendationRows.rankedRelated(bundle.detail(), recommendations, similar);
+                if (bundle.related().isEmpty()) {
+                    List<TmdbItem> recommendations = tmdbService.recommendations(bundle.detail(), tmdbConfig);
+                    List<TmdbItem> similar = tmdbService.similar(bundle.detail(), tmdbConfig);
+                    related = TmdbRecommendationRows.rankedRelated(bundle.detail(), recommendations, similar);
+                } else {
+                    related = new ArrayList<>(bundle.related());
+                }
             } catch (Throwable ignored) {
             }
             try {
@@ -2879,6 +2959,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private void applyTmdbBundle(TmdbBundle bundle) {
+        if (bundle == null || !isSameTmdbItem(bundle.item(), activeSourceItem)) {
+            activeSourcePayload = null;
+            activeSourceItem = null;
+        }
         activeTmdbBundle = bundle;
         matchedTmdbItem = bundle == null ? null : bundle.item();
         matchedTmdbDetail = bundle == null ? null : bundle.detail();
@@ -5556,6 +5640,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void fetchSeasonIfNeeded(int seasonNumber, boolean refresh) {
         if (seasonNumber < 0 || (!refresh && tmdbSeasonEpisodes.containsKey(seasonNumber)) || loadingSeasons.contains(seasonNumber) || matchedTmdbItem == null || !"tv".equalsIgnoreCase(matchedTmdbItem.getMediaType()) || !canMatchTmdb()) return;
+        if (!refresh && hasCompleteSourceSeason(seasonNumber)) return;
         int generation = loadGeneration;
         TmdbItem item = matchedTmdbItem;
         JsonObject detail = matchedTmdbDetail;
@@ -5598,7 +5683,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private void refreshFirstSeasonIfStaleSplit(List<Episode> sourceEpisodes) {
         if (sourceEpisodes == null || sourceEpisodes.isEmpty() || hasExplicitSeasonNumbers(sourceEpisodes)) return;
         int firstSeason = firstSeasonNumber(matchedTmdbDetail);
-        if (firstSeason < 0 || refreshedSingleSeasonProbes.contains(firstSeason) || loadingSeasons.contains(firstSeason)) return;
+        if (firstSeason < 0 || refreshedSingleSeasonProbes.contains(firstSeason) || loadingSeasons.contains(firstSeason) || hasCompleteSourceSeason(firstSeason)) return;
         int expectedCount = Math.max(0, seasonEpisodeCounts.getOrDefault(firstSeason, 0));
         List<TmdbEpisode> cachedEpisodes = tmdbSeasonEpisodes.get(firstSeason);
         int cachedCount = cachedEpisodes == null ? 0 : cachedEpisodes.size();
@@ -5889,16 +5974,20 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         int generation = loadGeneration;
         int videoGeneration = ++relatedVideoGeneration;
         TmdbItem item = matchedTmdbItem;
+        JsonObject sourceDetail = matchedTmdbDetail;
         final int requestSeasonNumber = seasonNumber;
         final int requestEpisodeNumber = episodeNumber;
         relatedVideoContextKey = contextKey;
         relatedVideoLoading = true;
         relatedVideoItems.clear();
         bindTmdbSection();
+        boolean sourceComplete = hasCompleteSourceVideos(item, requestSeasonNumber, requestEpisodeNumber);
         detailTasks.submit(() -> {
             List<TmdbVideo> loaded = new ArrayList<>();
             try {
-                loaded = tmdbService.relatedVideos(item, requestSeasonNumber, requestEpisodeNumber, tmdbConfig);
+                loaded = sourceComplete
+                        ? TmdbSourceAdapter.videos(sourceDetail, item.getMediaType(), requestSeasonNumber, requestEpisodeNumber, tmdbConfig.getLanguage())
+                        : tmdbService.relatedVideos(item, requestSeasonNumber, requestEpisodeNumber, tmdbConfig);
             } catch (Throwable e) {
                 SpiderDebug.log("tmdb-video", "standalone related failed media=%s id=%d season=%d episode=%d error=%s", item.getMediaType(), item.getTmdbId(), requestSeasonNumber, requestEpisodeNumber, e.getMessage());
             }
@@ -6189,6 +6278,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             return;
         }
         if (matchedTmdbItem == null || !"tv".equalsIgnoreCase(matchedTmdbItem.getMediaType()) || detailSeasonNumber < 0 || detailEpisodeNumber <= 0 || !canMatchTmdb()) {
+            com.fongmi.android.tv.ui.dialog.EpisodeDetailDialog.show(this, episode, getSite(), null, null, dismissListener);
+            return;
+        }
+        if (hasCompleteSourceEpisode(detailSeasonNumber, detailEpisodeNumber)) {
             com.fongmi.android.tv.ui.dialog.EpisodeDetailDialog.show(this, episode, getSite(), null, null, dismissListener);
             return;
         }
@@ -10655,8 +10748,25 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     @Override
     protected void onResume() {
         super.onResume();
+        refreshSelectionAfterExternalPlayback();
         if (vod != null && binding.loading.getVisibility() != View.VISIBLE) revealDefaultPlaybackLoadingPage();
         scheduleBackdropSlide(BACKDROP_SLIDE_DELAY_MS);
+    }
+
+    private void refreshSelectionAfterExternalPlayback() {
+        if (vod == null || vod.getFlags() == null || vod.getFlags().isEmpty()) return;
+        try {
+            history = History.findPlayback(getHistoryKey(), List.of(vod.getName(), getNameText()),
+                    vod.getFlags(), null, sourceTitleSeasonNumber());
+            if (history == null) return;
+            selectedFlag = TmdbUIAdapter.selectPlaybackFlag(vod.getFlags(),
+                    history.getSourceBindingKey(), history.getEpisodeUrl(), history.getVodFlag());
+            if (selectedFlag == null) return;
+            selectedEpisode = findEpisodeByUrl(history.getEpisodeUrl(), selectedFlag.getEpisodes());
+            renderFlagSelection();
+            renderEpisodes();
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
@@ -12744,9 +12854,6 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                 Objects.toString(getIntent().getStringExtra("tmdb_poster"), ""),
                 Objects.toString(getIntent().getStringExtra("tmdb_backdrop"), ""),
                 Objects.toString(getIntent().getStringExtra("tmdb_credit"), ""));
-    }
-
-    private record TmdbBundle(TmdbItem item, JsonObject detail, List<TmdbPerson> cast, List<TmdbPerson> creators, List<String> photos, List<TmdbItem> related, List<Integer> seasons, Map<Integer, Integer> seasonCounts, Map<Integer, List<TmdbEpisode>> seasonEpisodes, Map<Integer, List<TmdbPerson>> seasonCast, Map<Integer, List<String>> seasonPhotos) {
     }
 
     private record TmdbLoadResult(TmdbBundle bundle, List<TmdbItem> searchItems) {

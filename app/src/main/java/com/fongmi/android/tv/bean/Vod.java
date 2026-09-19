@@ -70,6 +70,8 @@ public class Vod implements Parcelable, Diffable<Vod> {
     private String vodTag;
     @SerializedName("action")
     private String action;
+    @SerializedName("tmdb")
+    private TmdbSourcePayload tmdb;
     @SerializedName("cate")
     private Cate cate;
     @SerializedName("style")
@@ -103,6 +105,7 @@ public class Vod implements Parcelable, Diffable<Vod> {
         this.vodPlayUrl = in.readString();
         this.vodTag = in.readString();
         this.action = in.readString();
+        this.tmdb = in.readParcelable(TmdbSourcePayload.class.getClassLoader());
         this.land = (Integer) in.readValue(Integer.class.getClassLoader());
         this.circle = (Integer) in.readValue(Integer.class.getClassLoader());
         this.ratio = (Float) in.readValue(Float.class.getClassLoader());
@@ -228,6 +231,14 @@ public class Vod implements Parcelable, Diffable<Vod> {
         if (!TextUtils.isEmpty(action)) return action;
         if ("action".equals(getTag()) && !TextUtils.isEmpty(getId()) && getId().trim().startsWith("{")) return getId();
         return "";
+    }
+
+    public TmdbSourcePayload getTmdb() {
+        return tmdb;
+    }
+
+    public void setTmdb(TmdbSourcePayload tmdb) {
+        this.tmdb = tmdb;
     }
 
     public Cate getCate() {
@@ -373,6 +384,7 @@ public class Vod implements Parcelable, Diffable<Vod> {
         dest.writeString(this.vodPlayUrl);
         dest.writeString(this.vodTag);
         dest.writeString(this.action);
+        dest.writeParcelable(this.tmdb, flags);
         dest.writeValue(this.land);
         dest.writeValue(this.circle);
         dest.writeValue(this.ratio);
@@ -389,7 +401,7 @@ public class Vod implements Parcelable, Diffable<Vod> {
 
     @Override
     public boolean isSameContent(Vod other) {
-        return getName().equals(other.getName()) && getPic().equals(other.getPic()) && getRemarks().equals(other.getRemarks()) && Objects.equals(getSite(), other.getSite());
+        return getName().equals(other.getName()) && getPic().equals(other.getPic()) && getRemarks().equals(other.getRemarks()) && Objects.equals(getTmdb(), other.getTmdb()) && Objects.equals(getSite(), other.getSite());
     }
 
     public static final Creator<Vod> CREATOR = new Creator<>() {

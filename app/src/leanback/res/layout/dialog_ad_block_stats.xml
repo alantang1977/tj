@@ -5,34 +5,40 @@
     android:layout_height="match_parent"
     android:background="@drawable/shape_shell_proxy_dialog"
     android:orientation="vertical"
-    android:padding="28dp">
+    android:padding="24dp">
 
     <com.google.android.material.textview.MaterialTextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/ad_block_stats"
         android:textColor="@color/dialog_outlined_button_text"
-        android:textSize="22sp"
+        android:textSize="24sp"
         android:textStyle="bold" />
 
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/statsTabs"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/shape_ad_stats_tabs"
+        android:minHeight="52dp"
         android:overScrollMode="never"
         app:tabGravity="fill"
-        app:tabIndicatorFullWidth="false"
+        app:tabIndicatorColor="#1A73E8"
+        app:tabIndicatorFullWidth="true"
+        app:tabIndicatorHeight="3dp"
         app:tabMode="fixed"
         app:tabRippleColor="@android:color/transparent"
+        app:tabSelectedTextColor="#1A73E8"
         app:tabTextAppearance="@style/TextAppearance.MaterialComponents.Button"
-        app:tabTextColor="@color/dialog_outlined_button_text" />
+        app:tabTextColor="#5F6368" />
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="12dp"
-        android:layout_weight="1">
+        android:layout_marginTop="16dp"
+        android:layout_weight="1"
+        android:background="@drawable/shape_ad_stats_content">
 
         <androidx.core.widget.NestedScrollView
             android:id="@+id/overviewPage"

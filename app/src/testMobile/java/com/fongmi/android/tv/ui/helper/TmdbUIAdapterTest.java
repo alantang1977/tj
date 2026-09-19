@@ -837,10 +837,10 @@ public class TmdbUIAdapterTest {
         String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
         int loadContent = source.indexOf("private void loadContent(@Nullable TmdbBundle reusableBundle)");
         int loadStart = source.indexOf("load start mode=%d", loadContent);
-        int singlePass = source.indexOf("shouldLoadInitialStandaloneTmdbDetailInSinglePass", loadStart);
-        int taskLog = source.indexOf("load tasks mode=%d", singlePass);
-        int sourceStart = source.indexOf("long sourceStart = System.currentTimeMillis();", taskLog);
+        int sourceStart = source.indexOf("long sourceStart = System.currentTimeMillis();", loadStart);
         int sourceLog = source.indexOf("source detail cost=%dms", sourceStart);
+        int singlePass = source.indexOf("shouldLoadInitialStandaloneTmdbDetailInSinglePass", sourceLog);
+        int taskLog = source.indexOf("load tasks mode=%d", singlePass);
         int waitStart = source.indexOf("long tmdbWaitStart = System.currentTimeMillis();", sourceLog);
         int waitLog = source.indexOf("tmdb wait cost=%dms", waitStart);
         int singlePassApply = source.indexOf("if (singlePassStandaloneTmdb)", waitLog);
@@ -852,9 +852,9 @@ public class TmdbUIAdapterTest {
         int bundleMethod = source.indexOf("private TmdbBundle loadTmdbBundle", applyTmdbLog);
         int bundleLog = source.indexOf("tmdb bundle cost=%dms", bundleMethod);
 
-        assertTrue(sourcePath + " is missing standalone detail load profiling", loadContent >= 0 && loadStart > loadContent && taskLog > singlePass);
+        assertTrue(sourcePath + " is missing standalone detail load profiling", loadContent >= 0 && loadStart > loadContent && sourceStart > loadStart && sourceLog > sourceStart && singlePass > sourceLog && taskLog > singlePass);
         assertTrue("standalone detail load should measure source detail and TMDB wait separately",
-                sourceStart > taskLog && sourceLog > sourceStart && waitStart > sourceLog && waitLog > waitStart);
+                sourceStart > loadStart && sourceLog > sourceStart && singlePass > sourceLog && taskLog > singlePass && waitStart > taskLog && waitLog > waitStart);
         assertTrue("standalone TMDB modes should still apply source detail and TMDB bundle together in the single-pass branch",
                 singlePassApply > waitLog && applyLoaded > singlePassApply);
         assertTrue("detail page UI binding and TMDB bundle loading must stay observable for emulator verification",

@@ -14,6 +14,22 @@ import static org.junit.Assert.assertTrue;
 public class TmdbDetailActivityLayoutTest {
 
     @Test
+    public void returningFromExternalPlaybackRefreshesTheSelectedEpisodeFromHistory() throws Exception {
+        String source = readJava("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java");
+        String onResume = javaBlockAt(source, "protected void onResume()");
+        String refresh = javaBlockAt(source, "private void refreshSelectionAfterExternalPlayback()");
+
+        assertTrue("onResume must refresh the detail selection after an external VideoActivity returns",
+                onResume.contains("refreshSelectionAfterExternalPlayback();"));
+        assertTrue("external playback refresh must reload history and redraw the episode selection",
+                refresh.contains("history = History.findPlayback(")
+                        && refresh.contains("selectedFlag = TmdbUIAdapter.selectPlaybackFlag(")
+                        && refresh.contains("selectedEpisode = findEpisodeByUrl(history.getEpisodeUrl(), selectedFlag.getEpisodes());")
+                        && refresh.contains("renderFlagSelection();")
+                        && refresh.contains("renderEpisodes();"));
+    }
+
+    @Test
     public void defaultPosterRailLeavesRoomForTheFullRoundedPosterCard() throws Exception {
         String source = readJava("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java");
         String defaultTemplate = javaBlockAt(source, "private void applyDefaultDetailTemplate()");

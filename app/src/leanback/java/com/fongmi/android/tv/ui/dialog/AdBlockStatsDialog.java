@@ -62,6 +62,7 @@ public class AdBlockStatsDialog {
         loadStats();
         dialog.show();
         configureWindow();
+        configureTabFocus();
     }
 
     private void configureWindow() {
@@ -99,6 +100,30 @@ public class AdBlockStatsDialog {
             });
         }
         showPage(binding.statsTabs.getSelectedTabPosition());
+    }
+
+    private void configureTabFocus() {
+        if (binding.statsTabs.getChildCount() == 0) return;
+        View strip = binding.statsTabs.getChildAt(0);
+        if (!(strip instanceof ViewGroup tabStrip)) return;
+        for (int i = 0; i < tabStrip.getChildCount(); i++) {
+            View tabView = tabStrip.getChildAt(i);
+            tabView.setFocusable(true);
+            tabView.setFocusableInTouchMode(true);
+            tabView.setBackgroundResource(R.drawable.selector_mpv_tab_focus);
+            tabView.setOnFocusChangeListener((view, hasFocus) -> {
+                if (!hasFocus) return;
+                int position = tabStrip.indexOfChild(view);
+                com.google.android.material.tabs.TabLayout.Tab tab = binding.statsTabs.getTabAt(position);
+                if (tab != null) tab.select();
+            });
+        }
+        int position = binding.statsTabs.getSelectedTabPosition();
+        if (position < 0 || position >= tabStrip.getChildCount()) position = 0;
+        if (tabStrip.getChildCount() > 0) {
+            View selectedTab = tabStrip.getChildAt(position);
+            selectedTab.post(selectedTab::requestFocus);
+        }
     }
 
     private void showPage(int position) {
@@ -245,6 +270,16 @@ public class AdBlockStatsDialog {
         }
     }
 
+    private static void restoreItemFocus(RecyclerView recycler, int requestedPosition, int itemCount) {
+        if (recycler == null || itemCount <= 0) return;
+        int target = Math.min(Math.max(0, requestedPosition), itemCount - 1);
+        recycler.scrollToPosition(target);
+        recycler.post(() -> {
+            RecyclerView.ViewHolder targetHolder = recycler.findViewHolderForAdapterPosition(target);
+            if (targetHolder != null) targetHolder.itemView.requestFocus();
+        });
+    }
+
     private enum GroupType { SOURCE, PIPELINE }
 
     private static class GroupedLogAdapter extends RecyclerView.Adapter<GroupedLogAdapter.ViewHolder> {
@@ -289,9 +324,12 @@ public class AdBlockStatsDialog {
                 holder.binding.source.setVisibility(View.GONE);
                 holder.binding.count.setText(String.valueOf(group.getCount()));
                 holder.itemView.setOnClickListener(view -> {
+                    int focusedPosition = holder.getBindingAdapterPosition();
+                    RecyclerView recycler = (RecyclerView) view.getParent();
                     if (!expanded.add(group.getSiteKey())) expanded.remove(group.getSiteKey());
                     rebuild();
                     notifyDataSetChanged();
+                    restoreItemFocus(recycler, focusedPosition, getItemCount());
                 });
             } else {
                 bindLog(holder, (AdBlockLog) visible);
@@ -303,7 +341,7 @@ public class AdBlockStatsDialog {
             holder.binding.source.setText(log.getSourceName() + " · " + log.getPipelineName() + " · " + log.getRuleId());
             holder.binding.source.setVisibility(View.VISIBLE);
             holder.binding.count.setText(String.format(Locale.getDefault(), "%.1fs", log.getSegmentDurationSeconds()));
-            holder.itemView.setOnClickListener(null);
+            holder.itemView.setOnClickListener(view -> view.requestFocus());
         }
 
         @Override
@@ -360,9 +398,12 @@ public class AdBlockStatsDialog {
                 holder.binding.source.setVisibility(View.VISIBLE);
                 holder.binding.count.setText(String.valueOf(group.getHitCount()));
                 holder.itemView.setOnClickListener(view -> {
+                    int focusedPosition = holder.getBindingAdapterPosition();
+                    RecyclerView recycler = (RecyclerView) view.getParent();
                     if (!expanded.add(group.getRuleId())) expanded.remove(group.getRuleId());
                     rebuild();
                     notifyDataSetChanged();
+                    restoreItemFocus(recycler, focusedPosition, getItemCount());
                 });
             } else {
                 AdBlockLog log = (AdBlockLog) visible;
@@ -370,7 +411,7 @@ public class AdBlockStatsDialog {
                 holder.binding.source.setText(log.getSourceName() + " · " + log.getPipelineName());
                 holder.binding.source.setVisibility(View.VISIBLE);
                 holder.binding.count.setText(String.format(Locale.getDefault(), "%.1fs", log.getSegmentDurationSeconds()));
-                holder.itemView.setOnClickListener(null);
+                holder.itemView.setOnClickListener(view -> view.requestFocus());
             }
         }
 
@@ -405,6 +446,9 @@ public class AdBlockStatsDialog {
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+            holder.itemView.setFocusable(true);
+            holder.itemView.setFocusableInTouchMode(true);
+            holder.itemView.setOnClickListener(view -> view.requestFocus());
             AdBlockLog item = items.get(position);
             holder.binding.name.setText(item.getAdDomain());
             holder.binding.source.setText(item.getSourceName() + " · " + item.getPipelineName() + " · " + item.getRuleId());

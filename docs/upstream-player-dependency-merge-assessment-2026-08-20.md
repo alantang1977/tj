@@ -8,7 +8,7 @@
 - 当前分支：`dev2`。
 - 当前修复基线：`154e003520a751a19187057f103e1496c5197457`（2026-09-13）。
 - 历史完整评估：仓库历史提交 `3b346c85d0a3fb8e6078e4dbe4511f3aa15795a0` 中的同名文件；主线提交 `784b90420d646eb6c7ddcc63ad622a92c65b02b4` 删除了根目录本地任务文档，因此本分支保留稳定任务索引与当前实施需要的记录。
-- 第三轮源码合并：目标 `fish2018/webhtv:main@fc62397591701b2232ae7de4f50a032bd7742064`，合并基 `2b36396c0d76b312154d560c0c94e55909b951a2`，共 26 处冲突；冲突已按本地功能契约与上游功能并集解决，详见 [C4-main-upstream-merge.md](C4-main-upstream-merge.md)。
+- 源码合并：第三轮目标为 `fish2018/webhtv:main@fc62397591701b2232ae7de4f50a032bd7742064`；2026-09-19 第五轮目标为 `2623cb812ea842b676bc7d8db699c1a7e70b8e1e`，唯一文档冲突已按本地索引结构解决，详见 [C4-main-upstream-merge.md](C4-main-upstream-merge.md)。
 - 下一步：完成定向验证后由当前 guard 原子提交本轮已验证改动并创建本地恢复 tag，不推送，详见 [E9-3-exo-dv5-vulkan-renderer.md](E9-3-exo-dv5-vulkan-renderer.md) 与 [P9-MPV-BLURAY-MENU.md](P9-MPV-BLURAY-MENU.md)。
 
 ## 稳定任务 ID 与唯一文档索引
@@ -32,6 +32,9 @@
 
 | 任务 ID | 类别 | 功能/能力 | 状态 | 唯一文档 |
 | --- | --- | --- | --- | --- |
+| `E4-LIBASS` | Exo/字幕 | ASS 特效字幕及对齐 MPV 默认行为的主／副字幕 | **上游 HDR/DV 修复已合并到 dev3 并通过修复相关验证**：独立 SDR RGB 字幕层放行 HDR/DV/BT.2020，同时保留 SDR 旧矩阵与 DRM/rotation/tunneling 边界；Mobile ARM64 Debug/测试 APK 构建成功，4 项视频策略、1 项 native 原始 RGB/切换和 1 项 blur/transform 共 6/6 通过，产物哈希一致。既有 `AssPlaybackTest` 因本地 `applicationId=com.silent.android.webhtv` 与硬编码 `com.fongmi.android.tv` 不符而未启动 Activity；该测试和构建配置本轮均未改动，作为独立本地夹具问题保留 | [E4-LIBASS-exo-ass-rendering.md](E4-LIBASS-exo-ass-rendering.md) |
+| `C16` | common / 详情数据协议 | 参考 OmniBox，让 T3/T4 详情直接携带 TMDB 数据，APP 优先采用并仅补齐缺省部分 | **设计完成，待用户评审，仅文档**；不修改运行代码、爬虫 ABI 或依赖，实施待用户批准 | [C16-tmdb-source-detail-contract.md](C16-tmdb-source-detail-contract.md) |
+| `C17` | common / beta 同步复评 | 将 beta 最新播放器与 Leanback 修复合入 dev4，复评全部未推送 C16 改动并完成交付 | **已完成**：合并提交 `5acd3f084155e7016b3798528eb8343f2f076177`；PR [#317](https://github.com/Silent1566/webhtv/pull/317) 目标 `beta` | [C17-beta-sync-review-dev4-20260919.md](C17-beta-sync-review-dev4-20260919.md) |
 | `E-SP8` | Exo 性能/播放行为 | 基于现有短剧源设置的单实例队列连播、下一集预解析与受控预加载 | **代码实施及 beta 合并后复评通过**：`2b22c5240d52a8c2054299326f44fee6743ab26f` / `recovery/E-SP8/20260911201514-2b22c5240d52`；实验默认策略不变，连续切集双端设备验收与正式放量尚未完成；不变更依赖 | [E-SP8-exo-short-drama-queue.md](E-SP8-exo-short-drama-queue.md) |
 
 `C1` 是跨播放器真实输入验收维度，不单独形成代码任务或文档；它写入对应的 E/P 任务文档。`E-SP3` 已在 `fongmi-sync` 完成 App/Media3 合并，保留既有 `E4-J1`/`E6-1`/`E7-1`/`E7-2 + C3` 能力；`E9-3` 与已完成的 `P1` 现已共同进入集成树，后续按既定顺序处理 P2 阶段。

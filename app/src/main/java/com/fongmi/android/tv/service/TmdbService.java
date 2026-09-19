@@ -123,6 +123,14 @@ public class TmdbService {
         return requestJson(url, config, "detail", cacheKey, fallbackKeys, DETAIL_CACHE_TTL, "TMDB 详情返回为空", "TMDB 详情失败: HTTP ", false);
     }
 
+    public JsonObject detailForSource(@NonNull TmdbItem item, int seasonNumber, @NonNull TmdbConfig config, @NonNull Set<String> missing) throws Exception {
+        ensureReady(config);
+        boolean includeRelated = missing.contains("recommendations") || missing.contains("similar");
+        String url = detailUrl(item, config, includeRelated);
+        List<String> fallbackKeys = detailCacheKeys(item, config, includeRelated);
+        return requestJson(url, config, "detail", sourceDetailCacheKey(item, seasonNumber, config, missing), fallbackKeys, DETAIL_CACHE_TTL, "TMDB 详情返回为空", "TMDB 详情失败: HTTP ", false);
+    }
+
     private String detailAppend(@NonNull TmdbItem item, boolean includeRelated) {
         boolean tv = "tv".equalsIgnoreCase(item.getMediaType());
         String append = tv
@@ -795,6 +803,14 @@ public class TmdbService {
 
     String detailCacheKey(@NonNull TmdbItem item, @NonNull TmdbConfig config, boolean includeRelated) {
         return cacheKey("detail", item.getMediaType(), item.getTmdbId(), cacheLanguage(config), includeRelated ? "full" : "core");
+    }
+
+    String sourceDetailCacheKey(@NonNull TmdbItem item, int seasonNumber, @NonNull TmdbConfig config, @NonNull Set<String> missing) {
+        List<String> capabilities = new ArrayList<>();
+        for (String capability : missing) if (!TextUtils.isEmpty(capability)) capabilities.add(capability.trim().toLowerCase(Locale.ROOT));
+        capabilities.sort(String::compareTo);
+        String mask = capabilities.isEmpty() ? "none" : String.join(",", capabilities);
+        return cacheKey("tmdb-detail", item.getMediaType(), item.getTmdbId(), "season=" + Math.max(0, seasonNumber), "lang=" + cacheLanguage(config), "include=" + mask);
     }
 
     String searchCacheKey(@NonNull String keyword, @NonNull TmdbConfig config) {
