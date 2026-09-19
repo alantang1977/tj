@@ -1982,36 +1982,45 @@ def modify_update_order(config):
                     break
             if gu_end is not None:
                 gu_body = '\n'.join(lines[gu_start:gu_end+1])
-                already_cnb = "getCnbMirrorAsset" in gu_body
-                if already_cnb and not FORCE_MODE:
-                    print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先（逐行扫描定位）")
+                # 幂等判断：只有当 getCnbMirrorAsset 在方法中排在 getChannelAsset 之前
+                # （即 CNB 是第一个被检查的源）才认为是 CNB 优先。
+                # 旧代码 beta 分支里也有 getCnbMirrorAsset，但排在 GitHub 之后，必须替换。
+                pos_cnb = gu_body.find('getCnbMirrorAsset')
+                pos_gh  = gu_body.find('getChannelAsset')
+                already_cnb_first = (pos_cnb >= 0 and (pos_gh < 0 or pos_cnb < pos_gh))
+                if already_cnb_first and not FORCE_MODE:
+                    print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先")
                 else:
                     _before = content
                     indent = lines[gu_start][:len(lines[gu_start]) - len(lines[gu_start].lstrip())]
                     new_method = [
                         f'{indent}private Update getUpdate(String channel) {{',
-                        f'{indent}    Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), SOURCE_CNB, GITHUB_API_HEADERS, null);',
+                        f'{indent}    String manifestName = getManifestName(channel);',
+                        f'{indent}    Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB, GITHUB_API_HEADERS, null);',
                         f'{indent}    if (cnb.hasManifest()) return cnb;',
-                        f'{indent}    Update update = readUpdate(channel, Github.getChannelAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
+                        f'{indent}    Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
                         f'{indent}    if (update.hasManifest()) return update;',
-                        f'{indent}    return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);',
+                        f'{indent}    if (Update.CHANNEL_BETA.equals(channel)) return getGithubBetaUpdate(channel);',
+                        f'{indent}    update = readUpdate(channel, Github.getGithubLatestAsset(manifestName), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
+                        f'{indent}    if (update.hasManifest()) return update;',
+                        f'{indent}    return getGithubStableUpdate(channel);',
                         f'{indent}}}',
                     ]
                     lines = lines[:gu_start] + new_method + lines[gu_end+1:]
                     content = '\n'.join(lines)
                     if content != _before:
-                        # 注入后模式校验：确保新方法体完整落盘
                         _missing = [p for p in
                                     ['private Update getUpdate(String channel)',
-                                     'getCnbMirrorAsset(getManifestName(channel))',
+                                     'Github.getCnbMirrorAsset(manifestName)',
+                                     'Github.getChannelAsset(manifestName)',
+                                     'Github.getGithubLatestAsset(manifestName)',
                                      'getGithubBetaUpdate(channel)',
                                      'getGithubStableUpdate(channel)']
                                     if p not in content]
                         if _missing:
                             raise RuntimeError(
-                                f"[FATAL] {rel_path}: getUpdate() 注入后模式校验失败，缺失：{_missing}。"
-                                f"请检查 Updater.java 上游结构或本脚本 A1 逻辑。")
-                        print(f"[OK] {rel_path}: getUpdate() 改为 CNB raw manifest 优先（GitHub API 兜底）")
+                                f"[FATAL] {rel_path}: getUpdate() 注入后模式校验失败，缺失：{_missing}。")
+                        print(f"[OK] {rel_path}: getUpdate() 改为 CNB 优先 → GitHub update-channel → GitHub API 兜底")
                         changed_any = True
                     else:
                         print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先（--force 下形态不变）")
@@ -2259,12 +2268,13 @@ def modify_update_order(config):
             # 验证：重新读取文件，确认关键代码确实存在
             with open(full_path, "r", encoding="utf-8") as f:
                 verify = f.read()
-            v1 = "getCnbMirrorAsset(getManifestName(channel))" in verify
+            v1 = "getCnbMirrorAsset(manifestName)" in verify
             v2 = "String apkField = update.apk;" in verify
-            if v1 and v2:
-                print(f"[VERIFY] {rel_path}: 写回验证通过（getUpdate CNB 优先 + parseDownloads CNB 直链）")
+            v3 = verify.find("getCnbMirrorAsset") < verify.find("getChannelAsset")
+            if v1 and v2 and v3:
+                print(f"[VERIFY] {rel_path}: 写回验证通过（CNB 优先在 GitHub 之前 + parseDownloads CNB 直链）")
             else:
-                print(f"[ERROR] {rel_path}: 写回验证失败！getCnbMirrorAsset={v1}, apkField={v2} —— 文件可能未正确写入")
+                print(f"[ERROR] {rel_path}: 写回验证失败！cnbMirror={v1}, apkField={v2}, cnbFirst={v3}")
                 changed_any = False
         elif changed_any:
             # 内部状态不一致：标记了修改但内容未变（不应该发生）
@@ -2420,7 +2430,8 @@ def modify_update_order(config):
             _java_sanity_check(g_content, github_rel)
 
         # 写回 + 读盘验证
-        if g_content != g_original:
+        g_changed = (g_content != g_original)
+        if g_changed:
             with open(github_path, "w", encoding="utf-8") as f:
                 f.write(g_content)
             with open(github_path, "r", encoding="utf-8") as f:
@@ -2432,10 +2443,6 @@ def modify_update_order(config):
                 print(f"[VERIFY] {github_rel}: 写回验证通过（CNB_MANIFEST + CNB_RELEASE_DOWNLOAD + getCnbReleaseAsset）")
             else:
                 print(f"[ERROR] {github_rel}: 写回验证失败！CNB_MANIFEST={v1}, CNB_RELEASE_DOWNLOAD={v2}, getCnbReleaseAsset={v3}")
-                changed_any = False
-        elif changed_any:
-            print(f"[WARN] {github_rel}: 内部状态不一致（标记修改但内容未变），请检查")
-            changed_any = False
 
     if changed_any:
         return True
