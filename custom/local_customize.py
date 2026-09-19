@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 ================================================================================
@@ -7,18 +7,35 @@
 在【本地克隆下来的项目根目录】运行：
 
     python3 local_customize.py        （或 python local_customize.py）
+    python3 local_customize.py --force  # 强制模式：跳过幂等判断，全部重写
 
 脚本会直接修改你本地项目文件，自动完成以下全部自定义：
 
-  [1] app 显示名称（英文 / 简体 / 繁体 多语言 strings.xml）
-  [2] app 启动图标（整合 gen_app_icon.py：程序化生成整套 launcher/adaptive/banner/通知/favicon）
-  [3] 开机启动图 startup_logo.png、手机端启动图 mobile_startup.png
-  [4] applicationId 安装包名（注意：namespace 绝对不修改！）
-  [5] 自动补全 buildFeatures { viewBinding true }（解决 databinding 编译报错）
-  [6] versionName 后缀（可选）
-  [7] AndroidManifest.xml 硬编码 android:label
-  [8] CNB 仓库地址（sync-cnb-release.sh + 工作流 yml 中的 CNB_REPO_SLUG/URL）
-  [9] 工作流注入 GRADLE_OPTS 内存参数（解决 R8 OOM: Java heap space）
+  [1] applicationId 安装包名 + 自动补全 buildFeatures { viewBinding true }
+      （注意：namespace 保持上游 com.fongmi.android.tv，绝不修改）
+  [2] app 显示名称（英文 / 简体 / 繁体 多语言 strings.xml + AndroidManifest 硬编码 label）
+  [3] app 启动图标（程序化生成整套，cat 风格为卡通蓝猫头）：
+      - 旧版 launcher：mipmap-mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi（ic_launcher.png + round.webp）
+      - 自适应图标（API26+）：mipmap-anydpi-v26（背景矢量 + 彩色前景 PNG + monochrome 矢量）
+      - TV banner 320x180（leanback drawable + adaptive xml）
+      - Play Store 512x512、App 内 Logo 600px、通知栏图标（纯白扁平）、网页 favicon.ico
+      - 耳朵根部沿头圆圆弧贴合；内白耳为收尖楔子，底边与外耳根同心
+  [4] 开机启动图 startup_logo.png、手机端启动图 mobile_startup.png
+  [5] AndroidManifest 接线：
+      - android:label 若为硬编码则改成 @string
+      - android:banner 强制指向 @drawable/ic_banner（320x180 长方形），
+        banner PNG 同时写入 drawable-xhdpi 与 drawable-nodpi，适配当贝桌面等 TV 启动器
+  [6] 设置页作者链接（URL_GITHUB / URL_CNB）
+  [7] 「检查更新」链接替换（Github.java / GithubProxy.java / 对应单测）：
+      上游 Silent1566 改为你配置的 GitHub 仓库 + CNB 仓库
+  [8] 更新机制改为 CNB 优先：
+      先拉 https://cnb.cool/<slug>/-/git/raw/main/apk/xx.json 版本清单，
+      APK 走 CNB Release 直链下载；CNB 不可用时自动回退 GitHub
+  [9] CNB 发布脚本 sync-cnb-release.sh 中的 CNB_REPO_SLUG / URL
+ [10] Android Release 工作流 yml（CNB 地址 + 执行权限 + GRADLE_OPTS 清理 + OCI 开关）
+ [11] 内存参数固化到 gradle.properties（org.gradle.jvmargs / workers.max / r8.maxWorkers，
+      解决 R8 OOM: Java heap space；并清理 workflow 中残留的 GRADLE_OPTS，杜绝双源冲突）
+ [12] 最终校验：namespace 必须仍为 com.fongmi.android.tv
 
 【重要警告】
   1. namespace 必须保持上游原值 com.fongmi.android.tv，本脚本绝不修改它。
@@ -26,6 +43,12 @@
      改 namespace 会导致上百个 cannot find symbol 编译错误。
   2. 修改完成后，用 git 提交并推送到你的构建仓库（如 tangtv），
      再触发 Android Release 工作流即可打包生成 APK。
+  3. 当贝桌面 v4.x 会强缓存旧图标：装新 APK 后需在当贝「设置-清除桌面缓存」
+     （或卸载旧版 -> 清缓存 -> 重装 -> 重启），否则仍显示旧方形图标。
+
+【配置】
+  配置集中在下方 CONFIG 字典；若项目里存在 custom/config.env，
+  会优先读取 config.env 覆盖 CONFIG（适合多人/多机不改脚本本体）。
 
 【使用前准备】
   把自定义素材放进项目 custom/ 目录（没有就新建）：
@@ -101,6 +124,11 @@ else:
         REPO_ROOT = _SCRIPT_DIR
 
 CUSTOM_DIR = os.path.join(REPO_ROOT, "custom")
+
+# 强制模式：跳过所有幂等判断，强制重写所有可修改文件
+# 用法：python local_customize.py --force
+# 适用场景：上游同步后文件形态变化、怀疑脚本假阳性 SKIP、或需要确保所有修改落地
+FORCE_MODE = False
 
 # ==============================================================================
 # 图标生成模块（整合自 custom/gen_app_icon.py）
@@ -427,12 +455,12 @@ def _mask(size, shape, radius_ratio=0.0):
 
 # ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
 import math as _math
-CAT_BLUE_TOP = (192, 228, 252, 255)
-CAT_BLUE_MID = (116, 168, 240, 255)
-CAT_BLUE_BOT = (58, 104, 196, 255)
-CAT_BLUE_SIDE = (32, 74, 150, 255)
+CAT_BLUE_TOP = (190, 245, 235, 255)
+CAT_BLUE_MID = (100, 205, 195, 255)
+CAT_BLUE_BOT = (40, 150, 145, 255)
+CAT_BLUE_SIDE = (20, 100, 95, 255)
 CAT_PINK = (255, 150, 180, 255)
-CAT_DARK = (35, 50, 85, 255)
+CAT_DARK = (15, 60, 60, 255)
 CAT_NOSE = (247, 122, 152, 255)
 CAT_COLLAR = (7, 193, 96, 255)
 CAT_COLLAR_HL = (120, 230, 190, 255)
@@ -488,35 +516,61 @@ def draw_cat(size):
     halo_in = halo_in.filter(ImageFilter.GaussianBlur(radius=r * 0.18))
     layer.alpha_composite(halo_in)
 
-    # ===== 耳朵（圆角三角）=====
-    def ear_pts(side):
-        if side < 0:
-            outer = (cx - r * 0.96, head_cy - r * 0.45)
-            tip = (cx - r * 1.24, head_cy - r * 1.15)
-            inner = (cx - r * 0.46, head_cy - r * 0.78)
-        else:
-            outer = (cx + r * 0.96, head_cy - r * 0.45)
-            tip = (cx + r * 1.24, head_cy - r * 1.15)
-            inner = (cx + r * 0.46, head_cy - r * 0.78)
-        return outer, tip, inner
+    # ===== 耳朵（圆角三角，耳根沿头圆圆弧贴合）=====
+    # 把耳根两端投影到头圆（半径 r）上，耳底边不再是直线弦，
+    # 而是沿头圆走的短弧；耳尖位置 / 里外分色 / 颜色保持不变。
+    def _round_tip(pts, tip_idx, radius):
+        """只把多边形第 tip_idx 个顶点用二次贝塞尔圆角（其余边保持原样）。"""
+        V = pts[tip_idx]; A = pts[tip_idx - 1]; B = pts[tip_idx + 1]
+        vlen = _math.hypot(V[0] - A[0], V[1] - A[1])
+        alen = _math.hypot(V[0] - B[0], V[1] - B[1])
+        ra = min(radius, vlen * 0.5); rb = min(radius, alen * 0.5)
+        P1 = (V[0] + (A[0] - V[0]) * ra / vlen, V[1] + (A[1] - V[1]) * ra / vlen)
+        P2 = (V[0] + (B[0] - V[0]) * rb / alen, V[1] + (B[1] - V[1]) * rb / alen)
+        out = list(pts[:tip_idx])
+        for s in range(13):
+            t = s / 12
+            x = (1 - t) * (1 - t) * P1[0] + 2 * (1 - t) * t * V[0] + t * t * P2[0]
+            y = (1 - t) * (1 - t) * P1[1] + 2 * (1 - t) * t * V[1] + t * t * P2[1]
+            out.append((x, y))
+        out.extend(pts[tip_idx + 1:])
+        return out
 
-    def inner_pink(side):
+    def ear_geom(side):
         if side < 0:
-            return [(cx - r * 0.84, head_cy - r * 0.55),
-                    (cx - r * 1.08, head_cy - r * 0.98),
-                    (cx - r * 0.56, head_cy - r * 0.74)]
-        return [(cx + r * 0.84, head_cy - r * 0.55),
-                (cx + r * 1.08, head_cy - r * 0.98),
-                (cx + r * 0.56, head_cy - r * 0.74)]
+            tip = (cx - r * 1.24, head_cy - r * 1.15)
+            outer_raw = (cx - r * 0.96, head_cy - r * 0.45)
+            inner_raw = (cx - r * 0.46, head_cy - r * 0.78)
+        else:
+            tip = (cx + r * 1.24, head_cy - r * 1.15)
+            outer_raw = (cx + r * 0.96, head_cy - r * 0.45)
+            inner_raw = (cx + r * 0.46, head_cy - r * 0.78)
+        # 耳根两点投影到头圆上（方位角不变，半径统一为 r）
+        def proj(pt):
+            dx = pt[0] - cx; dy = pt[1] - head_cy
+            dist = _math.hypot(dx, dy)
+            return (cx + dx * r / dist, head_cy + dy * r / dist)
+        outer = proj(outer_raw); inner = proj(inner_raw)
+        a_outer = _math.atan2(outer[1] - head_cy, outer[0] - cx)
+        a_inner = _math.atan2(inner[1] - head_cy, inner[0] - cx)
+        da = a_inner - a_outer
+        while da > _math.pi: da -= 2 * _math.pi
+        while da < -_math.pi: da += 2 * _math.pi
+        n_arc = 24
+        arc_pts = [(cx + r * _math.cos(a_outer + da * (i / n_arc)),
+                    head_cy + r * _math.sin(a_outer + da * (i / n_arc))) for i in range(n_arc + 1)]
+        mid_idx = n_arc // 2
+        return tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da
 
     for side in (-1, 1):
-        outer, tip, inner = ear_pts(side)
-        mid = ((outer[0] + inner[0]) / 2, (outer[1] + inner[1]) / 2)
-        _rounded_poly(d, [tip, inner, mid], ER, CAT_BLUE_MID)
-        _rounded_poly(d, [tip, mid, outer], ER, CAT_BLUE_SIDE)
-        # 耳朵与头交接处深色线
-        d.line([outer[0], outer[1], inner[0], inner[1]],
-               fill=CAT_BLUE_SIDE, width=max(1, int(r * 0.025)))
+        tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da = ear_geom(side)
+        # 外侧半（深青）：tip -> outer -> 沿弧 -> mid -> tip
+        outer_half = _round_tip([tip] + arc_pts[:mid_idx + 1], 0, ER)
+        d.polygon(outer_half, fill=CAT_BLUE_SIDE)
+        # 内侧半（浅青）：tip -> mid -> 沿弧 -> inner -> tip
+        inner_half = _round_tip([tip] + arc_pts[mid_idx:], 0, ER)
+        d.polygon(inner_half, fill=CAT_BLUE_MID)
+        # 耳根即头圆圆弧，不再画直线弦 / 深色缝线
 
     # ===== 球体头：径向渐变（主光左上）=====
     head_mask = Image.new("L", (size, size), 0)
@@ -544,9 +598,20 @@ def draw_cat(size):
             hgd.point((xx, yy), fill=c + (255,))
     layer.paste(hgrad, (0, 0), head_mask)
 
-    # 纯白亮光耳内（渐变：上纯白 -> 下极淡冷白，亮光质感）
+    # 纯白亮光耳内（内嵌小楔子：白尖朝耳尖，底边沿头圆弧、与外耳根对齐）
     for side in (-1, 1):
-        pts = inner_pink(side)
+        tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da = ear_geom(side)
+        r_white_base = r * 0.99            # 白底贴头圆，与外耳根对齐
+        a_ws = a_outer + da * 0.12         # 两侧各内收 12%，白耳整体小一号
+        a_we = a_inner - da * 0.12
+        n_w = 12
+        base_arc = [(cx + r_white_base * _math.cos(a_ws + (a_we - a_ws) * (i / n_w)),
+                     head_cy + r_white_base * _math.sin(a_ws + (a_we - a_ws) * (i / n_w)))
+                    for i in range(n_w + 1)]
+        a_mid = a_ws + (a_we - a_ws) * 0.5
+        r_wtip = r * 1.45                  # 白尖半径，收尖朝耳尖
+        wtip = (cx + r_wtip * _math.cos(a_mid), head_cy + r_wtip * _math.sin(a_mid))
+        pts = _round_tip([wtip] + base_arc, 0, r * 0.06)
         ear_mask = Image.new("L", (size, size), 0)
         ImageDraw.Draw(ear_mask).polygon(pts, fill=255)
         ear_grad = Image.new("RGBA", (size, size), HOLE)
@@ -569,7 +634,7 @@ def draw_cat(size):
     # 底部暗边
     rim = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(rim).arc([hx, hy, hx + 2 * r, hy + 2 * r],
-                             start=20, end=160, fill=(15, 45, 120, 130), width=int(r * 0.10))
+                             start=20, end=160, fill=(10, 60, 70, 130), width=int(r * 0.10))
     rim = rim.filter(ImageFilter.GaussianBlur(radius=r * 0.06))
     layer.alpha_composite(rim)
 
@@ -581,7 +646,7 @@ def draw_cat(size):
     face_sh = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(face_sh).ellipse([face_box[0] + r * 0.015, face_box[1] + r * 0.02,
                                       face_box[2] + r * 0.015, face_box[3] + r * 0.02],
-                                     fill=(0, 20, 80, 40))
+                                     fill=(0, 40, 50, 40))
     face_sh = face_sh.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(face_sh)
     d.ellipse(face_box, fill=(248, 236, 208, 255))
@@ -806,32 +871,72 @@ def draw_cat_silhouette(size):
     head_cy = size * 0.5 + r * 0.08
     hx, hy = cx - r, head_cy - r
     for side in (-1, 1):
+        # 与 draw_cat 一致：耳根投影到头圆、底边沿头圆弧，去掉外侧小凸角
         if side < 0:
-            pts = [(cx - r * 0.96, head_cy - r * 0.45),
-                   (cx - r * 1.24, head_cy - r * 1.15),
-                   (cx - r * 0.46, head_cy - r * 0.78)]
+            tip = (cx - r * 1.24, head_cy - r * 1.15)
+            outer_raw = (cx - r * 0.96, head_cy - r * 0.45)
+            inner_raw = (cx - r * 0.46, head_cy - r * 0.78)
         else:
-            pts = [(cx + r * 0.96, head_cy - r * 0.45),
-                   (cx + r * 1.24, head_cy - r * 1.15),
-                   (cx + r * 0.46, head_cy - r * 0.78)]
-        _rounded_poly(d, pts, r * 0.10, WHITE)
+            tip = (cx + r * 1.24, head_cy - r * 1.15)
+            outer_raw = (cx + r * 0.96, head_cy - r * 0.45)
+            inner_raw = (cx + r * 0.46, head_cy - r * 0.78)
+        def _proj(pt):
+            dx = pt[0] - cx; dy = pt[1] - head_cy
+            dist = _math.hypot(dx, dy)
+            return (cx + dx * r / dist, head_cy + dy * r / dist)
+        outer = _proj(outer_raw); inner = _proj(inner_raw)
+        a_outer = _math.atan2(outer[1] - head_cy, outer[0] - cx)
+        a_inner = _math.atan2(inner[1] - head_cy, inner[0] - cx)
+        da = a_inner - a_outer
+        while da > _math.pi: da -= 2 * _math.pi
+        while da < -_math.pi: da += 2 * _math.pi
+        arc = [(cx + r * _math.cos(a_outer + da * (i / 16)),
+                head_cy + r * _math.sin(a_outer + da * (i / 16))) for i in range(17)]
+        pts = [tip] + arc
+        # 只圆耳尖
+        V = tip; A = arc[-1]; B = arc[0]
+        vlen = _math.hypot(V[0] - A[0], V[1] - A[1]); alen = _math.hypot(V[0] - B[0], V[1] - B[1])
+        rad = r * 0.10
+        ra = min(rad, vlen * 0.5); rb = min(rad, alen * 0.5)
+        P1 = (V[0] + (A[0] - V[0]) * ra / vlen, V[1] + (A[1] - V[1]) * ra / vlen)
+        P2 = (V[0] + (B[0] - V[0]) * rb / alen, V[1] + (B[1] - V[1]) * rb / alen)
+        rounded = []
+        for s in range(13):
+            t = s / 12
+            rounded.append(((1 - t) * (1 - t) * P1[0] + 2 * (1 - t) * t * V[0] + t * t * P2[0],
+                            (1 - t) * (1 - t) * P1[1] + 2 * (1 - t) * t * V[1] + t * t * P2[1]))
+        d.polygon(rounded + arc[1:], fill=WHITE)
     d.ellipse([hx, hy, hx + 2 * r, hy + 2 * r], fill=WHITE)
     return layer
 
 
 def vector_cat(color="#FFFFFF", size_dp=108):
-    """猫头剪影的 VectorDrawable（圆头 + 两耳），用于 adaptive 前景 / monochrome / 通知。"""
+    """猫头剪影的 VectorDrawable（圆头 + 两耳，耳根沿头圆弧），用于 adaptive 前景 / monochrome / 通知。"""
     vp = VIEWPORT
     cx, cy = vp * 0.5, vp * 0.5 + vp * 0.0224
     rr = vp * 0.25
-    # 左耳
-    le = (f"M{_p(cx - rr * 0.96)},{_p(cy - rr * 0.45)}"
-          f"L{_p(cx - rr * 1.24)},{_p(cy - rr * 1.15)}"
-          f"L{_p(cx - rr * 0.46)},{_p(cy - rr * 0.78)}z")
-    # 右耳
-    re_ = (f"M{_p(cx + rr * 0.96)},{_p(cy - rr * 0.45)}"
-           f"L{_p(cx + rr * 1.24)},{_p(cy - rr * 1.15)}"
-           f"L{_p(cx + rr * 0.46)},{_p(cy - rr * 0.78)}z")
+
+    def _ear_path(side):
+        if side < 0:
+            tip = (cx - rr * 1.24, cy - rr * 1.15)
+            outer_raw = (cx - rr * 0.96, cy - rr * 0.45)
+            inner_raw = (cx - rr * 0.46, cy - rr * 0.78)
+        else:
+            tip = (cx + rr * 1.24, cy - rr * 1.15)
+            outer_raw = (cx + rr * 0.96, cy - rr * 0.45)
+            inner_raw = (cx + rr * 0.46, cy - rr * 0.78)
+        def _proj(pt):
+            dx = pt[0] - cx; dy = pt[1] - cy
+            dist = _math.hypot(dx, dy)
+            return (cx + dx * rr / dist, cy + dy * rr / dist)
+        outer = _proj(outer_raw); inner = _proj(inner_raw)
+        # tip -> outer -> 沿头圆弧 -> inner -> 回 tip
+        return (f"M{_p(tip[0])},{_p(tip[1])}"
+                f"L{_p(outer[0])},{_p(outer[1])}"
+                f"A{_p(rr)},{_p(rr)} 0 0,1 {_p(inner[0])},{_p(inner[1])}z")
+
+    le = _ear_path(-1)
+    re_ = _ear_path(1)
     # 头圆
     head = (f"M{_p(cx)},{_p(cy - rr)}"
             f"A{_p(rr)},{_p(rr)} 0 1 1 {_p(cx)},{_p(cy + rr)}"
@@ -1471,6 +1576,75 @@ def modify_android_manifest(config):
     return changed
 
 
+# ---------------------------------------------------------------- 5b. TV banner 接线（当贝桌面长方形）
+def modify_manifest_banner(config):
+    """强制 AndroidManifest 的 android:banner 指向 320x180 长方形 PNG drawable。
+
+    问题：当贝桌面读 android:banner，若指向 @mipmap/ic_banner（正方形 adaptive-icon）
+    或根本没写，就回退成方形图标。这里统一改成 @drawable/ic_banner（320x180 PNG），
+    并把 banner PNG 复制一份到主资源 drawable-nodpi，保证各 flavor 下都能解析。
+    """
+    banner_ref = "@drawable/ic_banner"
+    TOOLS_NS = "http://schemas.android.com/tools"
+    ANDROID_URI = "http://schemas.android.com/apk/res/android"  # 裸 URI（无花括号），供 register_namespace
+    manifest_path = os.path.join(REPO_ROOT, "app", "src", "main", "AndroidManifest.xml")
+    if not os.path.exists(manifest_path):
+        print("[SKIP] AndroidManifest.xml 不存在，跳过 banner 接线")
+        return False
+    changed = False
+    # 必须在 parse 之前注册命名空间，否则写回时 android: 会变成 ns0:
+    ET.register_namespace("android", ANDROID_URI)
+    ET.register_namespace("tools", TOOLS_NS)
+    try:
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+    except ET.ParseError:
+        print("[SKIP] AndroidManifest.xml 解析失败，跳过 banner 接线")
+        return False
+
+    # 确保 <manifest> 根节点声明 xmlns:tools
+    if "xmlns:tools" not in root.attrib:
+        root.attrib["xmlns:tools"] = TOOLS_NS
+        changed = True
+        print("[OK] <manifest> 添加 xmlns:tools 命名空间")
+
+    application = root.find("application")
+    if application is not None:
+        # 1) banner 强制指向 320x180 drawable
+        cur = application.get(_ANDROID_NS + "banner")
+        if cur != banner_ref:
+            application.set(_ANDROID_NS + "banner", banner_ref)
+            changed = True
+            print(f"[OK] application: android:banner {cur or '未设置'} -> {banner_ref}")
+        # 2) tools:replace 让主 manifest 覆盖库 manifest 的冲突属性
+        #    （上游 leanback 库声明了 @mipmap/ic_banner，与主 manifest 的 @drawable/ic_banner 冲突）
+        replace_attr = application.get(ET.QName(TOOLS_NS, "replace")) or ""
+        needed = ["android:banner", "android:icon", "android:roundIcon", "android:label"]
+        have = set(x.strip() for x in replace_attr.split(","))
+        miss = [x for x in needed if x not in have]
+        if miss:
+            new_val = ",".join([x for x in (replace_attr.split(",") if replace_attr else []) if x.strip()] + miss)
+            application.set(ET.QName(TOOLS_NS, "replace"), new_val)
+            changed = True
+            print(f"[OK] application: tools:replace += {','.join(miss)}")
+    if changed:
+        tree.write(manifest_path, encoding="utf-8", xml_declaration=True)
+
+    # 把 320x180 banner PNG 复制到主资源目录：
+    #  - drawable-xhdpi（Android TV 官方推荐位置，320x180 对应 xhdpi，当贝按密度读取）
+    #  - drawable-nodpi（兜底，保证 @drawable/ic_banner 任意配置下都能解析）
+    src = os.path.join(REPO_ROOT, "app", "src", "leanback", "res", "drawable", "ic_banner.png")
+    if os.path.exists(src):
+        for sub in ("drawable-xhdpi", "drawable-nodpi"):
+            dst = os.path.join(REPO_ROOT, "app", "src", "main", "res", sub, "ic_banner.png")
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+            print(f"[OK] banner PNG -> {os.path.relpath(dst, REPO_ROOT)}（320x180）")
+    else:
+        print(f"[WARN] 未找到 leanback banner 源文件: {os.path.relpath(src, REPO_ROOT)}，请先跑图标生成步骤")
+    return changed
+
+
 # ---------------------------------------------------------------- 7. 作者链接
 def modify_author_links(config):
     """修改「设置增强」页的作者链接 URL_GITHUB / URL_CNB（mobile 与 leanback 各一份）。"""
@@ -1504,6 +1678,8 @@ def modify_author_links(config):
                 content,
             )
         if content != original:
+            # 写回前健全性校验（这些是 .java 文件，防止替换逻辑破坏语法）
+            _java_sanity_check(content, rel_path)
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
             changed_any = True
@@ -1547,6 +1723,8 @@ def modify_update_urls(config):
             content = re.sub(r'cnb\.cool/fish2035/webhtv-release',
                              f'cnb.cool/{cnb_slug}', content)
         if content != original:
+            # 写回前健全性校验（这些是 .java 文件，防止替换逻辑破坏语法）
+            _java_sanity_check(content, rel_path)
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
             changed_any = True
@@ -1554,6 +1732,194 @@ def modify_update_urls(config):
         else:
             print(f"[SKIP] {rel_path}: 已是目标值")
     return changed_any
+
+
+# ---------------------------------------------------------------- 通用：Java 代码生成后健全性校验
+def _java_sanity_check(content, label, require_patterns=None, forbid_patterns=None):
+    '''
+    在写回 .java 文件前调用，检查字符串拼接生成的 Java 代码是否存在明显语法问题。
+    不通过则抛异常，使脚本以非零码退出，避免错误流入 Gradle 编译阶段（1~2 分钟后才报错）。
+    检查项：
+      1) 圆括号/花括号/方括号平衡（跳过字符串/字符字面量内的括号）
+      2) 生成代码中使用的常见类型是否有对应 import（ArrayList, List, Map, HashMap 等）
+      3) 含方法调用的非空行是否以 ; 或 { 或 } 结尾（排除注释和控制结构）
+      4) require_patterns：每个正则必须能在代码中找到（生成代码块完整性校验）
+      5) forbid_patterns：每个正则不得在代码中出现（残留/重复块校验）
+    '''
+    errors = []
+
+    # 1) 括号平衡（忽略字符串字面量中的括号——简单处理：逐字符扫描，遇到 " 切换字符串状态）
+    in_str = False
+    in_char = False
+    escape = False
+    depth = {'()': 0, '{}': 0, '[]': 0}
+    for ch in content:
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and (in_str or in_char):
+            escape = True
+            continue
+        if ch == '"' and not in_char:
+            in_str = not in_str
+            continue
+        if ch == "'" and not in_str:
+            in_char = not in_char
+            continue
+        if in_str or in_char:
+            continue
+        if ch == '(':
+            depth['()'] += 1
+        elif ch == ')':
+            depth['()'] -= 1
+        elif ch == '{':
+            depth['{}'] += 1
+        elif ch == '}':
+            depth['{}'] -= 1
+        elif ch == '[':
+            depth['[]'] += 1
+        elif ch == ']':
+            depth['[]'] -= 1
+        for k, v in depth.items():
+            if v < 0:
+                errors.append(f"括号 {k} 出现未匹配的闭合（深度={v}）")
+                depth[k] = 0  # 重置避免重复报错
+    for k, v in depth.items():
+        if v != 0:
+            errors.append(f"括号 {k} 不平衡，剩余深度={v}")
+
+    # 2) 常见类型 import 检查（仅当代码中确实使用了该类型时）
+    _type_import_map = {
+        'ArrayList': 'import java.util.ArrayList;',
+        'List': 'import java.util.List;',
+        'Map': 'import java.util.Map;',
+        'HashMap': 'import java.util.HashMap;',
+        'Set': 'import java.util.Set;',
+        'HashSet': 'import java.util.HashSet;',
+        'Collections': 'import java.util.Collections;',
+        'Objects': 'import java.util.Objects;',
+        'Optional': 'import java.util.Optional;',
+    }
+    # 去掉注释和字符串后再检查类型使用，避免误报
+    _code_only = re.sub(r'//.*', '', content)
+    _code_only = re.sub(r'/\*.*?\*/', '', _code_only, flags=re.DOTALL)
+    for _type, _import in _type_import_map.items():
+        # 匹配作为类型使用的情况（前面是非字母数字，后面是 < 或空格或 .）
+        if re.search(r'(?<![A-Za-z0-9_])' + re.escape(_type) + r'[<\s.]', _code_only):
+            if _import not in content:
+                errors.append(f"使用了 {_type} 但缺少 {_import}")
+
+    # 3) 语句结尾检查：含方法调用( 的非空行，若不是注释/控制结构/注解，应以 ; { } 结尾
+    #    关键：用跨行括号深度追踪识别跨行表达式（assertEquals(\n  a,\n  b\n);）
+    #    行末深度 > 0 说明在跨行方法调用/参数列表内，跳过收尾检查。
+    _lines = content.split('\n')
+    _line_end_depth = [0] * len(_lines)
+    _d = 0
+    _in_str = False
+    _in_char = False
+    _in_line_comment = False
+    _in_block_comment = False
+    _escape = False
+    for _li, _raw_line in enumerate(_lines):
+        _in_line_comment = False
+        _i = 0
+        while _i < len(_raw_line):
+            _ch = _raw_line[_i]
+            _nxt = _raw_line[_i + 1] if _i + 1 < len(_raw_line) else ''
+            if _escape:
+                _escape = False
+                _i += 1
+                continue
+            if _in_line_comment:
+                break
+            if _in_block_comment:
+                if _ch == '*' and _nxt == '/':
+                    _in_block_comment = False
+                    _i += 2
+                    continue
+                _i += 1
+                continue
+            if _ch == '\\' and (_in_str or _in_char):
+                _escape = True
+                _i += 1
+                continue
+            if _ch == '/' and _nxt == '/':
+                _in_line_comment = True
+                break
+            if _ch == '/' and _nxt == '*':
+                _in_block_comment = True
+                _i += 2
+                continue
+            if _ch == '"' and not _in_char:
+                _in_str = not _in_str
+                _i += 1
+                continue
+            if _ch == "'" and not _in_str:
+                _in_char = not _in_char
+                _i += 1
+                continue
+            if _in_str or _in_char:
+                _i += 1
+                continue
+            # 仅追踪圆括号 () 深度——用于识别跨行方法调用/参数列表
+            # 花括号 {}（类/方法体）和方括号 [] 不参与，否则方法内所有行深度都 >0
+            if _ch == '(':
+                _d += 1
+            elif _ch == ')':
+                _d -= 1
+            _i += 1
+        _line_end_depth[_li] = _d
+
+    for _lineno, _line in enumerate(_lines, 1):
+        stripped = _line.strip()
+        if not stripped or stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
+            continue
+        if stripped.startswith('@'):  # 注解
+            continue
+        # 控制结构行（if/for/while/else/switch/case/try/catch/finally/do/synchronized）
+        if re.match(r'^(if|for|while|else|switch|case|try|catch|finally|do|synchronized)\b', stripped):
+            continue
+        # 类/方法/接口声明行
+        if re.match(r'^(public|private|protected|static|final|abstract|class|interface|enum|void|return)\b', stripped) and stripped.endswith('{'):
+            continue
+        # 跨行表达式：行末括号深度 > 0，说明在跨行方法调用/参数列表内（如 assertEquals(\n  a,\n  b\n);）
+        if _line_end_depth[_lineno - 1] > 0:
+            continue
+        # 跨行表达式/链式调用续行：以运算符或 . 开头（如 || foo()、.bar()、+ baz）
+        if re.match(r'^(\|\||&&|\+|-|\*|/|%|\?|:|==|!=|<=|>=|<|>|instanceof|\.)', stripped):
+            continue
+        # 待续行：以运算符结尾且无分号（如 foo() ||、bar() +）
+        if re.search(r'(\|\||&&|\+|-|\*|/|%|\?|:)$', stripped) and not stripped.endswith(';'):
+            continue
+        # return 开头但不以 ; 结尾（跨行 return 第一行，如 return foo()）
+        if stripped.startswith('return ') and not stripped.endswith(';'):
+            continue
+        # 以 ( 结尾：跨行方法调用/构造的开始（深度追踪已覆盖，此处为双重保险）
+        if stripped.endswith('('):
+            continue
+        # 只检查含 '(' 且不含 '{' 开头的行（可能是方法调用语句）
+        if '(' in stripped and not stripped.endswith(';') and not stripped.endswith('{') and not stripped.endswith('}') and not stripped.endswith(','):
+            # 排除 package/import 行
+            if not stripped.startswith('package ') and not stripped.startswith('import '):
+                errors.append(f"第{_lineno}行语句可能未正确结尾（期望 ; 或 {{/}}）：{stripped[:80]}")
+
+    # 4) 必现模式校验（生成代码块完整性）
+    for _pat in (require_patterns or []):
+        if not re.search(_pat, content):
+            errors.append(f"必须包含的模式缺失：{_pat}")
+
+    # 5) 禁止模式校验（残留/重复块）
+    for _pat in (forbid_patterns or []):
+        if re.search(_pat, content):
+            errors.append(f"禁止出现的模式仍存在：{_pat}")
+
+    if errors:
+        raise RuntimeError(
+            f"[FATAL] Java 健全性校验未通过 ({label})：\n"
+            + "\n".join(f"  - {e}" for e in errors)
+            + "\n  请检查 local_customize.py 中的字符串拼接逻辑，修复后重新运行。"
+        )
+    print(f"[SANITY] {label}: Java 健全性校验通过（括号平衡 + import 完整 + 语句收尾 + 模式校验）")
 
 
 # ---------------------------------------------------------------- 8. 更新顺序：CNB 优先
@@ -1568,6 +1934,8 @@ def modify_update_order(config):
       3) getRoutes()：线上已具备 CNB 第一路由 + GitHub/OCI 兜底形态，仅幂等校验。
     约束：UpdateRoutePlanner 本身不动（签名/逻辑不变），GitHub 兜底链路完整保留；
          未勾选 sync_cnb 发布时 CNB 无 manifest，自动回退 GitHub，不影响现有更新。
+    健壮性：用方法体正则精确匹配（不依赖整文件子串），写回后重新读盘验证，
+           --force 模式跳过幂等判断强制重写。
     '''
     changed_any = False
     cnb_slug = str(config.get("CNB_REPO_SLUG", "")).strip()
@@ -1575,11 +1943,9 @@ def modify_update_order(config):
     # ---------- A. Updater.java ----------
     rel_path = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "Updater.java")
     full_path = os.path.join(REPO_ROOT, rel_path)
-    updater_exists = os.path.exists(full_path)
-    if not updater_exists:
+    if not os.path.exists(full_path):
         print(f"[SKIP] {rel_path} 不存在（继续执行 Github.java 修改）")
-
-    if updater_exists:
+    else:
         with open(full_path, "r", encoding="utf-8") as f:
             content = f.read()
         original = content
@@ -1588,56 +1954,313 @@ def modify_update_order(config):
             print(f"[WARN] {rel_path}: 检测到控制字符 \\u0001，执行清洗")
             content = "".join(ch for ch in content if ch >= " " or ch in "\n\r\t")
 
-        # A1. getUpdate()：CNB raw manifest 优先，失败回退 GitHub API
-        # 对齐线上真实结构：getUpdate() 直接分派到 getGithubStableUpdate / getGithubBetaUpdate
-        old_get_update = '''    private Update getUpdate(String channel) {
-        return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
-    }'''
-        new_get_update = '''    private Update getUpdate(String channel) {
-        Update update = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), GITHUB_API_HEADERS, null);
-        if (update.hasManifest()) return update;
-        return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);
-    }'''
-        if "Github.getCnbMirrorAsset(getManifestName(channel)), GITHUB_API_HEADERS" in content:
-            print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先")
-        elif old_get_update in content:
-            content = content.replace(old_get_update, new_get_update)
-            print(f"[OK] {rel_path}: getUpdate() 改为 CNB raw manifest 优先（GitHub API 兜底）")
+        # A1. getUpdate()：逐行扫描 + 大括号深度定位方法体（不依赖精确缩进/正则，兼容任意格式）
+        lines = content.split('\n')
+        gu_start = None
+        for i, line in enumerate(lines):
+            if 'private Update getUpdate(String channel)' in line:
+                gu_start = i
+                break
+        if gu_start is not None:
+            depth = 0
+            gu_end = None
+            for i in range(gu_start, len(lines)):
+                depth += lines[i].count('{') - lines[i].count('}')
+                if depth == 0 and i > gu_start:
+                    gu_end = i
+                    break
+            if gu_end is not None:
+                gu_body = '\n'.join(lines[gu_start:gu_end+1])
+                already_cnb = "getCnbMirrorAsset" in gu_body
+                if already_cnb and not FORCE_MODE:
+                    print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先（逐行扫描定位）")
+                else:
+                    _before = content
+                    indent = lines[gu_start][:len(lines[gu_start]) - len(lines[gu_start].lstrip())]
+                    new_method = [
+                        f'{indent}private Update getUpdate(String channel) {{',
+                        f'{indent}    Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(getManifestName(channel)), SOURCE_CNB, GITHUB_API_HEADERS, null);',
+                        f'{indent}    if (cnb.hasManifest()) return cnb;',
+                        f'{indent}    Update update = readUpdate(channel, Github.getChannelAsset(getManifestName(channel)), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
+                        f'{indent}    if (update.hasManifest()) return update;',
+                        f'{indent}    return Update.CHANNEL_BETA.equals(channel) ? getGithubBetaUpdate(channel) : getGithubStableUpdate(channel);',
+                        f'{indent}}}',
+                    ]
+                    lines = lines[:gu_start] + new_method + lines[gu_end+1:]
+                    content = '\n'.join(lines)
+                    if content != _before:
+                        # 注入后模式校验：确保新方法体完整落盘
+                        _missing = [p for p in
+                                    ['private Update getUpdate(String channel)',
+                                     'getCnbMirrorAsset(getManifestName(channel))',
+                                     'getGithubBetaUpdate(channel)',
+                                     'getGithubStableUpdate(channel)']
+                                    if p not in content]
+                        if _missing:
+                            raise RuntimeError(
+                                f"[FATAL] {rel_path}: getUpdate() 注入后模式校验失败，缺失：{_missing}。"
+                                f"请检查 Updater.java 上游结构或本脚本 A1 逻辑。")
+                        print(f"[OK] {rel_path}: getUpdate() 改为 CNB raw manifest 优先（GitHub API 兜底）")
+                        changed_any = True
+                    else:
+                        print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先（--force 下形态不变）")
+            else:
+                print(f"[WARN] {rel_path}: getUpdate() 方法未找到闭合大括号，请人工检查")
         else:
-            print(f"[WARN] {rel_path}: 未匹配到已知 getUpdate() 结构，请人工检查 Updater.java")
+            print(f"[WARN] {rel_path}: 未找到 getUpdate() 方法，请人工检查 Updater.java 结构")
 
-        # A2. parseDownloads()：manifest 的 apk 字段为 CNB 直链时，APK 下载优先走 CNB Release
-        # （sync-cnb-release.sh 会把同步到 CNB 的 manifest 的 .apk 字段改写为 CNB 直链）
-        old_parse = '''        update.apkUrl = update.githubUrl;
-        JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");'''
-        new_parse = '''        update.apkUrl = update.githubUrl;
-        String apkField = update.apk;
-        if (apkField != null && apkField.startsWith("https://cnb.cool/")) {
-            update.apkUrl = apkField;
-        }
-        JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");'''
-        if 'String apkField = update.apk;' in content:
+        # A2. parseDownloads()：逐行扫描定位 update.apkUrl 行，在其后插入 apkField 判断
+        already_apkfield = "String apkField = update.apk;" in content
+        if already_apkfield and not FORCE_MODE:
             print(f"[SKIP] {rel_path}: parseDownloads() 已是 CNB 直链优先")
-        elif old_parse in content:
-            content = content.replace(old_parse, new_parse)
-            print(f"[OK] {rel_path}: parseDownloads() APK 下载改为 CNB Release 直链优先（GitHub 兜底）")
         else:
-            print(f"[WARN] {rel_path}: 未匹配到 parseDownloads() 结构，请人工检查 Updater.java")
+            # --force 且已有 apkField 时，先移除旧块（避免重复插入导致编译错误）
+            if already_apkfield and FORCE_MODE:
+                apf_start = None
+                for i, line in enumerate(lines):
+                    if 'String apkField = update.apk;' in line:
+                        apf_start = i
+                        break
+                if apf_start is not None:
+                    depth = 0
+                    apf_end = apf_start
+                    for i in range(apf_start, len(lines)):
+                        if 'if (' in lines[i] or 'if(' in lines[i]:
+                            depth += 1
+                        if '}' in lines[i]:
+                            depth -= 1
+                            if depth <= 0:
+                                apf_end = i
+                                break
+                    lines = lines[:apf_start] + lines[apf_end+1:]
+                    content = '\n'.join(lines)
+            pd_idx = None
+            for i, line in enumerate(lines):
+                if 'update.apkUrl = update.githubUrl;' in line:
+                    pd_idx = i
+                    break
+            if pd_idx is not None:
+                _before = content
+                indent = lines[pd_idx][:len(lines[pd_idx]) - len(lines[pd_idx].lstrip())]
+                insertion = [
+                    f'{indent}String apkField = update.apk;',
+                    f'{indent}if (apkField != null && apkField.startsWith("https://cnb.cool/")) {{',
+                    f'{indent}    update.apkUrl = apkField;',
+                    f'{indent}}}',
+                ]
+                lines = lines[:pd_idx+1] + insertion + lines[pd_idx+1:]
+                content = '\n'.join(lines)
+                if content != _before:
+                    # 注入后模式校验：apkField 声明 + CNB 直链判断必须成对出现
+                    _missing = [p for p in
+                                ['String apkField = update.apk;',
+                                 'apkField != null && apkField.startsWith("https://cnb.cool/")',
+                                 'update.apkUrl = apkField;']
+                                if p not in content]
+                    if _missing:
+                        raise RuntimeError(
+                            f"[FATAL] {rel_path}: parseDownloads() 注入后模式校验失败，缺失：{_missing}。"
+                            f"请检查 Updater.java 上游结构或本脚本 A2 逻辑。")
+                    print(f"[OK] {rel_path}: parseDownloads() APK 下载改为 CNB Release 直链优先（GitHub 兜底）")
+                    changed_any = True
+                else:
+                    print(f"[SKIP] {rel_path}: parseDownloads() 已是 CNB 直链优先（--force 下形态不变）")
+            elif already_apkfield and FORCE_MODE:
+                print(f"[SKIP] {rel_path}: parseDownloads() 已是 CNB 直链优先（--force 下形态不变）")
+            else:
+                print(f"[WARN] {rel_path}: 未找到 update.apkUrl = update.githubUrl; 行，请人工检查")
 
-        # A3. getRoutes()：CNB 直链第一路由 + GitHub/OCI 兜底
-        # 线上真实代码已具备该形态（cnbUrl 判断 + plan() 追加兜底），此处仅幂等校验，不再强行注入
-        if "cnbUrl.startsWith(\"https://cnb.cool/\")" in content:
+        # A3. getRoutes()：逐行扫描定位，自动注入 CNB 第一路由判断
+        already_cnb_route = 'cnbUrl.startsWith("https://cnb.cool/")' in content
+        if already_cnb_route and not FORCE_MODE:
             print(f"[SKIP] {rel_path}: getRoutes() 已具备 CNB 第一路由（GitHub/OCI 兜底）")
         else:
-            print(f"[WARN] {rel_path}: getRoutes() 缺少 CNB 第一路由判断，请人工检查（CNB 直链不会作为第一下载路由）")
+            gr_idx = None
+            gr_mode = None  # 'addAll' 或 'return_plan'
+            for i, line in enumerate(lines):
+                if 'routes.addAll(UpdateRoutePlanner.plan' in line:
+                    for j in range(max(0, i-30), i):
+                        if 'getRoutes' in lines[j]:
+                            gr_idx = i
+                            gr_mode = 'addAll'
+                            break
+                    if gr_idx is not None:
+                        break
+            if gr_idx is None:
+                for i, line in enumerate(lines):
+                    if 'return UpdateRoutePlanner.plan' in line:
+                        for j in range(max(0, i-30), i):
+                            if 'getRoutes' in lines[j]:
+                                gr_idx = i
+                                gr_mode = 'return_plan'
+                                break
+                        if gr_idx is not None:
+                            break
+            if gr_idx is None:
+                for i, line in enumerate(lines):
+                    if 'return routes;' in line:
+                        for j in range(max(0, i-30), i):
+                            if 'getRoutes' in lines[j]:
+                                gr_idx = i
+                                gr_mode = 'return_routes'
+                                break
+                        if gr_idx is not None:
+                            break
+            if gr_idx is not None:
+                # --force 且已有 cnbUrl 块时，先移除旧块（避免重复插入）
+                if already_cnb_route and FORCE_MODE:
+                    cnb_start = None
+                    for i, line in enumerate(lines):
+                        if 'String cnbUrl = update.apkUrl;' in line:
+                            cnb_start = i
+                            break
+                    if cnb_start is not None:
+                        depth = 0
+                        cnb_end = cnb_start
+                        for i in range(cnb_start, len(lines)):
+                            if 'if (' in lines[i] or 'if(' in lines[i]:
+                                depth += 1
+                            if '}' in lines[i]:
+                                depth -= 1
+                                if depth <= 0:
+                                    cnb_end = i
+                                    break
+                        lines = lines[:cnb_start] + lines[cnb_end+1:]
+                        content = '\n'.join(lines)
+                        # 移除后重新定位 gr_idx（行号可能变了）
+                        gr_idx = None
+                        for i, line in enumerate(lines):
+                            if 'routes.addAll(UpdateRoutePlanner.plan' in line:
+                                for j in range(max(0, i-30), i):
+                                    if 'getRoutes' in lines[j]:
+                                        gr_idx = i
+                                        break
+                                if gr_idx is not None:
+                                    break
+                        if gr_idx is None:
+                            for i, line in enumerate(lines):
+                                if 'return routes;' in line:
+                                    for j in range(max(0, i-30), i):
+                                        if 'getRoutes' in lines[j]:
+                                            gr_idx = i
+                                            break
+                                    if gr_idx is not None:
+                                        break
+                _before = content
+                indent = lines[gr_idx][:len(lines[gr_idx]) - len(lines[gr_idx].lstrip())]
+                _skip_reason = None
+                if gr_mode == 'return_plan':
+                    # 格式：return UpdateRoutePlanner.plan(..., update.githubUrl, ...);
+                    # 替换为：创建列表 + CNB 第一路由 + addAll(用 update.apkUrl) + return routes
+                    # 注意：return 语句可能跨行（参数折行），先合并成完整语句再转换，
+                    #       避免只取首行导致生成括号残缺/参数丢失的坏代码（历史教训）
+                    stmt = lines[gr_idx]
+                    stmt_end = gr_idx
+                    while stmt_end < len(lines) - 1 and not stmt.rstrip().endswith(';'):
+                        stmt_end += 1
+                        stmt += ' ' + lines[stmt_end].strip()
+                    if not stmt.rstrip().endswith(';'):
+                        _skip_reason = (f"return UpdateRoutePlanner.plan 语句扫描到文件末尾仍未以分号闭合"
+                                        f"（首行：{lines[gr_idx].strip()[:60]}）")
+                    else:
+                        new_line = stmt.replace('update.githubUrl', 'update.apkUrl')
+                        new_line = new_line.replace('return UpdateRoutePlanner.plan',
+                                                    'routes.addAll(UpdateRoutePlanner.plan')
+                        # addAll( 比原 return 多一层左括号，需补右括号闭合 addAll，并保留语句分号
+                        new_line = new_line.rstrip()[:-1] + ');'
+                        replacement = [
+                            f'{indent}List<UpdateTarget> routes = new ArrayList<>();',
+                            f'{indent}String cnbUrl = update.apkUrl;',
+                            f'{indent}if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {{',
+                            f'{indent}    routes.add(UpdateTarget.github(cnbUrl));',
+                            f'{indent}}}',
+                            f'{indent}{new_line}',
+                            f'{indent}return routes;',
+                        ]
+                        lines = lines[:gr_idx] + replacement + lines[stmt_end+1:]
+                else:
+                    # 格式：routes.addAll(...) 或 return routes;
+                    # 把 update.githubUrl 改成 update.apkUrl（如果有）
+                    if 'update.githubUrl' in lines[gr_idx]:
+                        lines[gr_idx] = lines[gr_idx].replace('update.githubUrl', 'update.apkUrl')
+                    cnb_route_code = [
+                        f'{indent}String cnbUrl = update.apkUrl;',
+                        f'{indent}if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {{',
+                        f'{indent}    routes.add(UpdateTarget.github(cnbUrl));',
+                        f'{indent}}}',
+                    ]
+                    lines = lines[:gr_idx] + cnb_route_code + lines[gr_idx:]
+                content = '\n'.join(lines)
+                if _skip_reason:
+                    print(f"[WARN] {rel_path}: 跳过 getRoutes() CNB 注入——{_skip_reason}（请人工检查后处理）")
+                elif content != _before:
+                    # 注入后模式校验：routes 声明 + CNB 路由块 + 兜底 addAll/return 必须成对存在
+                    _missing = [p for p in
+                                ['List<UpdateTarget> routes',
+                                 'String cnbUrl = update.apkUrl;',
+                                 'cnbUrl.startsWith("https://cnb.cool/")',
+                                 'routes.add(UpdateTarget.github(cnbUrl))']
+                                if p not in content]
+                    if _missing:
+                        raise RuntimeError(
+                            f"[FATAL] {rel_path}: getRoutes() 注入后模式校验失败，缺失：{_missing}。"
+                            f"请检查 Updater.java 上游结构或本脚本 A3 逻辑。")
+                    print(f"[OK] {rel_path}: getRoutes() 注入 CNB 第一路由（{gr_mode} 模式，apkUrl 优先）")
+                    changed_any = True
+                else:
+                    print(f"[SKIP] {rel_path}: getRoutes() 已具备 CNB 第一路由（--force 下形态不变）")
+            else:
+                print(f"[WARN] {rel_path}: getRoutes() 未找到注入点（routes.addAll / return plan / return routes），请人工检查")
 
+        # A4. 确保生成代码依赖的 import 存在（List / ArrayList）
+        _needed_imports = []
+        if 'import java.util.List;' not in content:
+            _needed_imports.append('import java.util.List;')
+        if 'import java.util.ArrayList;' not in content:
+            _needed_imports.append('import java.util.ArrayList;')
+        if _needed_imports:
+            _lines = content.split('\n')
+            _last_import_idx = -1
+            for _i, _line in enumerate(_lines):
+                if _line.strip().startswith('import '):
+                    _last_import_idx = _i
+            if _last_import_idx >= 0:
+                _insert_at = _last_import_idx + 1
+            else:
+                # 无 import 时插到 package 声明之后
+                _insert_at = 0
+                for _i, _line in enumerate(_lines):
+                    if _line.strip().startswith('package '):
+                        _insert_at = _i + 1
+                        break
+            _lines = _lines[:_insert_at] + _needed_imports + _lines[_insert_at:]
+            content = '\n'.join(_lines)
+            print(f"[OK] {rel_path}: 补充 import {', '.join(_needed_imports)}")
+
+        # 写回前健全性校验：括号平衡 / import 完整 / 语句收尾，不通过则脚本直接失败
+        if content != original:
+            _java_sanity_check(content, rel_path)
+
+        # 写回 + 读盘验证（确保修改真正落盘，避免假阳性）
         if content != original:
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            changed_any = True
-            print(f"[OK] {rel_path}: CNB 优先 manifest + CNB 直连下载 + 路由兜底已生效")
+            # 验证：重新读取文件，确认关键代码确实存在
+            with open(full_path, "r", encoding="utf-8") as f:
+                verify = f.read()
+            v1 = "getCnbMirrorAsset(getManifestName(channel))" in verify
+            v2 = "String apkField = update.apk;" in verify
+            if v1 and v2:
+                print(f"[VERIFY] {rel_path}: 写回验证通过（getUpdate CNB 优先 + parseDownloads CNB 直链）")
+            else:
+                print(f"[ERROR] {rel_path}: 写回验证失败！getCnbMirrorAsset={v1}, apkField={v2} —— 文件可能未正确写入")
+                changed_any = False
+        elif changed_any:
+            # 内部状态不一致：标记了修改但内容未变（不应该发生）
+            print(f"[WARN] {rel_path}: 内部状态不一致（标记修改但内容未变），请检查")
+            changed_any = False
 
-    # ---------- B. Github.java：新增 CNB Release 下载常量与方法 ----------
+    # ---------- B. Github.java：CNB_MANIFEST 常量自愈 + CNB_RELEASE_DOWNLOAD + getCnbReleaseAsset ----------
     github_rel = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "utils", "Github.java")
     github_path = os.path.join(REPO_ROOT, github_rel)
     if not os.path.exists(github_path):
@@ -1646,60 +2269,162 @@ def modify_update_order(config):
         with open(github_path, "r", encoding="utf-8") as f:
             g_content = f.read()
         g_original = g_content
-        # 仅在检测到历史污染字符 \u0001 时才清洗，避免静默修改合法文件
+        # 仅在检测到历史污染字符 \u0001 时才清洗
         if "\u0001" in g_content:
             print(f"[WARN] {github_rel}: 检测到控制字符 \\u0001，执行清洗")
             g_content = "".join(ch for ch in g_content if ch >= " " or ch in "\n\r\t")
 
-        # 自愈：上一版脚本 bug 曾把 CNB_MANIFEST 常量整行覆盖删除（只留下 \u0001+新行），
-        # 若缺失则按 CNB_REPO_SLUG 重建，避免 getCnbMirrorAsset 编译报 cannot find symbol
-        if "private static final String CNB_MANIFEST" not in g_content:
+        # B1+B2. CNB_MANIFEST + CNB_RELEASE_DOWNLOAD 常量：逐行扫描（不依赖缩进，兼容无缩进格式）
+        g_lines = g_content.split('\n')
+        has_manifest = any('private static final String CNB_MANIFEST' in line for line in g_lines)
+        has_release = any('private static final String CNB_RELEASE_DOWNLOAD' in line for line in g_lines)
+        _g_before = g_content
+
+        if not has_manifest or FORCE_MODE:
             manifest_base = (
                 f"https://cnb.cool/{cnb_slug}/-/git/raw/main/apk"
                 if cnb_slug
                 else "https://cnb.cool/fish2035/webhtv-release/-/git/raw/main/apk"
             )
-            new_manifest_line = f'    private static final String CNB_MANIFEST = "{manifest_base}";'
-            anchor = "    private static final String CNB_RELEASE_DOWNLOAD = "
-            if anchor in g_content:
-                g_content = g_content.replace(anchor, new_manifest_line + "\n" + anchor, 1)
+            # --force 时先移除旧 CNB_MANIFEST 行
+            if FORCE_MODE and has_manifest:
+                g_lines = [line for line in g_lines if 'private static final String CNB_MANIFEST' not in line]
+            # 找到 CNB_RELEASE_DOWNLOAD 行，在其前面插入 CNB_MANIFEST
+            rd_idx = None
+            for i, line in enumerate(g_lines):
+                if 'private static final String CNB_RELEASE_DOWNLOAD' in line:
+                    rd_idx = i
+                    break
+            if rd_idx is not None:
+                indent = g_lines[rd_idx][:len(g_lines[rd_idx]) - len(g_lines[rd_idx].lstrip())]
+                new_line = f'{indent}private static final String CNB_MANIFEST = "{manifest_base}";'
+                g_lines = g_lines[:rd_idx] + [new_line] + g_lines[rd_idx:]
             else:
-                g_content = g_content.replace(
-                    "public class Github {",
-                    "public class Github {\n" + new_manifest_line,
-                    1,
-                )
-            print(f"[OK] {github_rel}: 检测到 CNB_MANIFEST 缺失（历史 bug 误删），已自愈重建")
+                # 找不到 CNB_RELEASE_DOWNLOAD，在 public class Github { 后面插入
+                for i, line in enumerate(g_lines):
+                    if 'public class Github' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        new_line = f'{indent}private static final String CNB_MANIFEST = "{manifest_base}";'
+                        g_lines = g_lines[:i+1] + [new_line] + g_lines[i+1:]
+                        break
+            g_content = '\n'.join(g_lines)
+            print(f"[OK] {github_rel}: CNB_MANIFEST 常量已{'重建' if not has_manifest else '强制更新'}（{manifest_base}）")
             if not cnb_slug:
                 print(f"[WARN] {github_rel}: CNB_REPO_SLUG 未配置，CNB_MANIFEST 暂用旧地址，请检查")
+        else:
+            print(f"[SKIP] {github_rel}: CNB_MANIFEST 常量已存在")
 
-        if "CNB_RELEASE_DOWNLOAD" not in g_content:
+        if not has_release or FORCE_MODE:
             release_base = f"https://cnb.cool/{cnb_slug}/-/releases/download" if cnb_slug else "https://cnb.cool/fish2035/webhtv-release/-/releases/download"
-            g_content = re.sub(
-                r'(private static final String CNB_MANIFEST = "[^"]*";)',
-                '\\1\n    private static final String CNB_RELEASE_DOWNLOAD = "' + release_base + '";',
-                g_content,
-            )
+            g_lines = g_content.split('\n')
+            # --force 时先移除旧 CNB_RELEASE_DOWNLOAD 行
+            if FORCE_MODE and has_release:
+                g_lines = [line for line in g_lines if 'private static final String CNB_RELEASE_DOWNLOAD' not in line]
+            # 找到 CNB_MANIFEST 行，在其后面插入 CNB_RELEASE_DOWNLOAD
+            mf_idx = None
+            for i, line in enumerate(g_lines):
+                if 'private static final String CNB_MANIFEST' in line:
+                    mf_idx = i
+                    break
+            if mf_idx is not None:
+                indent = g_lines[mf_idx][:len(g_lines[mf_idx]) - len(g_lines[mf_idx].lstrip())]
+                new_line = f'{indent}private static final String CNB_RELEASE_DOWNLOAD = "{release_base}";'
+                g_lines = g_lines[:mf_idx+1] + [new_line] + g_lines[mf_idx+1:]
+            else:
+                for i, line in enumerate(g_lines):
+                    if 'public class Github' in line:
+                        indent = line[:len(line) - len(line.lstrip())]
+                        new_line = f'{indent}private static final String CNB_RELEASE_DOWNLOAD = "{release_base}";'
+                        g_lines = g_lines[:i+1] + [new_line] + g_lines[i+1:]
+                        break
+            g_content = '\n'.join(g_lines)
+            print(f"[OK] {github_rel}: CNB_RELEASE_DOWNLOAD 常量已设置")
             if not cnb_slug:
                 print(f"[WARN] {github_rel}: CNB_REPO_SLUG 未配置，CNB_RELEASE_DOWNLOAD 暂用旧地址，请检查")
-        if "public static String getCnbReleaseAsset" not in g_content:
-            g_content = g_content.replace(
-                '    public static String getCnbMirrorAsset(String name) {\n'
-                '        return CNB_MANIFEST + "/" + name;\n'
-                '    }',
-                '    public static String getCnbMirrorAsset(String name) {\n'
-                '        return CNB_MANIFEST + "/" + name;\n'
-                '    }\n'
-                '\n'
-                '    public static String getCnbReleaseAsset(String tag, String name) {\n'
-                '        return CNB_RELEASE_DOWNLOAD + "/" + tag + "/" + name;\n'
-                '    }',
-            )
+
+        if g_content != _g_before:
+            changed_any = True
+
+        # B3. getCnbReleaseAsset 方法：逐行扫描定位 getCnbMirrorAsset，在其后插入（不依赖缩进）
+        if "public static String getCnbReleaseAsset" not in g_content or FORCE_MODE:
+            g_lines = g_content.split('\n')
+            # FORCE_MODE 时先移除已存在的 getCnbReleaseAsset 方法
+            if FORCE_MODE:
+                rel_start = None
+                for i, line in enumerate(g_lines):
+                    if 'public static String getCnbReleaseAsset(String tag, String name)' in line:
+                        rel_start = i
+                        break
+                if rel_start is not None:
+                    depth = 0
+                    rel_end = None
+                    for i in range(rel_start, len(g_lines)):
+                        depth += g_lines[i].count('{') - g_lines[i].count('}')
+                        if depth == 0 and i > rel_start:
+                            rel_end = i
+                            break
+                    if rel_end is not None:
+                        # 移除方法及其前的空行
+                        while rel_start > 0 and not g_lines[rel_start-1].strip():
+                            rel_start -= 1
+                        g_lines = g_lines[:rel_start] + g_lines[rel_end+1:]
+                        g_content = '\n'.join(g_lines)
+            # 找到 getCnbMirrorAsset 方法的结束位置
+            mirror_start = None
+            for i, line in enumerate(g_lines):
+                if 'public static String getCnbMirrorAsset(String name)' in line:
+                    mirror_start = i
+                    break
+            if mirror_start is not None:
+                depth = 0
+                mirror_end = None
+                for i in range(mirror_start, len(g_lines)):
+                    depth += g_lines[i].count('{') - g_lines[i].count('}')
+                    if depth == 0 and i > mirror_start:
+                        mirror_end = i
+                        break
+                if mirror_end is not None:
+                    _before_g = g_content
+                    indent = g_lines[mirror_start][:len(g_lines[mirror_start]) - len(g_lines[mirror_start].lstrip())]
+                    new_method = [
+                        '',
+                        f'{indent}public static String getCnbReleaseAsset(String tag, String name) {{',
+                        f'{indent}    return CNB_RELEASE_DOWNLOAD + "/" + tag + "/" + name;',
+                        f'{indent}}}',
+                    ]
+                    g_lines = g_lines[:mirror_end+1] + new_method + g_lines[mirror_end+1:]
+                    g_content = '\n'.join(g_lines)
+                    if g_content != _before_g:
+                        print(f"[OK] {github_rel}: getCnbReleaseAsset 方法已添加")
+                        changed_any = True
+                    else:
+                        print(f"[SKIP] {github_rel}: getCnbReleaseAsset 方法已存在（--force 下形态不变）")
+                else:
+                    print(f"[WARN] {github_rel}: getCnbMirrorAsset 方法未找到闭合大括号，跳过 getCnbReleaseAsset 注入")
+            else:
+                print(f"[WARN] {github_rel}: 未找到 getCnbMirrorAsset 方法，跳过 getCnbReleaseAsset 注入")
+
+        # 写回前健全性校验
+        if g_content != g_original:
+            _java_sanity_check(g_content, github_rel)
+
+        # 写回 + 读盘验证
         if g_content != g_original:
             with open(github_path, "w", encoding="utf-8") as f:
                 f.write(g_content)
-            changed_any = True
-            print(f"[OK] {github_rel}: 新增 CNB_RELEASE_DOWNLOAD 常量 + getCnbReleaseAsset 方法")
+            with open(github_path, "r", encoding="utf-8") as f:
+                g_verify = f.read()
+            v1 = "private static final String CNB_MANIFEST" in g_verify
+            v2 = "CNB_RELEASE_DOWNLOAD" in g_verify
+            v3 = "getCnbReleaseAsset" in g_verify
+            if v1 and v2 and v3:
+                print(f"[VERIFY] {github_rel}: 写回验证通过（CNB_MANIFEST + CNB_RELEASE_DOWNLOAD + getCnbReleaseAsset）")
+            else:
+                print(f"[ERROR] {github_rel}: 写回验证失败！CNB_MANIFEST={v1}, CNB_RELEASE_DOWNLOAD={v2}, getCnbReleaseAsset={v3}")
+                changed_any = False
+        elif changed_any:
+            print(f"[WARN] {github_rel}: 内部状态不一致（标记修改但内容未变），请检查")
+            changed_any = False
 
     if changed_any:
         return True
@@ -1746,12 +2471,96 @@ def modify_cnb_release_script(config):
     return False
 
 
-# ---------------------------------------------------------------- 7. 工作流 yml
+# ---------------------------------------------------------------- 7. gradle.properties 内存参数固化
+def ensure_gradle_properties(config=None):
+    """
+    将 R8 内存参数固化到 gradle.properties（幂等，已存在且值正确则不改动）。
+
+    背景：R8 OOM（java.lang.OutOfMemoryError: Java heap space）曾因堆内存不足 +
+          多 ABI 并行 worker 触发。内存配置只保留 gradle.properties 单一权威：
+            org.gradle.jvmargs   = -Xmx5g（堆） / MaxMetaspaceSize=1g / UTF-8
+            org.gradle.workers.max = 1（R8/javac 等大内存任务串行）
+            android.r8.maxWorkers = 1（R8 内部线程上限）
+          workflow 不再注入 GRADLE_OPTS（由 modify_workflow_files 清理），
+          避免双源冲突导致 OOM 反复出现。
+    策略：缺失的键自动补充；已存在但值与目标不一致的键更新为目标值（固化）。
+    """
+    gp_rel = os.path.join("gradle.properties")
+    gp_path = os.path.join(REPO_ROOT, gp_rel)
+    if not os.path.exists(gp_path):
+        print(f"[SKIP] {gp_rel} 不存在，无法固化内存参数")
+        return False
+
+    expected = {
+        'org.gradle.jvmargs': '-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8',
+        'org.gradle.workers.max': '1',
+        'android.r8.maxWorkers': '1',
+    }
+    with open(gp_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    original = content
+    lines = content.split('\n')
+
+    # 解析现有键值（跳过注释/空行；值去掉行尾 # 注释）
+    found = {}
+    for _i, _line in enumerate(lines):
+        _stripped = _line.strip()
+        if not _stripped or _stripped.startswith('#') or '=' not in _stripped:
+            continue
+        _key, _, _value = _stripped.partition('=')
+        _key = _key.strip()
+        _value = _value.strip().split(' #')[0].strip()
+        if _key in expected:
+            found[_key] = (_i, _value)
+
+    changed_any = False
+    for _key, _want in expected.items():
+        if _key not in found:
+            lines.append(f'{_key}={_want}')
+            print(f"[OK] {gp_rel}: 补充 {_key}={_want}")
+            changed_any = True
+        elif found[_key][1] != _want:
+            lines[found[_key][0]] = f'{_key}={_want}'
+            print(f"[OK] {gp_rel}: 更新 {_key}（{found[_key][1]} -> {_want}）")
+            changed_any = True
+        else:
+            print(f"[SKIP] {gp_rel}: {_key} 已固化")
+
+    if changed_any:
+        new_content = '\n'.join(lines)
+        # 确保有说明注释头（幂等）
+        if 'Gradle daemon' not in new_content:
+            new_content = (
+                '# Gradle daemon 堆内存（R8 跑在 daemon 内，这是关键）\n'
+                '# 5g 堆 + workers.max=1 使 R8/javac 串行，避免多 ABI 构建 OOM\n'
+                '# 内存配置唯一权威：gradle.properties，workflow 不注入 GRADLE_OPTS\n'
+                + new_content
+            )
+        if new_content != original:
+            with open(gp_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            # 读盘验证
+            with open(gp_path, "r", encoding="utf-8") as f:
+                verify = f.read()
+            _ok = all(f'{k}={v}' in verify for k, v in expected.items())
+            if _ok:
+                print(f"[VERIFY] {gp_rel}: 写回验证通过（内存参数已固化）")
+                return True
+            print(f"[ERROR] {gp_rel}: 写回验证失败！请检查文件内容")
+            return False
+    return False
+
+
+# ---------------------------------------------------------------- 7b. 工作流 yml
 def modify_workflow_files(config):
     """
     修改 .github/workflows/android-release.yml 与 cnb-release-sync.yml：
       - 替换 CNB_REPO_SLUG / CNB_REPO_URL
-      - 向 Build four release APKs 步骤注入 GRADLE_OPTS（R8 OOM 修复）
+      - 清理 Build four release APKs 步骤中残留的 GRADLE_OPTS（内存统一由
+        gradle.properties 控制，消除双源，防止 R8 OOM 反复出现）
+      - setup-android 显式 packages / Install Android packages 步骤
+      - 脚本调用前注入 chmod +x（修复 Permission denied）
+      - publish_oci 输入项默认改为 false
     注意：全部使用标准英文半角减号，杜绝 U+2011 非法字符。
     """
     cnb_repo_slug = config.get("CNB_REPO_SLUG", "")
@@ -1811,54 +2620,69 @@ def modify_workflow_files(config):
             content,
         )
 
-        # setup-android：参考 fish2018/webhtv 两步法，彻底绕开已废弃的 "tools" 包
-        # 第一步：setup-android@v3 只设环境 + platform-tools（不含 tools）
+        # setup-android：纯逐行扫描定位 uses 行（不依赖正则，兼容任意 YAML 格式/缩进）
+        # 第一步：setup-android@v3 只设环境 + platform-tools（不含已废弃的 tools）
         # 第二步：单独步骤手动 sdkmanager 安装 platforms / build-tools
-        # 逐行处理，兼容 `- uses:` 与 name 步骤下的裸 `uses:`，任意版本号
-        # （避免用 (?P=...) 引用开放组：Python re 会报 cannot refer to an open group）
         crlf = '\r\n' in content
         if crlf:
             content = content.replace('\r\n', '\n')
-        sa_uses_pat = re.compile(
-            r'^([ \t]*)(- )?uses:[ \t]*android-actions/setup-android@\S+[ \t]*$',
-            re.MULTILINE,
-        )
-        sa_uses = sa_uses_pat.search(content)
-        if sa_uses:
-            sa_indent = sa_uses.group(1)
-            sa_dash = sa_uses.group(2) or ''
+        wf_lines = content.split('\n')
+        sa_idx = None
+        for i, line in enumerate(wf_lines):
+            if 'android-actions/setup-android@' in line and 'uses:' in line:
+                sa_idx = i
+                break
+        has_sa = sa_idx is not None
+        if sa_idx is not None:
+            sa_line = wf_lines[sa_idx]
+            sa_indent = sa_line[:len(sa_line) - len(sa_line.lstrip())]
+            sa_dash = '- ' if sa_line.lstrip().startswith('- ') else ''
             sa_key = sa_indent + ('  ' if sa_dash else '')
-            sa_repl = (f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3\n'
-                       f'{sa_key}with:\n'
-                       f'{sa_key}  packages: \'platform-tools\'\n')
-            line_idx = content[:sa_uses.start()].count('\n')
-            lines = content.split('\n')
-            # 吞掉旧的 with 块：紧跟 uses 行、以 key+'with:' 开头，及其后缩进更深的行
-            j = line_idx + 1
-            if j < len(lines) and lines[j].startswith(sa_key + 'with:'):
-                j += 1
-                while j < len(lines) and lines[j].strip() and \
-                        len(lines[j]) - len(lines[j].lstrip(' ')) > len(sa_key):
+            # 幂等判断：逐行检查 uses 行后 5 行内是否已有 with: + packages: platform-tools
+            already_with = False
+            for j in range(sa_idx+1, min(sa_idx+6, len(wf_lines))):
+                if wf_lines[j].strip().startswith('with:'):
+                    for k in range(j+1, min(j+4, len(wf_lines))):
+                        if 'packages' in wf_lines[k] and 'platform-tools' in wf_lines[k]:
+                            already_with = True
+                            break
+                    break
+            if already_with and not FORCE_MODE:
+                print(f"[SKIP] {rel_path}: setup-android 已显式 packages=platform-tools")
+            else:
+                _before = content
+                # 吞掉旧的 with 块（紧跟 uses 行的 with: 及其后缩进更深的行）
+                j = sa_idx + 1
+                if j < len(wf_lines) and wf_lines[j].strip().startswith('with:'):
                     j += 1
-            new_lines = [
-                f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3',
-                f'{sa_key}with:',
-                f'{sa_key}  packages: \'platform-tools\'',
-            ]
-            lines = lines[:line_idx] + new_lines + lines[j:]
-            content = '\n'.join(lines)
-            print(f"[OK] {rel_path}: setup-android 显式 packages=platform-tools（排除 tools）")
-            # 第二步：检查是否已有 "Install Android packages" 步骤，没有则插入
-            if 'Install Android packages' not in content:
-                install_step = (
-                    f'{sa_indent}- name: Install Android packages\n'
-                    f'{sa_indent}  run: |\n'
-                    f'{sa_indent}    sdkmanager "platform-tools" '
-                    f'"platforms;android-{compile_sdk}" '
-                    f'"build-tools;{compile_sdk}.0.0"\n'
-                )
-                content = content.replace(sa_repl, sa_repl + install_step, 1)
-                print(f"[OK] {rel_path}: 插入 Install Android packages 步骤（compileSdk={compile_sdk}）")
+                    while j < len(wf_lines) and wf_lines[j].strip() and \
+                            len(wf_lines[j]) - len(wf_lines[j].lstrip()) > len(sa_key):
+                        j += 1
+                new_sa_lines = [
+                    f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3',
+                    f'{sa_key}with:',
+                    f'{sa_key}  packages: \'platform-tools\'',
+                ]
+                wf_lines = wf_lines[:sa_idx] + new_sa_lines + wf_lines[j:]
+                content = '\n'.join(wf_lines)
+                if content != _before:
+                    print(f"[OK] {rel_path}: setup-android 显式 packages=platform-tools（排除 tools）")
+                    # 第二步：检查是否已有 "Install Android packages" 步骤，没有则插入
+                    if 'Install Android packages' not in content:
+                        install_step = (
+                            f'{sa_indent}- name: Install Android packages\n'
+                            f'{sa_indent}  run: |\n'
+                            f'{sa_indent}    sdkmanager "platform-tools" '
+                            f'"platforms;android-{compile_sdk}" '
+                            f'"build-tools;{compile_sdk}.0.0"\n'
+                        )
+                        anchor = (f'{sa_indent}{sa_dash}uses: android-actions/setup-android@v3\n'
+                                  f'{sa_key}with:\n'
+                                  f'{sa_key}  packages: \'platform-tools\'\n')
+                        content = content.replace(anchor, anchor + install_step, 1)
+                        print(f"[OK] {rel_path}: 插入 Install Android packages 步骤（compileSdk={compile_sdk}）")
+                else:
+                    print(f"[SKIP] {rel_path}: setup-android 已显式 packages=platform-tools（--force 下形态不变）")
         else:
             print(f"[WARN] {rel_path}: 未找到 android-actions/setup-android 步骤，"
                   f"请确认 workflow 中的 setup 步骤写法后手动修改")
@@ -1878,42 +2702,26 @@ def modify_workflow_files(config):
             )
             print(f"[OK] {rel_path}: 注入 chmod +x（修复 Permission denied）")
 
-        # 仅对 android-release.yml 注入 GRADLE_OPTS
+        # 仅对 android-release.yml 清理 GRADLE_OPTS：
+        # 内存参数唯一权威是 gradle.properties（org.gradle.jvmargs / workers.max / r8.maxWorkers），
+        # workflow 中残留的 GRADLE_OPTS 会造成双源冲突，是 R8 OOM 反复出现的根源之一。
+        # 幂等清理：存在则整行移除，不存在则跳过。
         if rel_path.endswith("android-release.yml"):
-            gradle_line = '          GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=512m"'
             if "GRADLE_OPTS" in content:
-                print("[SKIP] android-release.yml: GRADLE_OPTS 已存在")
-            else:
-                # 分支1：步骤已有 env 块 -> 在 env 块末尾追加 GRADLE_OPTS
-                pat_has_env = re.compile(
-                    r'(- name: Build four release APKs[ \t]*\r?\n( +)env:[ \t]*\r?\n(?:\2 +.+\r?\n)*)(\2)run:',
-                    re.MULTILINE,
-                )
-                if pat_has_env.search(content):
-                    content = pat_has_env.sub(
-                        rf'\g<1>{gradle_line}\n\g<3>run:',
-                        content,
-                    )
-                    print("[OK] android-release.yml: 已有 env 块，追加 GRADLE_OPTS")
+                cleaned_lines = []
+                removed = False
+                for wline in content.split('\n'):
+                    if wline.strip().startswith('GRADLE_OPTS:'):
+                        removed = True
+                        continue
+                    cleaned_lines.append(wline)
+                if removed:
+                    content = '\n'.join(cleaned_lines)
+                    print("[OK] android-release.yml: 已移除 GRADLE_OPTS（内存统一由 gradle.properties 控制，消除双源）")
                 else:
-                    # 分支2：步骤没有 env 块 -> 插入完整 env 块
-                    pat_no_env = re.compile(
-                        r'(- name: Build four release APKs[ \t]*\r?\n)( +)(run:)',
-                        re.MULTILINE,
-                    )
-                    if pat_no_env.search(content):
-                        insert_env = """        env:
-          WEBHTV_RELEASE_TAG: ${{ steps.meta.outputs.tag }}
-          WEBHTV_APK_SUFFIX: ${{ steps.meta.outputs.apk_suffix }}
-          GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=512m"
-"""
-                        content = pat_no_env.sub(
-                            rf"\g<1>{insert_env}\g<2>\g<3>",
-                            content,
-                        )
-                        print("[OK] android-release.yml: 注入 env 块 + GRADLE_OPTS")
-                    else:
-                        print("[WARN] android-release.yml: 未找到 Build four release APKs 步骤，跳过 GRADLE_OPTS 注入")
+                    print("[SKIP] android-release.yml: 检测到 GRADLE_OPTS 但未能按行移除，请人工检查")
+            else:
+                print("[SKIP] android-release.yml: 无 GRADLE_OPTS（内存由 gradle.properties 统一控制）")
 
             # publish_oci 输入项默认改为 false（GitHub Actions 触发时默认不打勾，需要时再手动勾选）
             # 用逐行扫描实现，零正则回溯风险，保证不卡死
@@ -1952,8 +2760,19 @@ def modify_workflow_files(config):
         if content != original:
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
+            # 读盘验证：确认关键修改确实落盘
+            with open(full_path, "r", encoding="utf-8") as f:
+                wf_verify = f.read()
+            v_sa = (not has_sa) or ("packages: 'platform-tools'" in wf_verify or 'packages: "platform-tools"' in wf_verify)
+            v_chmod = "chmod +x .github/scripts/sync-cnb-release.sh" in wf_verify or "sync-cnb-release.sh" not in wf_verify
+            v_grace = "GRADLE_OPTS" not in wf_verify
+            if v_sa and v_chmod and v_grace:
+                sa_note = "" if has_sa else "（无 setup-android 步骤，跳过该项验证）"
+                print(f"[VERIFY] {rel_path}: 写回验证通过（setup-android packages + chmod + 无 GRADLE_OPTS）{sa_note}")
+            else:
+                print(f"[ERROR] {rel_path}: 写回验证失败！setup-android packages={v_sa}, chmod={v_chmod}, GRADLE_OPTS已清理={v_grace} —— 文件可能未正确写入")
             changed_any = True
-            print(f"[OK] {rel_path}: CNB 配置 / GRADLE_OPTS 已更新")
+            print(f"[OK] {rel_path}: CNB 配置已更新（GRADLE_OPTS 已清理/保持无）")
         else:
             print(f"[SKIP] {rel_path}: 已是目标值")
     return changed_any
@@ -1961,9 +2780,13 @@ def modify_workflow_files(config):
 
 # ---------------------------------------------------------------- 主流程
 def main():
+    global FORCE_MODE
+    FORCE_MODE = "--force" in sys.argv
     print("=" * 72)
     print("  local_customize.py —— 本地一键自定义（名称 / 图标 / 包名 / CNB / 内存）")
     print(f"  项目根目录: {REPO_ROOT}")
+    if FORCE_MODE:
+        print("  [模式] 强制模式 --force：跳过幂等判断，强制重写所有可修改文件")
     print("=" * 72)
 
     if not os.path.isdir(REPO_ROOT):
@@ -1994,6 +2817,9 @@ def main():
     print("\n--- [5/11] AndroidManifest.xml（android:label）---")
     results.append(modify_android_manifest(config))
 
+    print("\n--- [5b/11] TV banner 接线（android:banner 指向 320x180 PNG，当贝桌面长方形）---")
+    results.append(modify_manifest_banner(config))
+
     print("\n--- [6/11] 设置页作者链接（URL_GITHUB / URL_CNB）---")
     results.append(modify_author_links(config))
 
@@ -2006,10 +2832,13 @@ def main():
     print("\n--- [9/11] sync-cnb-release.sh（CNB_REPO_SLUG）---")
     results.append(modify_cnb_release_script(config))
 
-    print("\n--- [10/11] 工作流 yml（CNB 地址 + chmod +x 权限 + GRADLE_OPTS 内存修复 + publish_oci 默认关闭）---")
+    print("\n--- [10/12] 工作流 yml（CNB 地址 + chmod +x 权限 + GRADLE_OPTS 清理 + publish_oci 默认关闭）---")
     results.append(modify_workflow_files(config))
 
-    print("\n--- [11/11] 最终校验：namespace 是否保持上游原值 ---")
+    print("\n--- [11/12] gradle.properties 内存参数固化（R8 OOM 防护，单一权威）---")
+    results.append(ensure_gradle_properties(config))
+
+    print("\n--- [12/12] 最终校验：namespace 是否保持上游原值 ---")
     ns_ok = True
     ns_pattern = re.compile(r'namespace\s*=\s*[\'"]com\.fongmi\.android\.tv[\'"]')
     for path in [os.path.join(REPO_ROOT, "app", "build.gradle"),
