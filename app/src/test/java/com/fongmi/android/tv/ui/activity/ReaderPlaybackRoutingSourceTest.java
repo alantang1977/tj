@@ -174,6 +174,8 @@ public class ReaderPlaybackRoutingSourceTest {
         }) {
             String source = read(path);
 
+            assertTrue(path + " must cancel the previous player-content request before starting another",
+                    source.contains("if (mViewModel != null) mViewModel.cancelPlayerContent();"));
             assertTrue(path + " must track the result already applied to the player",
                     source.contains("mAppliedPlayerResult"));
             assertTrue(path + " must ignore a duplicate player result while playback remains active",

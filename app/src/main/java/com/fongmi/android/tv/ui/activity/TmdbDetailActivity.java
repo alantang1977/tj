@@ -404,6 +404,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private float inlineGestureSpeed = 1.0f;
     private boolean inlineStartPositionApplied;
     private boolean inlineFirstReady;
+    private boolean inlinePlayHealthRecorded;
+    private String inlinePlayHealthKey = "";
     private boolean inlineButtonsReordered;
     private View mNightModeOverlay;
     private int mNightModeLevel = PlayerSetting.NIGHT_MODE_OFF;
@@ -7177,6 +7179,9 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             return;
         }
         inlineStarted = true;
+        inlinePlayHealthKey = getKeyText();
+        SiteHealthStore.recordPlayAttempt(inlinePlayHealthKey);
+        inlinePlayHealthRecorded = false;
         inlineFirstReady = false;  // 重置标志,允许新播放首次 READY 时显示控制栏
         inlineButtonsReordered = false;  // 重置标志,允许新播放重新排序按钮
         inlinePlaybackEpisode = selectedEpisode;
@@ -10465,8 +10470,15 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         inlineControlController.applyDanmakuSetting();
     }
 
+    private void recordInlinePlayHealth(boolean success, String error) {
+        if (inlinePlayHealthRecorded) return;
+        inlinePlayHealthRecorded = true;
+        SiteHealthStore.recordPlay(TextUtils.isEmpty(inlinePlayHealthKey) ? getKeyText() : inlinePlayHealthKey, success, error);
+    }
+
     @Override
     protected void onFirstFrameRendered() {
+        recordInlinePlayHealth(true, "");
         if (!detailPlayerFullscreenPending || !isPlayerMode() || !inlineStarted || !isOwner()) return;
         revealDetailPlayerFullscreen();
     }
@@ -10589,6 +10601,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     @Override
     protected void onError(String msg) {
+        recordInlinePlayHealth(false, msg);
         if (!isInlinePlayerMode() || !inlineStarted || !isOwner()) return;
         showInlineError(msg);
     }

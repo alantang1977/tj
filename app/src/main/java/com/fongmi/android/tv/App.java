@@ -19,6 +19,7 @@ import com.fongmi.android.tv.server.proxy.MultiThreadProxy;
 import com.fongmi.android.tv.playback.PlaybackRemoteSyncer;
 import com.fongmi.android.tv.player.PlaybackMemoryMonitor;
 import com.fongmi.android.tv.player.PlaybackSystemConditionMonitor;
+import com.fongmi.android.tv.player.mpv.PlaybackRecoveryMonitor;
 import com.fongmi.android.tv.remote.RemoteAgent;
 import com.fongmi.android.tv.setting.AppBranding;
 import com.fongmi.android.tv.setting.ProxySetting;
@@ -44,7 +45,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
 
     private final Runnable backgroundServicesStarter = this::startBackgroundServicesNow;
 
-    private Activity activity;
+    private volatile Activity activity;
     private Hook hook;
 
     private Resources resources;
@@ -97,6 +98,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
     @Override
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
+        if (PlaybackRecoveryMonitor.isRecoveryProcess(base)) return;
         WebViewDataDirectoryGuard.clearStaleLock(base);
         Init.set(base);
     }
@@ -104,12 +106,14 @@ public class App extends Application implements Application.ActivityLifecycleCal
     @Override
     public void onCreate() {
         super.onCreate();
+        if (PlaybackRecoveryMonitor.isRecoveryProcess(this)) return;
         PlaybackMemoryMonitor.process().initialize(this);
         PlaybackSystemConditionMonitor.process().initialize(this);
         Setting.applyLanguage();
         AppBranding.applyLauncherIcon(this);
         DebugLogStore.restoreEnabled();
         if (DebugLogStore.isEnabled()) {
+            PlaybackRecoveryMonitor.logPreviousResult(this);
             Setting.logDebugEnvironment("restore");
             PreviousProcessExitLogger.log(this);
         }
@@ -136,13 +140,13 @@ public class App extends Application implements Application.ActivityLifecycleCal
 
     @Override
     public void onTrimMemory(int level) {
-        PlaybackMemoryMonitor.process().onTrimMemory(level);
+        if (!PlaybackRecoveryMonitor.isRecoveryProcess(this)) PlaybackMemoryMonitor.process().onTrimMemory(level);
         super.onTrimMemory(level);
     }
 
     @Override
     public void onLowMemory() {
-        PlaybackMemoryMonitor.process().onLowMemory();
+        if (!PlaybackRecoveryMonitor.isRecoveryProcess(this)) PlaybackMemoryMonitor.process().onLowMemory();
         super.onLowMemory();
     }
 

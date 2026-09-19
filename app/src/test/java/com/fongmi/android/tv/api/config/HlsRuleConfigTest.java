@@ -14,6 +14,9 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public class HlsRuleConfigTest {
 
@@ -56,6 +59,21 @@ public class HlsRuleConfigTest {
                 record, ruleId, List.of(custom), List.of()));
         assertEquals("我的自定义广告规则", record.getRuleName());
         assertEquals("手动", record.getRuleSource());
+    }
+
+    @Test
+    public void legacyRuleSourcesInvalidateCompiledCacheWhenConfigChanges() throws Exception {
+        String userRules = readSource("UserAdRuleStore.java");
+        String disabledRules = readSource("DisabledDefaultRuleStore.java");
+
+        assertTrue(userRules.contains("RuleConfig.get().invalidate();"));
+        assertTrue(userRules.contains("HlsRuleConfig.invalidate();"));
+        assertTrue(disabledRules.contains("RuleConfig.get().invalidate();"));
+        assertTrue(disabledRules.contains("HlsRuleConfig.invalidate();"));
+    }
+
+    private static String readSource(String fileName) throws Exception {
+        return Files.readString(Path.of("src/main/java/com/fongmi/android/tv/api/config", fileName), StandardCharsets.UTF_8);
     }
 
     private static String manifest() {

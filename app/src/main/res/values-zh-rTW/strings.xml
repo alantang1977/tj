@@ -511,6 +511,8 @@
     <string name="site_health_clear_all">一鍵清空樣本</string>
     <string name="site_health_clear_all_title">清空全部站點健康樣本？</string>
     <string name="site_health_clear_all_message">將刪除全部播放鏈路健康樣本，且無法撤銷。</string>
+    <string name="site_health_stage_home">首頁</string>
+    <string name="site_health_stage_category">分類</string>
     <string name="site_health_stage_search">搜尋</string>
     <string name="site_health_stage_detail">詳情</string>
     <string name="site_health_stage_parse">解析</string>
@@ -1286,7 +1288,8 @@ TVData</string>
     <string name="player_osd">屏顯設定</string>
     <string name="player_subtitle_auto_match">自動匹配字幕</string>
     <string name="player_subtitle_language">字幕偏好語言</string>
-    <string name="player_subtitle_assrt_token">射手網 Token</string>
+    <string name="player_subtitle_source_environment">環境變數（JSON）</string>
+    <string name="player_subtitle_source_environment_invalid">請輸入有效的 JSON 物件</string>
     <string name="player_subtitle_ai_max_concurrency">AI字幕最大並發數</string>
     <string name="player_subtitle_ai_chunk_count">AI字幕分塊數量</string>
     <string name="subtitle_auto_match_hit">已自動匹配字幕：%1$s</string>
@@ -2442,7 +2445,7 @@ TVData</string>
     <string name="history_config_changed">點播設定已切換，請重新操作</string>
     <string name="dialog_delete_global_history">確定刪除所有點播設定的歷史記錄嗎？</string>
     <string name="setting_home_history">首頁最近觀看</string>
-    <string name="site_health_report_ad_blocked">廣告攔截 · %1$d 次</string>
+    <string name="site_health_report_ad_blocked">播放 %1$d 次 / 廣告攔截 %2$d 次</string>
     <string name="setting_custom_csp_sort">排序</string>
     <string name="setting_custom_csp_sort_done">完成</string>
     <string name="setting_custom_csp_sort_drag">拖拽排序</string>
@@ -2714,4 +2717,5 @@ TVData</string>
     <string name="dialog_tmdb_test_image_failed">圖片網域：測試失敗（%1$s，%2$d 毫秒）</string>
     <string name="dialog_tmdb_test_omdb_success">OMDb API：連線成功並傳回有效資料（%1$d 毫秒）</string>
     <string name="dialog_tmdb_test_omdb_failed">OMDb API：測試失敗（%1$s，%2$d 毫秒）</string>
+    <string name="site_health_report_search_hint">按站點名稱搜尋</string>
 </resources>

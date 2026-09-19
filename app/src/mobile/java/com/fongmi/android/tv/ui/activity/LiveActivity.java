@@ -298,6 +298,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         mBinding.control.back.setOnClickListener(view -> onBack());
         mBinding.control.cast.setOnClickListener(view -> onCast());
         mBinding.control.info.setOnClickListener(view -> onInfo());
+        mBinding.control.osdDiagnostics.setOnClickListener(view -> onPlayParams());
         mBinding.control.play.setOnClickListener(view -> checkPlay());
         mBinding.control.next.setOnClickListener(view -> nextChannel());
         mBinding.control.prev.setOnClickListener(view -> prevChannel());
@@ -318,6 +319,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         mBinding.control.action.player.setOnClickListener(view -> onPlayerKernel());
         mBinding.control.action.player.setOnLongClickListener(view -> onPlayerKernelLong());
         mBinding.control.action.decode.setOnClickListener(view -> onDecode());
+        mBinding.control.action.playParams.setOnClickListener(view -> onPlayParams());
         mBinding.control.action.text.setOnLongClickListener(view -> onTextLong());
         mBinding.control.action.speed.setOnLongClickListener(view -> onSpeedLong());
         mBinding.control.action.getRoot().setOnTouchListener(this::onActionTouch);
@@ -945,6 +947,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     private void showControl() {
         if (service() == null || isInPictureInPictureMode()) return;
+        setPlayParamsState();
         boolean embedded = isEmbeddedLiveUi();
         if (!embedded && isVisible(mBinding.recycler)) hideUI(false);
         mBinding.control.info.setVisibility(player().isEmpty() ? View.GONE : View.VISIBLE);
@@ -966,6 +969,22 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         mBinding.control.getRoot().setVisibility(View.GONE);
         if (mOsd != null) mOsd.setControlsVisible(false);
         App.removeCallbacks(mR1);
+    }
+
+    private void onPlayParams() {
+        if (mOsd == null) return;
+        boolean visible = !mOsd.isDiagnosticsVisible();
+        PlayerSetting.putOsdDiagnostics(visible);
+        mOsd.setDiagnosticsVisible(visible);
+        setPlayParamsState();
+        hideControl();
+    }
+
+    private void setPlayParamsState() {
+        boolean visible = mOsd != null && mOsd.isDiagnosticsVisible();
+        mBinding.control.action.playParams.setSelected(visible);
+        mBinding.control.osdDiagnostics.setSelected(visible);
+        mBinding.control.osdDiagnostics.setAlpha(visible ? 1f : 0.6f);
     }
 
     private void showInfo() {
@@ -2171,6 +2190,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
             mOsd.setDiagnosticsVisible(PlayerSetting.isOsdDiagnostics());
             mOsd.start();
         }
+        setPlayParamsState();
         setAudioOnly(false);
         mPiP.resetAudioMode();
         setStop(false);

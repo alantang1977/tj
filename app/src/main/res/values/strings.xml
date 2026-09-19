@@ -523,7 +523,7 @@
     <string name="site_health_report_summary_reason">%1$d sites · %2$d samples · %3$d failures · %4$d degraded · Top %5$s x%6$d</string>
     <string name="site_health_report_setting_summary">%1$d sites · %2$d samples</string>
     <string name="site_health_report_row_meta">%1$d samples · %2$d failures</string>
-    <string name="site_health_report_ad_blocked">Ads blocked · %1$d</string>
+    <string name="site_health_report_ad_blocked">Playback %1$d / Ad blocks %2$d</string>
     <string name="site_health_report_stage">%1$s · %2$s · %3$d/%4$d</string>
     <string name="site_health_report_rate">%1$d%%</string>
     <string name="site_health_report_no_data">No data</string>
@@ -540,6 +540,8 @@
     <string name="site_health_clear_all">Clear all samples</string>
     <string name="site_health_clear_all_title">Clear all site health samples?</string>
     <string name="site_health_clear_all_message">This will delete all playback-chain health samples. This action cannot be undone.</string>
+    <string name="site_health_stage_home">Home</string>
+    <string name="site_health_stage_category">Category</string>
     <string name="site_health_stage_search">Search</string>
     <string name="site_health_stage_detail">Detail</string>
     <string name="site_health_stage_parse">Parse</string>
@@ -1331,7 +1333,11 @@ TVData</string>
     <string name="player_osd">On-screen display</string>
     <string name="player_subtitle_auto_match">Auto subtitle match</string>
     <string name="player_subtitle_language">Preferred subtitle language</string>
-    <string name="player_subtitle_assrt_token">ASSRT token</string>
+    <string name="player_subtitle_source_environment">Environment variables (JSON)</string>
+    <string name="player_subtitle_source_environment_invalid">Enter a valid JSON object</string>
+    <string name="player_subtitle_source">Subtitle sources</string>
+    <string name="player_subtitle_source_count">%1$d loaded</string>
+    <string name="player_subtitle_source_empty">No subtitle sources available</string>
     <string name="player_subtitle_ai_max_concurrency">AI subtitle max concurrency</string>
     <string name="player_subtitle_ai_chunk_count">AI subtitle chunks</string>
     <string name="subtitle_auto_match_hit">Subtitle matched: %1$s</string>
@@ -2762,4 +2768,5 @@ TVData</string>
     <string name="dialog_tmdb_test_image_failed">Image domain: failed (%1$s, %2$d ms)</string>
     <string name="dialog_tmdb_test_omdb_success">OMDb API: connected and returned valid data (%1$d ms)</string>
     <string name="dialog_tmdb_test_omdb_failed">OMDb API: failed (%1$s, %2$d ms)</string>
+    <string name="site_health_report_search_hint">Search by site name</string>
 </resources>

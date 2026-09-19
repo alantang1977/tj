@@ -5001,3 +5001,11 @@ C3 的触发来源主要是 media `990abc2368fd74779f525ee345734470659f3d53`（`
 - 当前 HEAD 为 merge commit `65facf4bcbed78e702a1ec0fd86c50778fcf639f`，第一父提交 `da34bfc400ccff4c07287ef1e3cfa61327aaee39`，第二父提交 `fc62397591701b2232ae7de4f50a032bd7742064`；上游目标已是 HEAD 祖先。
 - Recovery tag：`recovery/merge-upstream-binary-override-java-merge/20260913015933-65facf4bcbed`。
 - 当前状态：完成（本地未推送）；工作树收口后不再重复构建、测试或扩展研究。
+
+## 检查点 60：2026-09-18 C4 dev4 同步 fish2018/main
+
+- 基线：`dev4@ac39115dd99c43b861e0a255c7b7a407af2855b2`；共同祖先：`fc62397591701b2232ae7de4f50a032bd7742064`；目标：`fish2018/webhtv:main@88aceb110959ff50afc23b10d9b9abe3e0f53255`。
+- 范围：52 个上游提交，10 个冲突文件全部按“本地行为契约 + 上游功能并集”解决；非代码二进制、测试资产、AAR/POM、lock/patch 随上游目标纳入。
+- 验证：Mobile/Leanback arm64 Debug Java 编译通过；Mobile arm64 Debug 单测 4587 项、0 failure、0 error、1 skipped；双 ABI MPV ELF/资产门禁通过；无冲突标记与 whitespace 错误。
+- 未执行：APK 打包、设备安装、实机播放矩阵、native 重建；不将当前证据扩大为实机机型验收。
+- 下一动作：由当前 C4 guard 生成双亲 merge commit 和 annotated recovery tag，不推送。

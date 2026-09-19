@@ -201,6 +201,17 @@ default void resetTrack(int type) {
         return false;
     }
 
+    default boolean isPrimarySubtitleSelected(Format format) {
+        if (format == null || isSecondarySubtitleSelected(format)) return false;
+        for (Tracks.Group group : getCurrentTracks().getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+            for (int i = 0; i < group.length; i++) {
+                if (group.isTrackSelected(i) && format.equals(group.getTrackFormat(i))) return true;
+            }
+        }
+        return false;
+    }
+
     default boolean isSecondarySubtitleSelected(Format format) {
         return false;
     }

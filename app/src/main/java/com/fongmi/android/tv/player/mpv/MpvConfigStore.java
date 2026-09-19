@@ -53,6 +53,7 @@ public final class MpvConfigStore {
     private static final String MANAGED_SCRIPTS_DIR = ".webhtv";
     private static final int MAX_PROFILE_BYTES = 1024 * 1024;
     public static final String CUSTOM_BUTTON_MESSAGE = "webhtv-custom-button";
+    public static final String CUSTOM_BUTTON_STATE_PROPERTY = "user-data/webhtv-custom-buttons";
     private static final String CUSTOM_BUTTONS_FILE = "custombuttons.json";
     private static final String CUSTOM_BUTTON_SCRIPT = "webhtv-custom-buttons.lua";
     private MpvConfigStore() {
@@ -1270,10 +1271,24 @@ public final class MpvConfigStore {
 
     static String buildCustomButtonScript(List<CustomButton> buttons, ScriptContentReader scripts) {
         StringBuilder lua = new StringBuilder("-- WebHTV managed custom buttons\nlocal buttons = {}\n"
+                + "local webhtv_active_buttons = {}\n"
+                + "local function webhtv_publish_button_state()\n"
+                + "  local ids = {}\n"
+                + "  for id, active in pairs(webhtv_active_buttons) do if active then ids[#ids + 1] = id end end\n"
+                + "  table.sort(ids)\n"
+                // UI feedback must not interrupt script execution if the property is unavailable.
+                + "  pcall(mp.set_property_native, " + luaString(CUSTOM_BUTTON_STATE_PROPERTY) + ", table.concat(ids, ','))\n"
+                + "end\n"
+                + "local function webhtv_toggle_button_state(id)\n"
+                + "  webhtv_active_buttons[id] = not webhtv_active_buttons[id]\n"
+                + "  webhtv_publish_button_state()\n"
+                + "end\n"
+                + "webhtv_publish_button_state()\n"
                 + "local function run(fn)\n"
-                + "  if not fn then return end\n"
+                + "  if not fn then return false end\n"
                 + "  local ok, err = pcall(fn)\n"
                 + "  if not ok then mp.msg.error('WebHTV custom button failed: ' .. tostring(err)) end\n"
+                + "  return ok\n"
                 + "end\n");
         int scriptCount = 0;
         for (CustomButton button : buttons) {
@@ -1314,12 +1329,12 @@ public final class MpvConfigStore {
                 lua.append("buttons[").append(key).append("].long = function()\n")
                         .append(longContent).append("\nend\n");
             }
-            if (startupButton) lua.append("run(buttons[").append(key).append("].short)\n");
+            if (startupButton) lua.append("if run(buttons[").append(key).append("].short) then webhtv_toggle_button_state(").append(key).append(") end\n");
         }
         if (scriptCount == 0) return "";
         lua.append("mp.register_script_message(").append(luaString(CUSTOM_BUTTON_MESSAGE)).append(", function(id, phase)\n")
                 .append("  local button = buttons[id]\n")
-                .append("  run(button and button[phase])\n")
+                .append("  if run(button and button[phase]) then webhtv_toggle_button_state(id) end\n")
                 .append("end)\n");
         return lua.toString();
     }

@@ -499,6 +499,8 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
     private int mPendingPlayerKernel = PlayerSetting.NONE;
     private MpvPlayer mDiscMenuPlayer;
     private final Runnable mDiscMenuStateListener = this::updateDiscMenuButton;
+    private MpvPlayer mCustomButtonPlayer;
+    private final Runnable mCustomButtonStateListener = this::updateCustomButtonStates;
 
     private final ActivityResultLauncher<Intent> mLutDir = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) return;
@@ -1724,16 +1726,13 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
             view.setMaxWidth(ResUtil.dp2px(144));
             view.setEllipsize(TextUtils.TruncateAt.END);
             view.setContentDescription(button.title);
+            view.setTag(button.id);
             view.setOnClickListener(item -> {
-                if (player().sendMpvCustomButton(button.id, false)) {
-                    toggleCustomButtonState(item);
-                }
+                player().sendMpvCustomButton(button.id, false);
                 setR1Callback();
             });
             view.setOnLongClickListener(item -> {
-                if (player().sendMpvCustomButton(button.id, true)) {
-                    toggleCustomButtonState(item);
-                }
+                player().sendMpvCustomButton(button.id, true);
                 setR1Callback();
                 return true;
             });
@@ -1747,8 +1746,17 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
         updateCustomButtonVisibility();
     }
 
-    private void toggleCustomButtonState(View view) {
-        view.setSelected(!view.isSelected());
+    private void updateCustomButtonStates() {
+        MpvPlayer mpv = service() != null && isOwner()
+                && player().getPlayer() instanceof MpvPlayer active ? active : null;
+        if (mCustomButtonPlayer != mpv) {
+            if (mCustomButtonPlayer != null) mCustomButtonPlayer.removeCustomButtonStateListener(mCustomButtonStateListener);
+            mCustomButtonPlayer = mpv;
+            if (mpv != null) mpv.addCustomButtonStateListener(mCustomButtonStateListener);
+        }
+        for (View view : mCustomActionViews) {
+            view.setSelected(mpv != null && mpv.isCustomButtonActive((String) view.getTag()));
+        }
     }
 
     private void ensureCustomButtonContainers() {
@@ -1769,6 +1777,7 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
     }
 
     private void updateCustomButtonVisibility() {
+        updateCustomButtonStates();
         boolean visible = service() != null && player().isMpv() && isVisible(mBinding.control.getRoot());
         if (mCustomPortraitButtons != null) mCustomPortraitButtons.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
@@ -1792,6 +1801,7 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
     }
 
     private void updateDiscMenuButton() {
+        updateCustomButtonStates();
         MpvPlayer mpv = service() != null && isOwner()
                 && player().getPlayer() instanceof MpvPlayer active ? active : null;
         if (mDiscMenuPlayer != mpv) {
@@ -2943,6 +2953,7 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
     }
 
     private void beginPlayerContentRequest(String key, String flag, String episode) {
+        if (mViewModel != null) mViewModel.cancelPlayerContent();
         mPendingPlayer = null;
         invalidatePlayerContent();
         playerContentKey = key;
@@ -3290,6 +3301,7 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
 
     private void beginPlayHealth() {
         playHealthKey = getKey();
+        SiteHealthStore.recordPlayAttempt(playHealthKey);
         playHealthRecorded = false;
     }
 
@@ -5619,6 +5631,7 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
 
     @Override
     protected void onReload(String msg) {
+        recordPlayHealth(false, msg);
         if (PlayerManager.RELOAD_LUT_WARMUP.equals(msg)) {
             if (SpiderDebug.isEnabled()) SpiderDebug.log("lut-ui", "auto refresh after lut warmup playback failure key=%s episode=%s", getKey(), getEpisode() == null ? null : getEpisode().getName());
             onRefresh();
@@ -5635,6 +5648,11 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
     }
 
     @Override
+    protected void onFirstFrameRendered() {
+        recordPlayHealth(true, "");
+    }
+
+    @Override
     protected void onStateChanged(int state) {
         switch (state) {
             case Player.STATE_BUFFERING:
@@ -5642,7 +5660,6 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
                 break;
             case Player.STATE_READY:
                 mKaraokeResultShown = false;
-                recordPlayHealth(true, "");
                 showPlaybackContent();
                 boolean pendingResumeSeekApplied = applyPendingResumeSeek();
                 refreshLyrics();
@@ -8127,9 +8144,9 @@ private long mInitialPlaybackPosition = C.TIME_UNSET;
         cancelTvTouch();
         mIntroSkipPlayback.reset();
         cancelAiSeasonAnalysis(false);
-        if (mDiscMenuPlayer != null) {
-            mDiscMenuPlayer.removeDiscMenuStateListener(mDiscMenuStateListener);
-            mDiscMenuPlayer = null;
+        if (mCustomButtonPlayer != null) {
+            mCustomButtonPlayer.removeCustomButtonStateListener(mCustomButtonStateListener);
+            mCustomButtonPlayer = null;
         }
         if (mDiscMenuPlayer != null) {
             mDiscMenuPlayer.removeDiscMenuStateListener(mDiscMenuStateListener);

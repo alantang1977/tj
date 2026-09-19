@@ -33,6 +33,7 @@ public class UserAdRuleStore {
     public static synchronized void save(List<UserAdRule> rules) {
         Prefers.put(PREF_KEY, App.gson().toJson(rules == null ? new ArrayList<>() : rules));
         RuleConfig.get().invalidate();
+        HlsRuleConfig.invalidate();
     }
 
     public static synchronized void add(UserAdRule rule) {

@@ -1,3 +1,4 @@
+import requests
 import os
 import textwrap
 from importlib.machinery import SourceFileLoader
@@ -94,6 +95,21 @@ def action(ru, action):
     formatJo = json.dumps(result, ensure_ascii=False)
     return formatJo
 
+
+
+def subtitle_init(ru, config):
+    result = ru.init(str2json(config) if isinstance(config, str) and config.strip().startswith(('{', '[')) else config)
+    return json.dumps(result if result is not None else {"code": 0, "data": {}}, ensure_ascii=False)
+
+
+def subtitle_search(ru, request):
+    result = ru.search(str2json(request))
+    return json.dumps(result, ensure_ascii=False)
+
+
+def subtitle_resolve(ru, request):
+    result = ru.resolve(str2json(request))
+    return json.dumps(result, ensure_ascii=False)
 
 def destroy(ru):
     ru.destroy()

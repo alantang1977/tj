@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -15,6 +16,13 @@ public class SiteHealthReportSourceTest {
     public void siteHealthStoreExposesFourStageReportWithoutChangingSortScore() throws Exception {
         String source = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "setting", "SiteHealthStore.java")));
 
+        assertTrue(source.contains("public static void recordHome"));
+        assertTrue(source.contains("public static void recordCategory"));
+        String api = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "api", "SiteApi.java")));
+        assertTrue(api.contains("SiteHealthStore.recordHome(site, true"));
+        assertTrue(api.contains("SiteHealthStore.recordHome(site, false"));
+        assertTrue(api.contains("SiteHealthStore.recordCategory(key, true"));
+        assertTrue(api.contains("SiteHealthStore.recordCategory(key, false"));
         assertTrue(source.contains("public static void recordSearch"));
         assertTrue(source.contains("public static void recordDetail"));
         assertTrue(source.contains("public static void recordParse"));
@@ -96,6 +104,14 @@ public class SiteHealthReportSourceTest {
         assertTrue(methodBody(reportSource, "private void confirmClearAll()").contains("binding.root.post(this::refreshReport)"));
         assertTrue(dialogLayout.contains("@+id/report"));
         assertTrue(dialogLayout.contains("@string/site_health_report_view"));
+        assertTrue(reportLayout.contains("@+id/search"));
+        assertTrue(reportLayout.contains("@string/site_health_report_search_hint"));
+        assertTrue(reportSource.contains("binding.search.addTextChangedListener"));
+        assertTrue(reportSource.contains("row.siteName.toLowerCase(Locale.ROOT).contains(query)"));
+        assertTrue(reportSource.contains("R.string.site_health_stage_home, row.home"));
+        assertTrue(reportSource.contains("R.string.site_health_stage_category, row.category"));
+        assertTrue(reportSource.contains("row.home.lastFailAt"));
+        assertTrue(reportSource.contains("row.category.lastFailAt"));
         assertTrue(reportLayout.contains("@+id/filterAll"));
         assertTrue(reportLayout.contains("@+id/filterBad"));
         assertTrue(reportLayout.contains("@+id/filterWarn"));
@@ -140,6 +156,93 @@ public class SiteHealthReportSourceTest {
         assertTrue(dialog.contains("R.string.ad_site_rank"));
         assertTrue(dialog.contains("R.string.ad_rule_rank"));
         assertTrue(dialog.contains("R.string.ad_pipeline_rank"));
+        assertTrue(dialog.contains("int playCount = row.playAttempts"));
+        assertTrue(dialog.contains("site_health_report_ad_blocked, playCount, blocked"));
+    }
+
+    @Test
+    public void playbackActivityBridgesExoFirstFrameToGenericFirstFrameHook() throws Exception {
+        String playback = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "PlaybackActivity.java")));
+        String exoFirstFrame = methodBody(playback, "public void onExoFirstFrame()");
+
+        assertTrue(exoFirstFrame.contains("PlaybackActivity.this.onExoFirstFrame()"));
+        assertTrue(exoFirstFrame.contains("PlaybackActivity.this.onFirstFrameRendered()"));
+    }
+
+    @Test
+    public void playbackHealthCountsSuccessOnlyAfterFirstFrame() throws Exception {
+        String leanback = read(sourcePath("leanback", "java").resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java")));
+        String mobile = read(sourcePath("mobile", "java").resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java")));
+
+        for (String source : new String[] {leanback, mobile}) {
+            String firstFrame = methodBody(source, "protected void onFirstFrameRendered()");
+            String stateChanged = methodBody(source, "protected void onStateChanged(int state)");
+            assertTrue(firstFrame.contains("recordPlayHealth(true, \"\")"));
+            assertFalse(stateChanged.contains("recordPlayHealth(true, \"\")"));
+        }
+    }
+
+    @Test
+    public void playbackHealthRecordsTerminalErrorsAndReloadFailures() throws Exception {
+        String leanback = read(sourcePath("leanback", "java").resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java")));
+        String mobile = read(sourcePath("mobile", "java").resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java")));
+
+        for (String source : new String[] {leanback, mobile}) {
+            String error = methodBody(source, "protected void onError(String msg)");
+            String reload = methodBody(source, "protected void onReload(String msg)");
+            assertTrue(error.contains("recordPlayHealth(false, msg)"));
+            assertTrue(reload.contains("recordPlayHealth(false, msg)"));
+        }
+    }
+
+    @Test
+    public void terminalPlayerFailureReachesHostAfterFallbacksAreExhausted() throws Exception {
+        String player = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "player", "PlayerManager.java")));
+        String onPlayerError = methodBody(player, "public void onPlayerError(@NonNull PlaybackException e)");
+
+        int fallback = onPlayerError.indexOf("if (fallbackPlayback(e)) return;");
+        int terminalCallback = onPlayerError.indexOf("callback.onError(getPlaybackErrorMessage(failure))", fallback);
+        assertTrue("fallback handling is missing", fallback >= 0);
+        assertTrue("terminal errors must reach the host after fallback exhaustion", terminalCallback > fallback);
+    }
+
+    @Test
+    public void playbackAttemptsUseIndependentCounterForAdBlockRatio() throws Exception {
+        String store = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "setting", "SiteHealthStore.java")));
+        String dialog = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "dialog", "SiteHealthReportDialog.java")));
+        String leanback = read(sourcePath("leanback", "java").resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java")));
+        String mobile = read(sourcePath("mobile", "java").resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java")));
+
+        assertTrue(store.contains("public static void recordPlayAttempt(String key)"));
+        assertTrue(store.contains("public final int playAttempts"));
+        assertTrue(dialog.contains("int playCount = row.playAttempts"));
+        for (String source : new String[] {leanback, mobile}) {
+            String begin = methodBody(source, "private void beginPlayHealth()");
+            assertTrue(begin.contains("SiteHealthStore.recordPlayAttempt(playHealthKey)"));
+            assertEquals(1, count(begin, "recordPlayAttempt("));
+        }
+    }
+
+    @Test
+    public void tmdbDetailInlinePlaybackRecordsAttemptsAndTerminalHealth() throws Exception {
+        String source = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java")));
+        String start = methodBody(source, "private void startInlinePlayer(Result result, long resumePosition)");
+        String firstFrame = methodBody(source, "protected void onFirstFrameRendered()");
+        String error = methodBody(source, "protected void onError(String msg)");
+        String recorder = methodBody(source, "private void recordInlinePlayHealth(boolean success, String error)");
+
+        assertTrue(start.contains("SiteHealthStore.recordPlayAttempt(inlinePlayHealthKey)"));
+        assertEquals(1, count(start, "recordPlayAttempt("));
+        assertTrue(firstFrame.contains("recordInlinePlayHealth(true, \"\")"));
+        assertTrue(error.contains("recordInlinePlayHealth(false, msg)"));
+        assertTrue(recorder.contains("if (inlinePlayHealthRecorded) return"));
+        assertTrue(recorder.contains("SiteHealthStore.recordPlay("));
+    }
+
+    private static int count(String source, String needle) {
+        int count = 0;
+        for (int offset = 0; (offset = source.indexOf(needle, offset)) >= 0; offset += needle.length()) count++;
+        return count;
     }
 
     private static String methodBody(String source, String signature) {

@@ -188,3 +188,116 @@
 - 关键并集：播放器蓝光菜单、原盘导航、历史进度、MPV 渲染设置、短剧 dock/生命周期、Disc 菜单清理与 native patch 链；`.gitignore` 保留本地缓存目录。
 - 尚未完成：定向验证、guard finish 提交与 recovery tag。
 - 2026-09-13 05:44–06:13：修复 mobile/leanback 合并残留的结构、绑定、设置行、动作注册与初始续播冲突；恢复 mobile disc-menu 生命周期触发与 leanback `updateDiscMenuButton()`。mobile/leanback Java 编译和 8 个定向单测通过，`git diff --check` 通过。
+
+
+## 第四轮源码与资产同步：2026-09-18 Asia/Shanghai
+
+### Recovery anchor
+
+- 目标：将 `fish2018/webhtv:main` 从上一轮已纳入的 `fc62397591701b2232ae7de4f50a032bd7742064` 同步到最新 `88aceb110959ff50afc23b10d9b9abe3e0f53255`，在 `dev4` 保留本地后续功能与治理文档。
+- 用户授权：合并上游最新代码；非代码二进制等文件可按上游直接覆盖；代码冲突按本地行为契约与上游功能并集解决，无法判定的产品行为先确认。
+- 本轮基线：`dev4@ac39115dd99c43b861e0a255c7b7a407af2855b2`；共同祖先：`fc62397591701b2232ae7de4f50a032bd7742064`；上游目标：`fish2018/webhtv:main@88aceb110959ff50afc23b10d9b9abe3e0f53255`。
+- 回滚锚点：实施前 `ac39115dd99c43b861e0a255c7b7a407af2855b2`；完成后以本轮 merge commit 与 recovery tag 为恢复点。
+- Guard：`C4/upstream`；受保护的初始工作树脏路径：无。
+- 范围：`.github/`、`app/`、`catvod/`、`chaquo/`、`docs/`、`gradle/`、`quickjs/`、`scripts/`、`third_party/` 中本轮上游差异及本任务记录；不升级其他未在上游目标中出现的依赖，不推送。
+- 下一动作：先完成上游真实 merge 并列出所有冲突；二进制冲突按上游选取，代码冲突逐文件审阅后再验证。
+
+### 决策包与证据边界
+
+| 方案 | 决定与理由 |
+| --- | --- |
+| 不变更 | 不满足“合并上游最新代码”，且遗漏 52 个上游提交。 |
+| 直接覆盖整个工作树 | 不采用；会删除/覆盖 `dev4` 后续代码、播放器生命周期保护和本地任务文档。 |
+| 真实双亲 merge + 窄适配 | 采用；保留上游 provenance，对代码冲突保留本地安全/生命周期契约并接入上游新增行为，二进制和测试资产按上游目标覆盖。 |
+
+本轮的主要证据为上游 52 个提交的实际 diff、提交内测试/文档、当前 `dev4` 对应调用链与锁/资产清单，以及既有 C4 合并记录。播放器边界继续遵守 `README.md`、`.codex/skills/upstream-integration-governor/references/webhtv-player-gates.md`：不因主线同步而把 Exo 与 MPV 的二进制、ABI、JNI 或 lock 视为可互换；不重建 native。若上游 commit 引入新的 native/ABI 资产，按其文件 provenance 与双 ABI 门禁验证；若代码冲突无法由现有契约决定，则不擅自选择。
+
+### 本轮完整上游提交台账（共同祖先之后）
+
+| # | Full commit | Date | Subject | Final disposition |
+| ---: | --- | --- | --- | --- |
+| 1 | `792c1f880bc151eb1cb6675034ec144aadc14766` | 2026-09-12T07:41:10+08:00 | mpv: checkpoint opt-in DV7 FEL reconstruction (known bugs) | 已合并（真实 merge） |
+| 2 | `ec68966c1d72be1c27533e7e9450763a4189febe` | 2026-09-12T09:01:32+08:00 | mpv: avoid synchronous audio probes in unrelated log callbacks | 已合并（真实 merge） |
+| 3 | `cbb02fa4c40a2d0b1d04a43d6c5be4265129f98e` | 2026-09-12T21:47:50+08:00 | fix(mpv): checkpoint pure-BL FEL reliability candidate | 已合并（真实 merge；保留本地前台崩溃恢复契约） |
+| 4 | `0a82dc13e255524d7c0e4e04c2f51ec9119aec88` | 2026-09-13T02:55:08+08:00 | mpv: checkpoint FEL producer handoff with unresolved playback stalls | 已合并（真实 merge） |
+| 5 | `1620bac1566727f4067eda631647a11652082e74` | 2026-09-13T11:23:03+08:00 | mpv: separate FEL cold initialization from cancellable frame handoff | 已合并（真实 merge） |
+| 6 | `dc1401638532840a8362b869b3220cb952ca7b35` | 2026-09-13T13:08:42+08:00 | mpv: isolate FEL performance logs and add nonblocking stage timings | 已合并（真实 merge） |
+| 7 | `ce10d5c15ef36fa83e27c6195182717a334a1036` | 2026-09-13T22:54:43+08:00 | fix(mpv): refresh FEL frame commands and trace frame ordering | 已合并（真实 merge） |
+| 8 | `2ec5afd8cc3f21bf1693b198f87018488775c660` | 2026-09-14T00:42:39+08:00 | fix(mpv): bound FEL renderer warmup and gate push descriptors | 已合并（真实 merge） |
+| 9 | `8965c0ddda41ef8e8daac80ed227c04f56b89b64` | 2026-09-14T13:45:41+08:00 | feat(diagnostics): add bounded playback log foundation | 已合并（真实 merge） |
+| 10 | `ce2baffcffff6ebb720bc5a5793c706b18f62ca5` | 2026-09-14T14:35:21+08:00 | fix(settings): preserve playback performance focus after edits | 已合并（真实 merge） |
+| 11 | `4a447f26e5fa488cb0c1c661398e374b10a56b6e` | 2026-09-14T15:23:51+08:00 | fix(settings): correct update dialog theme and sizing on TV | 已合并（真实 merge） |
+| 12 | `bc2b3b284de87ada937b4ba3564f6fb12aa8a956` | 2026-09-14T17:14:48+08:00 | docs: assess Exo libass integration and MPV subtitle surface reuse | 已合并（真实 merge） |
+| 13 | `845ce82c64b16c94a1db7a61ed6bd38d2d1d35ac` | 2026-09-14T18:18:00+08:00 | docs: refine E4-LIBASS integration and validation plan | 已合并（真实 merge） |
+| 14 | `5cde3c015258f620f264d5f3ffe0a437c2ea3d48` | 2026-09-14T22:22:55+08:00 | fix(mpv): preserve ASS script fonts and explicit style overrides | 已合并（真实 merge） |
+| 15 | `e7c0cdf0d6dafd5679425f045192e708e92dcfed` | 2026-09-15T04:24:00+08:00 | feat(exo): add gated libass rendering with attached fonts | 已合并（真实 merge） |
+| 16 | `bed561691c239d6a48456c45f3727416c8c40c5c` | 2026-09-15T06:10:55+08:00 | fix(exo): render container ASS packets with original fonts | 已合并（真实 merge） |
+| 17 | `0667ff435ba167cfdff716236d68fea8d7fcd16f` | 2026-09-15T07:54:28+08:00 | fix(git-cloud): support token storage without AndroidKeyStore | 已合并（真实 merge） |
+| 18 | `a18c409b6d5a3c9d1e64edd673cd672daf448ac1` | 2026-09-15T10:32:16+08:00 | fix(mpv): synchronize script button activation with Lua execution | 已合并（真实 merge） |
+| 19 | `684f6066393fa503b2a0573c25a2aa25d01294fc` | 2026-09-15T11:09:14+08:00 | fix(mpv): show player rebuffer statistics in playback panel | 已合并（真实 merge） |
+| 20 | `57656c06bdb4e13de3cbaf8f573dc76212e7d718` | 2026-09-15T12:06:12+08:00 | feat(diagnostics): observe Exo decoder, surface and audio output evidence | 已合并（真实 merge） |
+| 21 | `88780d4dc8a197fc9bb5e767f450e1847e50a35d` | 2026-09-15T12:33:53+08:00 | feat(diagnostics): retain MPV native events and cached pipeline health | 已合并（真实 merge） |
+| 22 | `ac02ce84ae14332fa8bf2aab840ee4ab5a7fac2b` | 2026-09-15T12:56:23+08:00 | feat(diagnostics): add IJK evidence and bounded process recovery journal | 已合并（真实 merge） |
+| 23 | `8d46751d7fd0f61bd2cb2557bb8fe99a0d33d494` | 2026-09-15T13:12:50+08:00 | fix(diagnostics): preserve MPV native attempt ownership across media changes | 已合并（真实 merge） |
+| 24 | `180811f16073271ba1cb6a4f2f889008966facd3` | 2026-09-15T14:10:54+08:00 | feat(diagnostics): add categorized capture controls, incident reports and bounded probes | 已合并（真实 merge） |
+| 25 | `5acbb05afff34235d66bc1a6f3d7f67427e2a239` | 2026-09-15T16:21:58+08:00 | feat(diagnostics): complete native evidence and categorized playback logging | 已合并（真实 merge） |
+| 26 | `248a947ba8dcd834e386cba25e4de83984ebc1ab` | 2026-09-15T17:59:30+08:00 | feat(debug): capture crawler consoles and organize web logs into responsive tools | 已合并（真实 merge） |
+| 27 | `206a57e0e337304a8b78712c487ef245d7cb0fa0` | 2026-09-15T18:20:35+08:00 | fix(exo): include ASS rendering in normal builds | 已合并（真实 merge） |
+| 28 | `57211803d507ab1b6b6a0ee02c626a7f5909eebc` | 2026-09-16T05:35:16+08:00 | mpv: add bounded FEL wait diagnostics for TV logs | 已合并（真实 merge） |
+| 29 | `5f6fd1a75c210eac2571e7939a4e5451f23e84e3` | 2026-09-16T06:22:00+08:00 | docs: assess FEL Vulkan descriptor stalls across projects | 已合并（真实 merge） |
+| 30 | `ed3d710ef551210278920ba4cd25e8dda6e19ad6` | 2026-09-16T06:53:30+08:00 | perf(mpv): reuse unchanged FEL descriptor contents with fresh commands | 已合并（真实 merge） |
+| 31 | `44dd3f1386ac47c5d9e2007b9d2b32dfa0f72d8e` | 2026-09-16T07:26:55+08:00 | fix(debug): remove pairing and promote log actions | 已合并（真实 merge） |
+| 32 | `98d247ea193c58a3dbfa4033d679023282632a8e` | 2026-09-16T07:55:56+08:00 | docs(mpv): assess log33 FEL startup and persistent GPU stalls | 已合并（真实 merge） |
+| 33 | `5df95f475009ed0d04d864b60d7d22b229e87e95` | 2026-09-16T08:27:50+08:00 | docs(mpv): refine FEL diagnosis with cross-project source and binary evidence | 已合并（真实 merge） |
+| 34 | `8de0fd70942d513034fb8118de5229d7eb719622` | 2026-09-16T12:49:38+08:00 | fix(mpv): select DV7 FEL before video chain initialization | 已合并（真实 merge） |
+| 35 | `dbff1ffecd973c6d89eef1bf139f7243ac6b3ead` | 2026-09-16T13:46:14+08:00 | feat(mpv): add bounded FEL descriptor binding diagnostics | 已合并（真实 merge） |
+| 36 | `769e53471dbb3e9ad4f9b94842099ba97a92fdbd` | 2026-09-17T11:16:23+08:00 | feat(player): add baseline AVS3 decoding and fix Exo to MPV surface handoff | 已合并（真实 merge） |
+| 37 | `8919cf134218a3d3bb30f91f3180e9cd83eac982` | 2026-09-17T11:46:59+08:00 | fix(exo): enforce manual video decode mode for AVS3 | 已合并（真实 merge） |
+| 38 | `c9a1ac99d05f2d8bcac0558b725d34e196b468e2` | 2026-09-17T12:47:29+08:00 | fix(mpv): preserve ownership of FEL context options | 已合并（真实 merge） |
+| 39 | `54e7947c272a7b3ebad8b80bfab4c889e1ea86d5` | 2026-09-17T13:14:48+08:00 | fix(mpv): apply P8 HDR10 compatibility in explicit output modes | 已合并（真实 merge） |
+| 40 | `80fea0039053ab95c2e38150ecb7af63d1fdb8ae` | 2026-09-17T14:21:25+08:00 | feat(mpv): honor global smart ad skipping for HLS | 已合并（真实 merge） |
+| 41 | `edf4324034fe1681a658dd4557dd8451fcfdb792` | 2026-09-17T17:51:03+08:00 | feat(player): decode AVS3 High 10-bit with isolated HPM backend | 已合并（真实 merge） |
+| 42 | `13053755eaea00aa9c6449e8ad55c2ccf1fbc68a` | 2026-09-17T18:08:27+08:00 | fix(mpv): defer resume seek until file loading completes | 已合并（真实 merge） |
+| 43 | `98a7f9033d46651d019e2b29a7a75ad4dac317de` | 2026-09-17T19:24:36+08:00 | feat(mpv): add hardware-only AVS3 MediaCodec decoding | 已合并（真实 merge） |
+| 44 | `76a78c343974639f12257743a1baa339ca00929b` | 2026-09-17T20:11:13+08:00 | fix(mpv): preserve programme blocks in HLS ad skip timelines | 已合并（真实 merge） |
+| 45 | `8dd32cb9aab018a9d2c74437d235bc0e1912eded` | 2026-09-17T21:11:57+08:00 | fix(mpv): clip smart ads before rendering and restore reused surfaces | 已合并（真实 merge） |
+| 46 | `18ccd0785f04b279759399623adf3e593e86a22e` | 2026-09-17T23:15:08+08:00 | fix(live): expose playback parameters on mobile and TV controls | 已合并（真实 merge） |
+| 47 | `623b069261bf8f9d559969e9c99a6775e547443c` | 2026-09-18T00:30:50+08:00 | fix(mpv): honor HLS media roles for playlist-named live segments | 已合并（真实 merge） |
+| 48 | `4818057cd64c2c62c94e7208d9121719b4d11fe0` | 2026-09-18T06:07:42+08:00 | fix(diagnostics): base audio conclusions on observed output state | 已合并（真实 merge） |
+| 49 | `e2f39f240743ba4f8adf75bc6599f4ef7899d48a` | 2026-09-18T07:18:47+08:00 | perf(exo): skip fixed-track constraint reselection and reuse codec diagnostics | 已合并（真实 merge） |
+| 50 | `ad6f68d5120d49345e5c3b147e1580f9cc280c5f` | 2026-09-18T12:33:12+08:00 | feat(exo): support independently selected dual subtitles | 已合并（真实 merge） |
+| 51 | `ee216d8ba7dee9637e9b79478d819532c846691c` | 2026-09-18T14:22:17+08:00 | fix(exo): preserve audio output ownership and tunneling after seek | 已合并（真实 merge） |
+| 52 | `88aceb110959ff50afc23b10d9b9abe3e0f53255` | 2026-09-18T17:15:45+08:00 | fix(ci): skip obsolete Android SDK tools package | 已合并（真实 merge） |
+
+### 实施与验证结果（2026-09-18）
+
+#### 冲突处理与功能并集
+
+- 10 个冲突文件均已解决：`VideoActivity.java`、`MpvHlsProxy.java`、`MpvPlayer.java`、`PlayerManager.java`、`MpvPlayerEngine.java`、`ExoUtil.java`、`MediaSourceFactory.java`、`DebugLogs.java`、`PlayerOsdController.java`、`dialog_update_settings.xml`。
+- 保留本地零拷贝阻断、短剧队列、PAN 配置顺序、前台崩溃恢复页、AI 日志分组/返回顶部和 MPV 字幕样式设置；接入上游结构化诊断、FEL/DV7、HLS Ad Timeline、AVS3、双字幕、Disc 与播放按钮能力。
+- MPV HLS 改为“只计算 timeline、播放时跳过”，不再把候选广告误记为实际跳过；IJK 保留既有过滤和统计。
+- 更新面板保留本地 OCI/GitHub proxy 配置；二进制、测试 fixture、AAR/POM、native lock/patch 和上游资产按 `upstream/main` 目标纳入。
+
+#### 验证证据
+
+- `bash ./gradlew :app:compileMobileArm64_v8aDebugJavaWithJavac :app:compileLeanbackArm64_v8aDebugJavaWithJavac :app:testMobileArm64_v8aDebugUnitTest --console=plain`：`BUILD SUCCESSFUL`；Mobile 单测统计 `4587 tests, 0 failures, 0 errors, 1 skipped`。
+- `bash scripts/verify_mpv_native_assets.sh --require-elf`：`arm64-v8a` 和 `armeabi-v7a` 通过，18 个 native 文件与 lock/打包规则一致；同时输出 Vulkan shader contract 与 P2 generic UV patch scope 通过。
+- `git diff --cached --check` 通过；全仓库无 `<<<<<<<`、`=======`、`>>>>>>>` 冲突标记。
+- 未执行 APK 全量打包、设备安装和实机播放矩阵；因此本轮结论限定为真实 merge、Java 编译、标准 Mobile 单测、双 ABI ELF/资产门禁通过，不扩大为所有机型播放验收。
+
+### 接受条件
+
+1. 形成以本地基线和完整上游目标为双亲的 merge commit，目标提交可从 HEAD 追溯。
+2. 52 个上游提交全部有 disposition；无未解决冲突标记，`git diff --check` 通过。
+3. 上游新增代码接入实际构建路径；本地 MPV/Exo 生命周期、DV、音频、字幕、广告和安全保护不被无证据删除。
+4. 上游新增二进制/测试资产按目标版本覆盖并完成哈希/ELF/资产门禁；不把仅编译通过扩大为实机播放结论。
+5. 受影响 Mobile/Leanback Java 编译和定向测试通过；按风险执行双 ABI/native 资产验证。
+6. C4 文档、评估索引和 merge provenance 更新；原子提交并创建本地 annotated recovery tag，不推送。
+
+## 检查点 61：2026-09-18 dev4 合并后代码复审
+
+- 基线：`dev4@710e1bd520796f5be7466fe75b05903112c6df37`；目标：评审该 merge commit 相对 `origin/beta@ac39115dd99c43b861e0a255c7b7a407af2855b2` 的全部已提交未推送改动。
+- 第一轮评审发现 `app/build.gradle` 重复声明 `testInstrumentationRunner` 和 `testImplementation libs.junit`，并同时使用硬编码 `androidx.test:runner:1.7.0` 与版本目录中的 `1.6.2`。修复为单一 runner 声明、单一 JUnit test 依赖，并将版本目录统一为上游的 `1.7.0`。
+- 修复验证：`mobileArm64_v8aDebugAndroidTestRuntimeClasspath` 解析成功，`androidx.test:runner:1.7.0` 生效；Mobile/Leanback arm64-v8a Debug Java 编译 `BUILD SUCCESSFUL`；`git diff --check` 通过。
+- 第二轮评审：重新获取远端后，`origin/beta` 与 `upstream/main` 均仍为 HEAD 祖先；合并提交无冲突标记、无 staged/working-tree whitespace 错误，构建配置重复项已清除，未发现新的集成问题。
+- 下一动作：提交本轮构建配置修正，推送 `dev4`，创建至 `beta` 的 PR，并在完成后拉取远端最新状态。

@@ -537,6 +537,8 @@
     <string name="site_health_clear_all">一键清空样本</string>
     <string name="site_health_clear_all_title">清空全部站点健康样本？</string>
     <string name="site_health_clear_all_message">将删除全部播放链路健康样本，且无法撤销。</string>
+    <string name="site_health_stage_home">首页</string>
+    <string name="site_health_stage_category">分类</string>
     <string name="site_health_stage_search">搜索</string>
     <string name="site_health_stage_detail">详情</string>
     <string name="site_health_stage_parse">解析</string>
@@ -1328,7 +1330,11 @@ TVData</string>
     <string name="player_osd">屏显设置</string>
     <string name="player_subtitle_auto_match">自动匹配字幕</string>
     <string name="player_subtitle_language">字幕偏好语言</string>
-    <string name="player_subtitle_assrt_token">射手网 Token</string>
+    <string name="player_subtitle_source_environment">环境变量（JSON）</string>
+    <string name="player_subtitle_source_environment_invalid">请输入有效的 JSON 对象</string>
+    <string name="player_subtitle_source">字幕源</string>
+    <string name="player_subtitle_source_count">已加载 %1$d 个</string>
+    <string name="player_subtitle_source_empty">暂无可用字幕源</string>
     <string name="player_subtitle_ai_max_concurrency">AI字幕最大并发数</string>
     <string name="player_subtitle_ai_chunk_count">AI字幕分块数量</string>
     <string name="subtitle_auto_match_hit">已自动匹配字幕：%1$s</string>
@@ -2521,7 +2527,7 @@ TVData</string>
 
     
     <string name="live_no_epg">00:00 - 23:59 暂无节目信息</string>
-    <string name="site_health_report_ad_blocked">广告拦截 · %1$d 次</string>
+    <string name="site_health_report_ad_blocked">播放 %1$d 次 / 广告拦截 %2$d 次</string>
     <string name="search_column">搜索布局</string>
     <string name="dialog_audio_enabled_label">启用规则</string>
     <string name="dialog_audio_add_hint">添加关键词或站点…</string>
@@ -2757,4 +2763,5 @@ TVData</string>
     <string name="dialog_tmdb_test_image_failed">图片域名：测试失败（%1$s，%2$d 毫秒）</string>
     <string name="dialog_tmdb_test_omdb_success">OMDb API：连接成功并返回有效数据（%1$d 毫秒）</string>
     <string name="dialog_tmdb_test_omdb_failed">OMDb API：测试失败（%1$s，%2$d 毫秒）</string>
+    <string name="site_health_report_search_hint">按站点名称搜索</string>
 </resources>
