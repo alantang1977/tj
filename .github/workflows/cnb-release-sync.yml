@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing GitHub release tag, blank = tangtang.com.cn.kul/juntv release"
+        description: "Existing GitHub release tag, blank = latest release"
         required: false
         type: string
       cnb_repo_url:
-        description: "CNB repo URL, blank = tangtang.com.cn.kul/juntv"
+        description: "CNB repo URL, blank = fish2035/webhtv-release"
         required: false
         type: string
       cnb_repo_slug:
-        description: "CNB repo slug, blank = tangtang.com.cn.kul/juntv"
+        description: "CNB repo slug, blank = fish2035/webhtv-release"
         required: false
         type: string
 
@@ -24,8 +24,8 @@ env:
   GH_REPO: ${{ github.repository }}
   CNB_API_ENDPOINT: https://api.cnb.cool
   CNB_WEB_ENDPOINT: https://cnb.cool
-  CNB_REPO_SLUG: tangtang.com.cn.kul/juntv inputs.cnb_repo_slug || 'tangtang.com.cn.kul/juntv' }}
-  CNB_REPO_URL: ${{ inputs.cnb_repo_url || 'tangtang.com.cn.kul/juntv' }}
+  CNB_REPO_SLUG: ${{ inputs.cnb_repo_slug || 'fish2035/webhtv-release' }}
+  CNB_REPO_URL: ${{ inputs.cnb_repo_url || 'https://cnb.cool/fish2035/webhtv-release.git' }}
 
 jobs:
   sync:
@@ -73,5 +73,4 @@ jobs:
           export CNB_RELEASE_TITLE="$(jq -r '.name // empty' github-release.json)"
           export CNB_RELEASE_NOTES="$(jq -r '.body // empty' github-release.json)"
           export CNB_RELEASE_PRERELEASE="$(jq -r '.isPrerelease // false' github-release.json)"
-          chmod +x .github/scripts/sync-cnb-release.sh
           .github/scripts/sync-cnb-release.sh
