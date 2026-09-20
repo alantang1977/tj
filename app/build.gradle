@@ -29,13 +29,16 @@ try {
 } catch (Exception ignored) { /* Source archives may not contain Git metadata. */ }
 
 android {
+    buildFeatures {
+        viewBinding true
+    }
     namespace = 'com.fongmi.android.tv'
 
     compileSdk libs.versions.compileSdk.get().toInteger()
     ndkVersion "29.0.14206865"
 
     defaultConfig {
-        applicationId "com.silent.android.webhtv"
+        applicationId "com.silent.android.tangtv"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
         versionCode 560

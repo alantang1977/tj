@@ -51,6 +51,7 @@ import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.ArrayList;
 
 public class Updater implements UpdateTransfer.Callback, UpdateListener {
 
@@ -169,14 +170,12 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
 
     private Update getUpdate(String channel) {
         String manifestName = getManifestName(channel);
-        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB);
+        Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB, GITHUB_API_HEADERS, null);
+        if (cnb.hasManifest()) return cnb;
+        Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB, GITHUB_API_HEADERS, null);
         if (update.hasManifest()) return update;
-        if (Update.CHANNEL_BETA.equals(channel)) {
-            update = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB);
-            if (update.hasManifest()) return update;
-            return getGithubBetaUpdate(channel);
-        }
-        update = readUpdate(channel, Github.getGithubLatestAsset(manifestName), SOURCE_GITHUB);
+        if (Update.CHANNEL_BETA.equals(channel)) return getGithubBetaUpdate(channel);
+        update = readUpdate(channel, Github.getGithubLatestAsset(manifestName), SOURCE_GITHUB, GITHUB_API_HEADERS, null);
         if (update.hasManifest()) return update;
         return getGithubStableUpdate(channel);
     }
@@ -277,6 +276,10 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         update.githubUrl = github == null ? "" : github.optString("url");
         if (TextUtils.isEmpty(update.githubUrl)) update.githubUrl = getGithubApkUrl(update);
         update.apkUrl = update.githubUrl;
+        String apkField = update.apk;
+        if (apkField != null && apkField.startsWith("https://cnb.cool/")) {
+            update.apkUrl = apkField;
+        }
         JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");
         if (oci == null) return;
         OciArtifact artifact = new OciArtifact(
@@ -439,7 +442,13 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         try {
             GithubProxy.Config github = GithubProxy.config();
             String endpoint = update.oci == null ? "" : OciMirror.resolve(Setting.getUpdateOciMirror(), Setting.getUpdateOciMirrorUrl(), update.oci);
-            return UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.githubUrl, update.oci, github, endpoint);
+            List<UpdateTarget> routes = new ArrayList<>();
+            String cnbUrl = update.apkUrl;
+            if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
+                routes.add(UpdateTarget.github(cnbUrl));
+            }
+                        routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.apkUrl, update.oci, github, endpoint));
+            return routes;
         } catch (Exception e) {
             return List.of();
         }

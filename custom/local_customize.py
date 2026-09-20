@@ -98,6 +98,14 @@ CONFIG = {
     "MOBILE_STARTUP": "mobile_startup.png",
     # 程序化生成图标的风格：cat（默认，卡通蓝猫头）、3d（高级立体浮雕）或 iphone17（带光影）
     "ICON_STYLE": "cat",
+    # 猫咪眼睛虹膜配色：
+    #   amber 琥珀金（默认，暖色与青色头撞色、最醒目，呼应金铃铛）
+    #   emerald 翡翠绿（与青色头部邻近色、柔和协调）
+    #   sapphire 宝石蓝（冷色统一、通透）
+    #   aqua 碧眼湖青（与头部同色系、整体感强）
+    #   violet 紫罗兰（呼应紫粉背景、活泼）
+    #   none 原版黑白眼（无彩色虹膜）
+    "EYE_IRIS": "amber",
     # 设置页「作者链接」：URL_GITHUB / URL_CNB（留空则不修改对应链接）
     "AUTHOR_GITHUB": "https://github.com/alantang1977/tj",
     "AUTHOR_CNB": "https://cnb.cool/tangtang.com.cn.kul/juntv",
@@ -466,6 +474,44 @@ CAT_COLLAR = (7, 193, 96, 255)
 CAT_COLLAR_HL = (120, 230, 190, 255)
 CAT_BELL = (252, 188, 48, 255)
 
+# 彩色虹膜配色：outer=虹膜外缘主色, inner=靠瞳孔亮色, ring=最外圈深色描边
+EYE_SCHEMES = {
+    "amber":    {"outer": (240, 165, 45),  "inner": (255, 226, 150), "ring": (176, 104, 16)},
+    "emerald":  {"outer": (74, 196, 132),  "inner": (190, 245, 205), "ring": (24, 128, 80)},
+    "sapphire": {"outer": (86, 158, 240),  "inner": (190, 222, 255), "ring": (24, 84, 178)},
+    "aqua":     {"outer": (60, 206, 196),  "inner": (185, 245, 240), "ring": (16, 128, 128)},
+    "violet":   {"outer": (160, 122, 232), "inner": (222, 205, 255), "ring": (96, 60, 178)},
+}
+_IRIS_TILE_CACHE = {}
+
+
+def _iris_tile(diameter, scheme):
+    """生成径向渐变虹膜 RGBA 方块（带缓存）。中心亮 -> 外缘主色 -> 最外圈深色环。"""
+    key = (int(diameter), scheme["outer"], scheme["inner"], scheme["ring"])
+    if key in _IRIS_TILE_CACHE:
+        return _IRIS_TILE_CACHE[key]
+    s = max(2, int(diameter))
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    px = img.load()
+    c = (s - 1) / 2.0
+    outer, inner, ring = scheme["outer"], scheme["inner"], scheme["ring"]
+    for y in range(s):
+        for x in range(s):
+            dist = _math.hypot(x - c, y - c) / (s / 2.0)
+            if dist > 1.0:
+                continue
+            if dist > 0.90:
+                col = ring
+            elif dist > 0.55:
+                t = (dist - 0.55) / 0.35
+                col = tuple(int(inner[i] + (outer[i] - inner[i]) * t) for i in range(3))
+            else:
+                t = (dist / 0.55) ** 0.8
+                col = tuple(int(inner[i] + (outer[i] - inner[i]) * t) for i in range(3))
+            px[x, y] = (col[0], col[1], col[2], 255)
+    _IRIS_TILE_CACHE[key] = img
+    return img
+
 
 def _rounded_poly(draw, pts, radius, fill, steps=12):
     """绘制圆角多边形（顶点用二次贝塞尔圆滑）。"""
@@ -658,23 +704,36 @@ def draw_cat(size):
     face_gloss = face_gloss.filter(ImageFilter.GaussianBlur(radius=r * 0.10))
     layer.alpha_composite(face_gloss)
 
-    # 大圆眼（参考启动图低多边形猫咪：金色眼白 + 深色大瞳孔 + 瞳孔内金色高光点）
+    # 大圆眼：白色眼白 + 可选彩色虹膜（CONFIG.EYE_IRIS）+ 深色瞳孔 + 玻璃高光
     eye_y = face_cy - r * 0.10
     eye_dx, eye_R, pupil_R = r * 0.375, r * 0.19, r * 0.117
+    eye_scheme_name = str(CONFIG.get("EYE_IRIS", "amber")).strip().lower()
+    eye_scheme = EYE_SCHEMES.get(eye_scheme_name)
+    iris_R = eye_R * 0.86
+    iris_tile_img = None
+    if eye_scheme is not None:
+        iris_tile_img = _iris_tile(int(iris_R * 2) + 4, eye_scheme)
     for ex in (cx - eye_dx, cx + eye_dx):
-        # 眼白（金色径向层次：外圈深金描边 -> 中圈亮金 -> 内圈高亮）
+        # 外圈灰描边 + 白色眼白（彩色虹膜时只露出一圈细白边）
         d.ellipse([ex - eye_R - 1, eye_y - eye_R - 1,
                    ex + eye_R + 1, eye_y + eye_R + 1],
                   fill=(210, 212, 218, 255))
         d.ellipse([ex - eye_R, eye_y - eye_R, ex + eye_R, eye_y + eye_R],
                   fill=(255, 255, 255, 255))
-        d.ellipse([ex - eye_R * 0.60, eye_y - eye_R * 0.60,
-                   ex + eye_R * 0.60, eye_y + eye_R * 0.60],
-                  fill=(252, 252, 254, 255))
+        if iris_tile_img is not None:
+            # 彩色径向虹膜（中心亮、外缘主色、最外深色环）
+            _ih = iris_tile_img.size[0]
+            layer.alpha_composite(iris_tile_img,
+                                  (int(ex - _ih / 2), int(eye_y - _ih / 2)))
+        else:
+            # 原版：内圈高光白
+            d.ellipse([ex - eye_R * 0.60, eye_y - eye_R * 0.60,
+                       ex + eye_R * 0.60, eye_y + eye_R * 0.60],
+                      fill=(252, 252, 254, 255))
         # 瞳孔（深蓝黑，与整体蓝调协调）
         d.ellipse([ex - pupil_R, eye_y - pupil_R, ex + pupil_R, eye_y + pupil_R],
                   fill=CAT_DARK)
-        # 瞳孔高光点（金色，偏左上）
+        # 瞳孔高光点（偏左上）
         hl_r = pupil_R * 0.26
         d.ellipse([ex - pupil_R * 0.32 - hl_r, eye_y - pupil_R * 0.38 - hl_r,
                    ex - pupil_R * 0.32 + hl_r, eye_y - pupil_R * 0.38 + hl_r],
@@ -2452,11 +2511,21 @@ def modify_update_order(config):
 
 # ---------------------------------------------------------------- 9. CNB 脚本
 def modify_cnb_release_script(config):
-    """修改 sync-cnb-release.sh 中的 CNB_REPO_SLUG。"""
+    """修改 sync-cnb-release.sh：
+
+    1) CNB_REPO_SLUG 统一为「环境变量优先 + 正确默认值」形式：
+         CNB_REPO_SLUG="${CNB_REPO_SLUG:-<你的slug>}"
+       这样 workflow env 传入时用 env，未传时也默认指向你的 CNB 仓库，
+       彻底消除 workflow 仍是旧 slug（fish2035/webhtv-release）时克隆错仓库的问题。
+    2) 兜底替换脚本内任何残留的旧 slug / 旧 URL。
+    3) 写盘后给脚本加可执行位（chmod +x），双保险避免 Permission denied。
+    """
     cnb_repo_slug = config.get("CNB_REPO_SLUG", "")
     if not cnb_repo_slug:
         print("[SKIP] CNB_REPO_SLUG 未配置")
         return False
+    old_slug = "fish2035/webhtv-release"
+    cnb_repo_url = f"https://cnb.cool/{cnb_repo_slug}.git"
     candidates = [
         os.path.join(REPO_ROOT, "github", "scripts", "sync-cnb-release.sh"),
         os.path.join(REPO_ROOT, ".github", "scripts", "sync-cnb-release.sh"),
@@ -2470,22 +2539,37 @@ def modify_cnb_release_script(config):
     with open(script_path, "r", encoding="utf-8") as f:
         content = f.read()
     original = content
-    content = re.sub(
-        r'(CNB_REPO_SLUG\s*=\s*["\'])[^"\']+(["\'])',
-        rf"\g<1>{cnb_repo_slug}\g<2>",
+
+    # 1) 统一 slug 赋值为 env 优先 + 正确默认（兼容硬编码、单引号、${:-} 三种写法）
+    desired_slug_line = f'CNB_REPO_SLUG="${{CNB_REPO_SLUG:-{cnb_repo_slug}}}"'
+    content, n_slug = re.subn(
+        r'''CNB_REPO_SLUG=(?:"\$\{CNB_REPO_SLUG:-[^}]*\}"|'[^']*'|"[^"]*"|'\'\$\{CNB_REPO_SLUG:-[^}]*\}\''|[^\s#]+)''',
+        desired_slug_line,
         content,
+        count=1,
     )
-    content = re.sub(
-        r'(CNB_REPO_SLUG\s*=\s*"\$\{CNB_REPO_SLUG:-)[^}]+(\}")',
-        rf"\g<1>{cnb_repo_slug}\g<2>",
-        content,
-    )
-    if content != original:
-        with open(script_path, "w", encoding="utf-8") as f:
+    # 2) 兜底：替换任何残留旧 slug / 旧 URL（注释、默认值等）
+    content = content.replace(old_slug, cnb_repo_slug)
+    content = content.replace(f"https://cnb.cool/{cnb_repo_slug}.git".replace(cnb_repo_slug, old_slug), cnb_repo_url)
+
+    changed = content != original
+    if changed or n_slug:
+        with open(script_path, "w", encoding="utf-8", newline="") as f:
             f.write(content)
-        print(f"[OK] sync-cnb-release.sh: CNB_REPO_SLUG -> {cnb_repo_slug}")
+    # 3) 无论内容是否变化，都确保可执行位存在（消除 exit 126 的根因之一）
+    try:
+        cur_mode = os.stat(script_path).st_mode
+        os.chmod(script_path, cur_mode | 0o111)
+    except OSError:
+        pass
+
+    # 校验：脚本里不能再残留旧 slug
+    if old_slug in content:
+        print(f"[WARN] sync-cnb-release.sh 仍残留旧 slug {old_slug}，请人工检查")
+    if changed or n_slug:
+        print(f"[OK] sync-cnb-release.sh: CNB_REPO_SLUG -> env 优先默认 {cnb_repo_slug}，并已 chmod +x")
         return True
-    print("[SKIP] sync-cnb-release.sh: 已是目标值")
+    print(f"[SKIP] sync-cnb-release.sh: slug 已是目标值（已确保 chmod +x）")
     return False
 
 
@@ -2611,30 +2695,43 @@ def modify_workflow_files(config):
             content = f.read()
         original = content
 
-        # 替换 CNB 变量
+        # 替换 CNB 变量：精确匹配旧值 fish2035/webhtv-release，不破坏 ${{ }} 模板表达式
+        old_slug = "fish2035/webhtv-release"
+        old_url = f"https://cnb.cool/{old_slug}.git"
+        new_url = cnb_repo_url
+        # 1) 简单赋值：CNB_REPO_SLUG: fish2035/webhtv-release
         content = re.sub(
-            r'(CNB_REPO_SLUG:\s*)[^\s\'"\n]+',
-            rf'\g<1>{cnb_repo_slug}',
-            content,
+            r'(CNB_REPO_SLUG:\s*)' + re.escape(old_slug) + r'(\s*$)',
+            rf'\g<1>{cnb_repo_slug}\g<2>',
+            content, flags=re.MULTILINE,
         )
+        # 2) 简单赋值：CNB_REPO_URL: https://...
         content = re.sub(
-            r"(\|\|\s*')[^']+('\s*\}\})",
+            r'(CNB_REPO_URL:\s*)' + re.escape(old_url) + r'(\s*$)',
+            rf'\g<1>{new_url}\g<2>',
+            content, flags=re.MULTILINE,
+        )
+        # 3) cnb-release-sync.yml 中 || 'old-slug' }} 模板默认值
+        content = re.sub(
+            r"(\|\s*\|\s*')" + re.escape(old_slug) + r"('\s*\}\})",
             rf"\g<1>{cnb_repo_slug}\g<2>",
             content,
         )
+        # 4) || 'https://old-url.git' }} 模板默认值
         content = re.sub(
-            r'(blank\s*=\s*)[^\s\'"\n,]+',
+            r"(\|\s*\|\s*')" + re.escape(old_url) + r"('\s*\}\})",
+            rf"\g<1>{new_url}\g<2>",
+            content,
+        )
+        # 5) description 文案中的 blank = old-slug / old-url
+        content = re.sub(
+            r'(blank\s*=\s*)' + re.escape(old_slug),
             rf'\g<1>{cnb_repo_slug}',
             content,
         )
         content = re.sub(
-            r'(CNB_REPO_URL:\s*)https://[^\s\'"\n]+',
-            rf'\g<1>{cnb_repo_url}',
-            content,
-        )
-        content = re.sub(
-            r"(\|\|\s*')https://[^']+('\s*\}\})",
-            rf"\g<1>{cnb_repo_url}\g<2>",
+            r'(blank\s*=\s*)' + re.escape(old_url),
+            rf'\g<1>{new_url}',
             content,
         )
 
@@ -2706,19 +2803,25 @@ def modify_workflow_files(config):
                   f"请确认 workflow 中的 setup 步骤写法后手动修改")
         if crlf:
             content = content.replace('\n', '\r\n')
-        # 修复脚本可执行权限：Windows 推送的文件常丢失 +x 位，直接 ./script.sh 会 Permission denied
-        # 在每个脚本调用行前注入 chmod +x（幂等：已有 chmod 行则跳过）
-        if "sync-cnb-release.sh" in content and "chmod +x .github/scripts/sync-cnb-release.sh" not in content:
-            pat_chmod = re.compile(
-                r'^([ \t]*)(\.github/scripts/sync-cnb-release\.sh)([ \t]*)$',
+        # 修复脚本可执行权限：Windows 推送或 git 丢失 +x 位时，直接 ./script.sh 会
+        # 报 "Permission denied"（exit 126）。最稳妥做法（与仓库 publish-oci 步骤一致）：
+        # 用 `bash <script>` 显式调用，完全不依赖文件可执行位；同时补一行 chmod +x 双保险。
+        if "sync-cnb-release.sh" in content and "bash .github/scripts/sync-cnb-release.sh" not in content:
+            # 把「仅含缩进 + 裸路径」的调用行替换为 chmod + bash 显式调用。
+            # 已带 bash 前缀的行因为 .github 前有 bash 字样，天然不匹配本正则。
+            pat_call = re.compile(
+                r'^([ \t]*)\.github/scripts/sync-cnb-release\.sh([ \t]*)$',
                 re.MULTILINE,
             )
-            content = pat_chmod.sub(
-                lambda m: f"{m.group(1)}chmod +x .github/scripts/sync-cnb-release.sh\n"
-                          f"{m.group(1)}{m.group(2)}{m.group(3)}",
+            content, n_call = pat_call.subn(
+                lambda m: f"{m.group(1)}chmod +x .github/scripts/sync-cnb-release.sh 2>/dev/null || true\n"
+                          f"{m.group(1)}bash .github/scripts/sync-cnb-release.sh{m.group(2)}",
                 content,
             )
-            print(f"[OK] {rel_path}: 注入 chmod +x（修复 Permission denied）")
+            if n_call:
+                print(f"[OK] {rel_path}: sync 脚本改为 bash 显式调用 + chmod 双保险（修复 Permission denied exit 126）")
+            else:
+                print(f"[WARN] {rel_path}: 含 sync-cnb-release.sh 但未定位到裸调用行，请人工确认调用方式")
 
         # 仅对 android-release.yml 清理 GRADLE_OPTS：
         # 内存参数唯一权威是 gradle.properties（org.gradle.jvmargs / workers.max / r8.maxWorkers），
@@ -2781,14 +2884,17 @@ def modify_workflow_files(config):
             # 读盘验证：确认关键修改确实落盘
             with open(full_path, "r", encoding="utf-8") as f:
                 wf_verify = f.read()
-            v_sa = (not has_sa) or ("packages: 'platform-tools'" in wf_verify or 'packages: "platform-tools"' in wf_verify)
-            v_chmod = "chmod +x .github/scripts/sync-cnb-release.sh" in wf_verify or "sync-cnb-release.sh" not in wf_verify
+            # setup-android 验证：如果没有该步骤则跳过；如果已有配置（本次未改）则不报错
+            v_sa = (not has_sa) or ("packages:" in wf_verify and "platform-tools" in wf_verify)
+            v_chmod = ("bash .github/scripts/sync-cnb-release.sh" in wf_verify
+                       or "sync-cnb-release.sh" not in wf_verify)
             v_grace = "GRADLE_OPTS" not in wf_verify
-            if v_sa and v_chmod and v_grace:
+            v_cnb = old_slug not in wf_verify  # 确保旧 slug 已被替换
+            if v_sa and v_chmod and v_grace and v_cnb:
                 sa_note = "" if has_sa else "（无 setup-android 步骤，跳过该项验证）"
-                print(f"[VERIFY] {rel_path}: 写回验证通过（setup-android packages + chmod + 无 GRADLE_OPTS）{sa_note}")
+                print(f"[VERIFY] {rel_path}: 写回验证通过（CNB slug 已替换 + chmod + setup-android）{sa_note}")
             else:
-                print(f"[ERROR] {rel_path}: 写回验证失败！setup-android packages={v_sa}, chmod={v_chmod}, GRADLE_OPTS已清理={v_grace} —— 文件可能未正确写入")
+                print(f"[ERROR] {rel_path}: 写回验证失败！CNB已替换={v_cnb}, chmod={v_chmod}, GRADLE_OPTS={v_grace}")
             changed_any = True
             print(f"[OK] {rel_path}: CNB 配置已更新（GRADLE_OPTS 已清理/保持无）")
         else:
@@ -2856,7 +2962,7 @@ def main():
     print("\n--- [11/12] gradle.properties 内存参数固化（R8 OOM 防护，单一权威）---")
     results.append(ensure_gradle_properties(config))
 
-    print("\n--- [12/12] 最终校验：namespace 是否保持上游原值 ---")
+    print("\n--- [12/12] 最终校验：namespace / applicationId / 发布签名一致性 ---")
     ns_ok = True
     ns_pattern = re.compile(r'namespace\s*=\s*[\'"]com\.fongmi\.android\.tv[\'"]')
     for path in [os.path.join(REPO_ROOT, "app", "build.gradle"),
@@ -2871,22 +2977,60 @@ def main():
                 print(f"[OK] {os.path.basename(path)} namespace 保持 com.fongmi.android.tv")
     results.append(ns_ok)
 
+    # —— 应用标识一致性：applicationId 必须固定，跨版本不变才能覆盖安装 ——
+    pkg = str(config.get("PACKAGE_NAME", "")).strip()
+    pkg_ok = True
+    if pkg:
+        for path in [os.path.join(REPO_ROOT, "app", "build.gradle"),
+                     os.path.join(REPO_ROOT, "app", "build.gradle.kts")]:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    txt = f.read()
+                if re.search(r'applicationId(?:\s*=)?\s*["\']' + re.escape(pkg) + r'["\']', txt):
+                    print(f"[OK] {os.path.basename(path)} applicationId 固定为 {pkg}")
+                else:
+                    print(f"[ERROR] {os.path.basename(path)} applicationId 不是 {pkg}，会导致无法覆盖安装！")
+                    pkg_ok = False
+    results.append(pkg_ok)
+
+    # —— 发布签名一致性：workflow 必须存在「无 keystore 即失败」的硬校验，
+    #    确保所有 release APK 都用同一把 release 密钥签名，杜绝 debug 签名混入 ——
+    wf_rel = os.path.join(REPO_ROOT, ".github", "workflows", "android-release.yml")
+    sign_ok = True
+    if os.path.exists(wf_rel):
+        with open(wf_rel, "r", encoding="utf-8") as f:
+            wf_txt = f.read()
+        if "RELEASE_KEYSTORE_BASE64" in wf_txt and "Release signing not configured" in wf_txt:
+            print("[OK] android-release.yml 含发布签名硬校验：缺少 keystore secret 时构建直接失败，"
+                  "不会产出 debug 签名 APK")
+        else:
+            print("[WARN] android-release.yml 未发现完整的发布签名硬校验，请确认 release 始终用同一 keystore")
+            sign_ok = False
+    results.append(sign_ok)
+
     print("\n" + "=" * 72)
-    if any(results):
-        print("  [DONE] 自定义修改完成！请检查上方日志。")
+    if all([ns_ok, pkg_ok, sign_ok]):
+        print("  [DONE] 自定义修改完成，且 包名 / namespace / 发布签名 一致性校验通过。")
+    elif any(results):
+        print("  [DONE] 自定义修改完成，但上方存在 [ERROR]/[WARN] 项，请按提示处理。")
     else:
         print("  [DONE] 未发现需要修改的内容（或所有文件已是目标状态）。")
     print("=" * 72)
     print()
+    print("【签名 / 覆盖安装一致性要点（务必遵守）】")
+    if pkg:
+        print(f"  · 安装包名 applicationId 已固定为 {pkg}，以后每次都用本脚本生成，勿手改。")
+    print("  · GitHub Secrets 里的 RELEASE_KEYSTORE_BASE64 / RELEASE_KEY_ALIAS /")
+    print("    RELEASE_STORE_PASSWORD / RELEASE_KEY_PASSWORD 必须始终是【同一把】密钥，")
+    print("    一旦更换 keystore，新 APK 签名变化，老用户将无法覆盖安装（需先卸载）。")
+    print("  · 若设备上曾装过其它包名（如 com.silent.android.webhtv）或 debug 签名包，")
+    print("    属于不同应用，需先卸载旧版再安装；之后同包名同签名即可正常增量升级。")
+    print()
     print("【下一步】")
     print("  1. git add -A")
-    print("  2. git commit -m \"local customize: app name/icon/package/cnb\"")
-    print("  3. git push 到你的构建仓库（如 tangtv 的 main 分支）")
-    print("  4. 在 GitHub Actions 手动触发 Android Release 工作流，即可打包生成 APK")
-    print()
-    print("  若推送的是 webhtv 仓库：触发 auto-sync / release-sync 会自动同步到 tangtv。")
-    print("  提示：仓库 Secrets 中需配置 RELEASE_KEYSTORE_BASE64 / RELEASE_STORE_PASSWORD /")
-    print("       RELEASE_KEY_ALIAS 等签名信息，release 构建才会成功。")
+    print("  2. git commit -m \"local customize: app name/icon/package/cnb + release fix\"")
+    print("  3. git push 到你的构建仓库（如 tj 的 main 分支）")
+    print("  4. 在 GitHub Actions 手动触发 Android Release，勾选 sync_cnb，即可打包并同步 CNB。")
 
 
 if __name__ == "__main__":

@@ -48,8 +48,8 @@ import com.fongmi.android.tv.web.ext.WebHomeExtensionRegistry;
 
 public class SettingEnhanceActivity extends BaseActivity {
 
-    private static final String URL_GITHUB = "https://github.com/Silent1566/webhtv";
-    private static final String URL_CNB = "https://cnb.cool/fish2018/ext";
+    private static final String URL_GITHUB = "https://github.com/alantang1977/tj";
+    private static final String URL_CNB = "https://cnb.cool/tangtang.com.cn.kul/juntv";
 
     private ActivitySettingEnhanceBinding mBinding;
 
