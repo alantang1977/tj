@@ -3,6 +3,7 @@ package com.fongmi.android.tv.bean;
 import androidx.annotation.Nullable;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.following.FollowingPlaybackBridge;
 import com.fongmi.android.tv.impl.Diffable;
 import com.fongmi.android.tv.setting.CustomCspSetting;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -39,6 +40,7 @@ public class Func implements Diffable<Func> {
         if (resId == R.string.home_vod) this.drawable = R.drawable.ic_home_vod;
         else if (resId == R.string.home_live) this.drawable = R.drawable.ic_home_live;
         else if (resId == R.string.home_keep) this.drawable = R.drawable.ic_home_keep;
+        else if (resId == R.string.home_following) this.drawable = R.drawable.ic_home_following;
         else if (resId == R.string.home_push) this.drawable = R.drawable.ic_home_push;
         else if (resId == R.string.home_search) this.drawable = R.drawable.ic_home_search;
         else if (resId == R.string.home_setting) this.drawable = R.drawable.ic_home_setting;
@@ -48,6 +50,11 @@ public class Func implements Diffable<Func> {
     }
 
     private static String resolveText(int resId) {
+        if (resId == R.string.home_following) {
+            int unread = FollowingPlaybackBridge.cachedUnreadCount();
+            String text = ResUtil.getString(resId);
+            return unread > 0 ? text + " · " + unread : text;
+        }
         if (resId != R.string.home_custom_csp) return ResUtil.getString(resId);
         CustomCspSetting.Status status = CustomCspSetting.status();
         if (!status.available()) return ResUtil.getString(resId);

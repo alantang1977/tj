@@ -41,7 +41,7 @@ public class TmdbDetailSourcePayloadTest {
     public void legacyMatchingPathStartsOnlyAfterSourcePayloadDecision() throws Exception {
         String body = loadContentBody();
         int sourcePayload = body.indexOf("if (sourceBundle != null)");
-        int legacyFuture = body.indexOf("Future<TmdbLoadResult> tmdbFuture = tmdbConfig.isReady() && tmdbAllowed");
+        int legacyFuture = body.indexOf("Future<TmdbLoadResult> tmdbFuture = decision.networkAllowed()");
 
         assertTrue("legacy title matching must not be scheduled before source/payload parsing", sourcePayload > 0 && legacyFuture > sourcePayload);
     }
@@ -59,6 +59,19 @@ public class TmdbDetailSourcePayloadTest {
                 source.contains("boolean sourceComplete = hasCompleteSourceVideos(item, requestSeasonNumber, requestEpisodeNumber);")
                         && source.contains("? TmdbSourceAdapter.videos(sourceDetail, item.getMediaType(), requestSeasonNumber, requestEpisodeNumber, tmdbConfig.getLanguage())")
                         && source.contains(": tmdbService.relatedVideos(item, requestSeasonNumber, requestEpisodeNumber, tmdbConfig);"));
+    }
+
+    @Test
+    public void sourceOnlyUsesEmbeddedVideosWithoutStartingNetworkAggregation() throws Exception {
+        String source = loadActivitySource();
+        int start = source.indexOf("private void loadRelatedVideosForCurrentContext()");
+        int end = source.indexOf("private void bindTmdbSection()", start);
+        assertTrue("missing source-only related video path", start >= 0 && end > start);
+
+        String method = source.substring(start, end);
+        assertTrue(method.contains("if (isTmdbSourceOnly()) {"));
+        assertTrue(method.contains("TmdbSourceAdapter.videos("));
+        assertTrue(method.indexOf("TmdbSourceAdapter.videos(") < method.indexOf("tmdbService.relatedVideos("));
     }
 
     private static String loadContentBody() throws Exception {

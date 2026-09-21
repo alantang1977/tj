@@ -22,14 +22,14 @@ public class MpvHlsAdblockGateTest {
     }
 
     @Test
-    public void bypassedMpvCandidateIsNotRecordedAndIjkUsesItsOwnPipelineName() throws Exception {
+    public void mpvCandidateNotifiesBeforeReturningAndIjkUsesItsOwnPipelineName() throws Exception {
         String method = methodBody(readSource(), "private String applyAdblock", "private void recordAndNotifyAdblock");
-        int bypass = method.indexOf("if (kernel == PlayerSetting.MPV)");
-        int bypassReturn = method.indexOf("return text;", bypass);
-        int record = method.indexOf("recordAndNotifyAdblock(url, outcome);");
+        int mpv = method.indexOf("if (kernel == PlayerSetting.MPV)");
+        int notify = method.indexOf("recordAndNotifyAdblock(url, outcome);", mpv);
+        int mpvReturn = method.indexOf("return text;", mpv);
 
-        assertTrue("MPV bypass must return before statistics are recorded",
-                bypass >= 0 && bypassReturn > bypass && record > bypassReturn);
+        assertTrue("MPV must notify for a valid removal plan before preserving the source manifest",
+                mpv >= 0 && notify > mpv && mpvReturn > notify);
         assertTrue(readSource().contains("kernel == PlayerSetting.IJK ? \"IJK\" : \"MPV\""));
     }
 

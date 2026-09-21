@@ -730,6 +730,7 @@
                 android:layout_marginEnd="16dp"
                 android:background="@drawable/selector_video_item"
                 android:drawablePadding="6dp"
+                android:visibility="gone"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
                 android:gravity="center"
@@ -821,6 +822,28 @@
                 android:textColor="@color/white"
                 android:textSize="16sp"
                 app:drawableStartCompat="@drawable/ic_detail_keep_off" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/following"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="16dp"
+                android:background="@drawable/selector_video_item"
+                android:drawablePadding="6dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:gravity="center"
+                android:minWidth="96dp"
+                android:visibility="gone"
+                android:nextFocusLeft="@id/keep"
+                android:nextFocusRight="@id/tmdbRematch"
+                android:nextFocusUp="@id/actor"
+                android:nextFocusDown="@id/tmdbCast"
+                android:singleLine="true"
+                android:text="@string/following_add"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                app:drawableStartCompat="@drawable/ic_home_following" />
 
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/tmdbRematch"

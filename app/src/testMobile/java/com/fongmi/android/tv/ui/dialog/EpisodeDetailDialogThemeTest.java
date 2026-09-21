@@ -12,6 +12,21 @@ import static org.junit.Assert.assertTrue;
 public class EpisodeDetailDialogThemeTest {
 
     @Test
+    public void episodeDetailDialogPrefersTheBoundCardEpisode() throws Exception {
+        String mobile = read(findMobileJavaPath().resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "dialog", "EpisodeDetailDialog.java")));
+        String leanback = read(findLeanbackJavaPath().resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "dialog", "EpisodeDetailDialog.java")));
+
+        assertTrue("mobile dialog must accept the card-bound TMDB episode",
+                mobile.contains("Episode episode, TmdbEpisode boundTmdbEpisode") &&
+                        mobile.contains("boundTmdbEpisode != null ? boundTmdbEpisode : episode.getTmdbEpisode()"));
+        assertTrue("TV dialog must accept the card-bound TMDB episode",
+                leanback.contains("Episode episode, TmdbEpisode boundTmdbEpisode") &&
+                        leanback.contains("boundTmdbEpisode != null ? boundTmdbEpisode : episode.getTmdbEpisode()"));
+    }
+
+    @Test
     public void tvEpisodeAndMovieDetailsApplyResolvedThemeBeforeShowing() throws Exception {
         String source = read(findLeanbackJavaPath().resolve(Path.of(
                 "com", "fongmi", "android", "tv", "ui", "dialog", "EpisodeDetailDialog.java")));

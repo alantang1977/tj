@@ -63,6 +63,7 @@ import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.PassListener;
 import com.fongmi.android.tv.model.LiveViewModel;
 import com.fongmi.android.tv.player.PlayerHelper;
+import com.fongmi.android.tv.player.LiveSourceFallbackPolicy;
 import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.player.VideoAspectMode;
@@ -113,6 +114,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     private static final int LIVE_PIP_WIDTH = 16;
     private static final int LIVE_PIP_HEIGHT = 9;
     private static final long PLAYBACK_END_RETRY_DELAY = 500;
+    private static final long LIVE_BUFFERING_TIMEOUT = 15000;
     private static final String ORIENTATION_TAG = "LiveOrientation";
 
     private ActivityLiveBinding mBinding;
@@ -135,8 +137,10 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     private Runnable mR2;
     private Runnable mR3;
     private Runnable mEndRetry;
+    private Runnable mBufferingTimeout;
     private boolean rotate;
     private int count;
+    private boolean mFailedThisSession;
     private PiP mPiP;
     private boolean mKeepPlaybackAfterPipExit;
     private OneShotPreDrawListener pipEntryListener;
@@ -265,6 +269,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         mHides = new ArrayList<>();
         mR1 = this::hideControl;
         mR2 = this::setTraffic;
+        mBufferingTimeout = this::startFlow;
         mR3 = this::hideInfo;
         mEndRetry = this::checkNext;
         mPiP = new PiP();
@@ -466,7 +471,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     }
 
     private void checkLive() {
-        if (isEmpty()) {
+        if (LiveConfig.isEmpty()) {
             LiveConfig.get().init().load(getCallback());
         } else {
             getLive();
@@ -488,13 +493,18 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     }
 
     private void getLive() {
-        renderLive(getHome());
-        mViewModel.parse(getHome());
+        Live live = getHome();
+        if (!live.getGroups().isEmpty()) renderLive(live);
+        mViewModel.parse(live);
         showProgress();
     }
 
     private void renderLive(Live live) {
-        if (live == null || live.getGroups().isEmpty() || liveMenuRendered) return;
+        if (live == null || live.getGroups().isEmpty()) {
+            if (LiveSetting.isSourceFallback()) startFlow();
+            return;
+        }
+        if (liveMenuRendered) return;
         liveMenuRendered = true;
         mViewModel.parseXml(live);
         setGroup(live);
@@ -1261,6 +1271,8 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     private void fetch(EpgData item) {
         App.removeCallbacks(mEndRetry);
         if (mChannel == null) return;
+        App.removeCallbacks(mBufferingTimeout);
+        App.post(mBufferingTimeout, LIVE_BUFFERING_TIMEOUT);
         playbackCatchup = true;
         mViewModel.getUrl(mChannel, item);
         if (service() != null) {
@@ -1273,6 +1285,8 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     private void fetch() {
         App.removeCallbacks(mEndRetry);
         if (mChannel == null) return;
+        App.removeCallbacks(mBufferingTimeout);
+        App.post(mBufferingTimeout, LIVE_BUFFERING_TIMEOUT);
         playbackCatchup = false;
         LiveConfig.get().setKeep(mChannel);
         mViewModel.getUrl(mChannel);
@@ -1455,13 +1469,24 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     }
 
     @Override
+    protected boolean onSourceHttpError(int statusCode, String msg) {
+        if (!LiveSetting.isSourceFallback()) return false;
+        onError(msg);
+        return true;
+    }
+
+    @Override
     protected void onError(String msg) {
+        App.removeCallbacks(mBufferingTimeout);
         Track.delete(player().getKey());
         player().resetTrack();
         player().reset();
         player().stop();
-        showError(msg);
-        startFlow();
+        if (!mFailedThisSession) {
+            mFailedThisSession = true;
+            showError(msg);
+            startFlow();
+        }
     }
 
     @Override
@@ -1488,12 +1513,14 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     protected void onStateChanged(int state) {
         switch (state) {
             case Player.STATE_BUFFERING:
+                mFailedThisSession = false;
                 showProgress();
                 break;
             case Player.STATE_READY:
                 hideProgress();
                 checkControl();
                 player().reset();
+                mFailedThisSession = false;
                 break;
             case Player.STATE_ENDED:
                 checkEnded();
@@ -1519,6 +1546,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     @Override
     protected void onPlayingChanged(boolean isPlaying) {
+        if (isPlaying) App.removeCallbacks(mBufferingTimeout);
         if (isPlaying || isPaused()) updatePlayControl(isPlaying);
     }
 
@@ -1562,7 +1590,6 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     @Override
     public void setLive(Live item) {
-        if (item.isSelected()) item.getGroups().clear();
         LiveConfig.get().setHome(item);
         player().reset();
         player().clear();
@@ -1628,8 +1655,16 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     }
 
     private void startFlow() {
-        if (mChannel == null || !LiveSetting.isChange()) return;
-        if (!mChannel.isLast()) nextLine(true);
+        Live next = LiveSetting.isSourceFallback() ? LiveConfig.getNextHome() : null;
+        LiveSourceFallbackPolicy.Action action = LiveSourceFallbackPolicy.decide(
+                LiveSetting.isChange(),
+                LiveSetting.isSourceFallback(),
+                mChannel != null,
+                mChannel == null || mChannel.isLast(),
+                mChannel == null || mChannel.isOnly(),
+                next != null);
+        if (action == LiveSourceFallbackPolicy.Action.NEXT_LINE) nextLine(true);
+        else if (action == LiveSourceFallbackPolicy.Action.NEXT_SOURCE) setLive(next);
     }
 
     private boolean prevGroup() {
@@ -2220,6 +2255,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         Source.get().exit();
         App.removeCallbacks(mR1, mR2, mR3);
         App.removeCallbacks(mEndRetry);
+        App.removeCallbacks(mBufferingTimeout);
         if (mOsd != null) mOsd.release();
         mViewModel.url().removeObserver(mObserveUrl);
         mViewModel.epg().removeObserver(mObserveEpg);

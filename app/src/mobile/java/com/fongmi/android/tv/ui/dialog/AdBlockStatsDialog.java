@@ -1,9 +1,12 @@
 package com.fongmi.android.tv.ui.dialog;
 
 import android.app.Activity;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
@@ -12,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.AdBlockStatsStore;
 import com.fongmi.android.tv.bean.AdBlockLog;
+import com.fongmi.android.tv.bean.AdBlockLogFilter;
 import com.fongmi.android.tv.bean.AdBlockStats;
 import com.fongmi.android.tv.bean.RuleHitRecord;
 import com.fongmi.android.tv.databinding.AdapterAdBlockLogBinding;
@@ -19,15 +23,18 @@ import com.fongmi.android.tv.databinding.DialogAdBlockStatsBinding;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.utils.AdBlockTimeFormatter;
 import com.fongmi.android.tv.widget.AdBlockChartView;
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -38,6 +45,13 @@ public class AdBlockStatsDialog {
     private final DialogAdBlockStatsBinding binding;
     private final AlertDialog dialog;
     private final Activity activity;
+    private final EnumMap<AdBlockLogFilter.Column, String> logFilters =
+            new EnumMap<>(AdBlockLogFilter.Column.class);
+    private final EnumMap<AdBlockLogFilter.Column, Set<String>> logSelections =
+            new EnumMap<>(AdBlockLogFilter.Column.class);
+    private List<AdBlockLog> currentLogs = new ArrayList<>();
+    private BlockLogAdapter logAdapter;
+    private boolean logFiltersBound;
 
     public static AdBlockStatsDialog create(Activity activity) {
         return new AdBlockStatsDialog(activity);
@@ -91,7 +105,81 @@ public class AdBlockStatsDialog {
                 @Override public void onTabReselected(com.google.android.material.tabs.TabLayout.Tab tab) {}
             });
         }
+        if (!logFiltersBound) {
+            bindLogFilters();
+            logFiltersBound = true;
+        }
         showPage(binding.statsTabs.getSelectedTabPosition());
+    }
+
+    private void bindLogFilters() {
+        bindCategoricalFilter(binding.siteFilter, AdBlockLogFilter.Column.SITE_NAME, R.string.ad_log_site_name);
+        bindCategoricalFilter(binding.siteDomainFilter, AdBlockLogFilter.Column.SITE_DOMAIN, R.string.ad_log_site_domain);
+        bindCategoricalFilter(binding.vodFilter, AdBlockLogFilter.Column.VOD_NAME, R.string.ad_log_playback_context);
+        bindCategoricalFilter(binding.lineFilter, AdBlockLogFilter.Column.LINE_NAME, R.string.ad_log_line_name);
+        bindCategoricalFilter(binding.episodeFilter, AdBlockLogFilter.Column.EPISODE_NAME, R.string.ad_log_episode_name);
+        bindCategoricalFilter(binding.ruleFilter, AdBlockLogFilter.Column.RULE, R.string.ad_log_rule_domain);
+        bindCategoricalFilter(binding.adDomainFilter, AdBlockLogFilter.Column.AD_DOMAIN, R.string.ad_log_ad_domain);
+        bindCategoricalFilter(binding.pipelineFilter, AdBlockLogFilter.Column.PIPELINE, R.string.ad_log_pipeline);
+        bindTextFilter(binding.blockedAtFilter, AdBlockLogFilter.Column.BLOCKED_AT);
+        bindTextFilter(binding.segmentStartFilter, AdBlockLogFilter.Column.SEGMENT_START);
+        bindTextFilter(binding.segmentEndFilter, AdBlockLogFilter.Column.SEGMENT_END);
+        bindTextFilter(binding.segmentDurationFilter, AdBlockLogFilter.Column.SEGMENT_DURATION);
+    }
+
+    private void bindCategoricalFilter(MaterialButton button, AdBlockLogFilter.Column column, int title) {
+        button.setOnClickListener(v -> showCategoricalFilter(button, column, title));
+        updateCategoricalButton(button, column);
+    }
+
+    private void showCategoricalFilter(MaterialButton button, AdBlockLogFilter.Column column, int title) {
+        Set<String> selected = logSelections.get(column);
+        AdBlockLogFilterDialog.show(activity, activity.getString(title), currentLogs,
+                selected == null ? java.util.Set.of() : new java.util.LinkedHashSet<>(selected),
+                log -> displayValue(log, column), values -> {
+                    if (values == null || values.isEmpty()) logSelections.remove(column);
+                    else logSelections.put(column, new java.util.LinkedHashSet<>(values));
+                    updateCategoricalButton(button, column);
+                    if (logAdapter != null) {
+                        logAdapter.setSelection(column, values);
+                        updateLogEmptyState();
+                    }
+                });
+    }
+
+    private void updateCategoricalButton(MaterialButton button, AdBlockLogFilter.Column column) {
+        Set<String> selected = logSelections.get(column);
+        if (selected == null || selected.isEmpty()) {
+            button.setText(R.string.ad_log_filter_hint);
+        } else if (selected.size() == 1) {
+            button.setText(selected.iterator().next());
+        } else {
+            button.setText(activity.getString(R.string.ad_log_filter_selected, selected.size()));
+        }
+        button.setEnabled(!currentLogs.isEmpty());
+    }
+
+    private void bindTextFilter(EditText input, AdBlockLogFilter.Column column) {
+        input.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                String query = s == null ? "" : s.toString();
+                if (query.trim().isEmpty()) logFilters.remove(column);
+                else logFilters.put(column, query);
+                if (logAdapter != null) {
+                    logAdapter.setFilter(column, query);
+                    updateLogEmptyState();
+                }
+            }
+        });
     }
 
     private void showPage(int position) {
@@ -161,9 +249,11 @@ public class AdBlockStatsDialog {
         }
 
         List<AdBlockLog> logs = stats.getBlockLogs();
-        binding.logEmpty.setVisibility(logs.isEmpty() ? View.VISIBLE : View.GONE);
-        binding.logTableScroll.setVisibility(logs.isEmpty() ? View.GONE : View.VISIBLE);
-        binding.logRecycler.setAdapter(new BlockLogAdapter(logs));
+        currentLogs = new ArrayList<>(logs);
+        updateAllCategoricalButtons();
+        logAdapter = new BlockLogAdapter(logs, logFilters, logSelections, this::filterValues);
+        binding.logRecycler.setAdapter(logAdapter);
+        updateLogEmptyState();
 
         List<SiteRankItem> chartItems = buildSiteRank(stats);
         binding.chartEmpty.setVisibility(chartItems.isEmpty() ? View.VISIBLE : View.GONE);
@@ -172,6 +262,57 @@ public class AdBlockStatsDialog {
                 .map(item -> new AdBlockChartView.Entry(item.getDisplayName(), item.getCount()))
                 .collect(Collectors.toList());
         binding.chartView.setEntries(chartEntries);
+    }
+
+    private void updateAllCategoricalButtons() {
+        updateCategoricalButton(binding.siteFilter, AdBlockLogFilter.Column.SITE_NAME);
+        updateCategoricalButton(binding.siteDomainFilter, AdBlockLogFilter.Column.SITE_DOMAIN);
+        updateCategoricalButton(binding.vodFilter, AdBlockLogFilter.Column.VOD_NAME);
+        updateCategoricalButton(binding.lineFilter, AdBlockLogFilter.Column.LINE_NAME);
+        updateCategoricalButton(binding.episodeFilter, AdBlockLogFilter.Column.EPISODE_NAME);
+        updateCategoricalButton(binding.ruleFilter, AdBlockLogFilter.Column.RULE);
+        updateCategoricalButton(binding.adDomainFilter, AdBlockLogFilter.Column.AD_DOMAIN);
+        updateCategoricalButton(binding.pipelineFilter, AdBlockLogFilter.Column.PIPELINE);
+    }
+
+    private Map<AdBlockLogFilter.Column, String> filterValues(AdBlockLog item) {
+        EnumMap<AdBlockLogFilter.Column, String> values = new EnumMap<>(AdBlockLogFilter.Column.class);
+        for (AdBlockLogFilter.Column column : AdBlockLogFilter.Column.values()) {
+            values.put(column, displayValue(item, column));
+        }
+        return values;
+    }
+
+    private String displayValue(AdBlockLog item, AdBlockLogFilter.Column column) {
+        String unknown = activity.getString(R.string.ad_log_unknown);
+        switch (column) {
+            case SITE_NAME: return value(item.getSiteName(), unknown);
+            case SITE_DOMAIN: return value(item.getSiteDomain(), unknown);
+            case VOD_NAME: return value(item.getVodName(), unknown);
+            case LINE_NAME: return value(item.getLineName(), unknown);
+            case EPISODE_NAME: return value(item.getEpisodeName(), unknown);
+            case RULE: return value(AdBlockStatsStore.getRuleDisplayName(item.getRuleId()), unknown);
+            case AD_DOMAIN: return value(item.getAdDomain(), unknown);
+            case BLOCKED_AT: return item.getBlockedAt() > 0
+                    ? new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(item.getBlockedAt())) : unknown;
+            case SEGMENT_START: return item.hasSegmentTiming() ? AdBlockTimeFormatter.formatSeconds(item.getSegmentStartSeconds()) : unknown;
+            case SEGMENT_END: return item.hasSegmentTiming() ? AdBlockTimeFormatter.formatSeconds(item.getSegmentEndSeconds()) : unknown;
+            case SEGMENT_DURATION: return item.hasSegmentTiming() ? AdBlockTimeFormatter.formatSeconds(item.getSegmentDurationSeconds()) : unknown;
+            case PIPELINE: return value(item.getPipelineName(), unknown);
+            default: return unknown;
+        }
+    }
+
+    private static String value(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private void updateLogEmptyState() {
+        boolean noLogs = logAdapter == null || logAdapter.getSourceItemCount() == 0;
+        boolean noMatches = !noLogs && logAdapter.getItemCount() == 0;
+        binding.logEmpty.setText(noLogs ? R.string.ad_stats_empty : R.string.ad_stats_filter_empty);
+        binding.logEmpty.setVisibility(noLogs || noMatches ? View.VISIBLE : View.GONE);
+        binding.logTableScroll.setVisibility(noLogs ? View.GONE : View.VISIBLE);
     }
 
     private List<SiteRankItem> buildSiteRank(AdBlockStats stats) {
@@ -197,12 +338,23 @@ public class AdBlockStatsDialog {
                 .collect(Collectors.toList());
     }
 
+    private void clearTextFilters() {
+        binding.blockedAtFilter.setText("");
+        binding.segmentStartFilter.setText("");
+        binding.segmentEndFilter.setText("");
+        binding.segmentDurationFilter.setText("");
+        updateAllCategoricalButtons();
+    }
+
     private void onReset() {
         new MaterialAlertDialogBuilder(activity)
                 .setTitle(R.string.ad_stats_reset)
                 .setMessage(R.string.ad_stats_reset_confirm)
                 .setPositiveButton(android.R.string.ok, (d, which) -> {
                     AdBlockStatsStore.reset();
+                    logFilters.clear();
+                    logSelections.clear();
+                    clearTextFilters();
                     loadStats();
                 })
                 .setNegativeButton(android.R.string.cancel, null)
@@ -474,11 +626,51 @@ public class AdBlockStatsDialog {
     }
 
     private static class BlockLogAdapter extends RecyclerView.Adapter<BlockLogAdapter.ViewHolder> {
-        private final List<AdBlockLog> items;
+        private final List<AdBlockLog> sourceItems;
+        private List<AdBlockLog> items;
+        private final EnumMap<AdBlockLogFilter.Column, String> filters =
+                new EnumMap<>(AdBlockLogFilter.Column.class);
+        private final EnumMap<AdBlockLogFilter.Column, Set<String>> selections =
+                new EnumMap<>(AdBlockLogFilter.Column.class);
+        private final AdBlockLogFilter.ValueProvider valueProvider;
         private final SimpleDateFormat timeFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
 
-        BlockLogAdapter(List<AdBlockLog> items) {
-            this.items = items;
+        BlockLogAdapter(List<AdBlockLog> items, Map<AdBlockLogFilter.Column, String> initialFilters,
+                        Map<AdBlockLogFilter.Column, ? extends Set<String>> initialSelections,
+                        AdBlockLogFilter.ValueProvider valueProvider) {
+            this.sourceItems = items == null ? new ArrayList<>() : new ArrayList<>(items);
+            if (initialFilters != null) filters.putAll(initialFilters);
+            if (initialSelections != null) {
+                for (Map.Entry<AdBlockLogFilter.Column, ? extends Set<String>> entry : initialSelections.entrySet()) {
+                    if (entry.getValue() != null && !entry.getValue().isEmpty()) {
+                        selections.put(entry.getKey(), new java.util.LinkedHashSet<>(entry.getValue()));
+                    }
+                }
+            }
+            this.valueProvider = valueProvider;
+            applyFilters();
+        }
+
+        void setFilter(AdBlockLogFilter.Column column, String query) {
+            if (query == null || query.trim().isEmpty()) filters.remove(column);
+            else filters.put(column, query);
+            applyFilters();
+            notifyDataSetChanged();
+        }
+
+        void setSelection(AdBlockLogFilter.Column column, Set<String> values) {
+            if (values == null || values.isEmpty()) selections.remove(column);
+            else selections.put(column, new java.util.LinkedHashSet<>(values));
+            applyFilters();
+            notifyDataSetChanged();
+        }
+
+        int getSourceItemCount() {
+            return sourceItems.size();
+        }
+
+        private void applyFilters() {
+            items = AdBlockLogFilter.filter(sourceItems, filters, selections, valueProvider);
         }
 
         @NonNull
@@ -495,23 +687,19 @@ public class AdBlockStatsDialog {
             String unknown = holder.itemView.getContext().getString(R.string.ad_log_unknown);
             holder.binding.siteName.setText(value(item.getSiteName(), unknown));
             holder.binding.siteDomain.setText(value(item.getSiteDomain(), unknown));
-            holder.binding.playbackContext.setText(playbackContext(item, unknown));
+            holder.binding.playbackContext.setText(value(item.getVodName(), unknown));
+            holder.binding.lineName.setText(value(item.getLineName(), unknown));
+            holder.binding.episodeName.setText(value(item.getEpisodeName(), unknown));
             String rule = AdBlockStatsStore.getRuleDisplayName(item.getRuleId());
             String domain = value(item.getAdDomain(), unknown);
-            holder.binding.ruleDomain.setText(rule + "\n" + domain);
+            holder.binding.ruleDomain.setText(value(rule, unknown));
+            holder.binding.adDomain.setText(domain);
             holder.binding.blockedAt.setText(item.getBlockedAt() > 0
                     ? timeFormat.format(new Date(item.getBlockedAt())) : unknown);
             holder.binding.segmentStart.setText(item.hasSegmentTiming() ? seconds(item.getSegmentStartSeconds()) : unknown);
             holder.binding.segmentEnd.setText(item.hasSegmentTiming() ? seconds(item.getSegmentEndSeconds()) : unknown);
             holder.binding.segmentDuration.setText(item.hasSegmentTiming() ? seconds(item.getSegmentDurationSeconds()) : unknown);
             holder.binding.pipeline.setText(value(item.getPipelineName(), unknown));
-        }
-
-        private static String playbackContext(AdBlockLog item, String unknown) {
-            String vod = value(item.getVodName(), unknown);
-            String line = value(item.getLineName(), unknown);
-            String episode = value(item.getEpisodeName(), unknown);
-            return vod + "\n" + line + " · " + episode;
         }
 
         private static String seconds(double value) {

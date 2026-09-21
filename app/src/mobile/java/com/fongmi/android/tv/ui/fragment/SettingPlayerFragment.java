@@ -19,6 +19,7 @@ import com.fongmi.android.tv.player.lut.LutSetting;
 import com.fongmi.android.tv.player.mpv.MpvConfigStore;
 import com.fongmi.android.tv.setting.PlaybackPerformanceSetting;
 import com.fongmi.android.tv.setting.PlayerButtonSetting;
+import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.PreloadSetting;
 import com.fongmi.android.tv.setting.Setting;
@@ -89,6 +90,7 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
         setPreloadText();
         mBinding.autoPlayText.setText(getSwitch(PlayerSetting.isAutoPlay()));
         mBinding.autoChangeText.setText(getSwitch(PlayerSetting.isAutoChange()));
+        mBinding.liveSourceFallbackText.setText(getSwitch(LiveSetting.isSourceFallback()));
         mBinding.rememberBrightnessText.setText(getSwitch(PlayerSetting.isRememberBrightness()));
         mBinding.failureFallbackText.setText((failureFallback = ResUtil.getStringArray(R.array.select_player_failure_fallback))[PlayerSetting.getFailureFallback()]);
         mBinding.musicNotificationText.setText(getSwitch(PlayerSetting.isMusicNotification()));
@@ -138,6 +140,10 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
         mBinding.preloadPause.setOnClickListener(this::onPreloadPause);
         mBinding.autoPlay.setOnClickListener(this::setAutoPlay);
         mBinding.autoChange.setOnClickListener(this::setAutoChange);
+        mBinding.liveSourceFallback.setOnClickListener(view -> {
+            LiveSetting.putSourceFallback(!LiveSetting.isSourceFallback());
+            mBinding.liveSourceFallbackText.setText(getSwitch(LiveSetting.isSourceFallback()));
+        });
         mBinding.rememberBrightness.setOnClickListener(this::setRememberBrightness);
         mBinding.failureFallback.setOnClickListener(this::setFailureFallback);
         mBinding.render.setOnClickListener(this::setRender);

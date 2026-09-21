@@ -108,11 +108,13 @@ jobs:
             --tests 'com.fongmi.android.tv.ui.dialog.AboutDialogLayoutTest' \
             --tests 'com.fongmi.android.tv.ui.dialog.UpdateDialogChannelVisibilityTest' \
             --tests 'com.fongmi.android.tv.ui.adapter.VodAdapterLayoutTest' \
-            --no-daemon
+            --no-daemon \
+            --stacktrace
           ./gradlew \
             :app:testLeanbackArm64_v8aDebugUnitTest \
             --tests 'com.fongmi.android.tv.ui.dialog.UpdateDialogLayoutTest' \
-            --no-daemon
+            --no-daemon \
+            --stacktrace
 
       - name: Resolve release tag
         id: meta
@@ -205,7 +207,8 @@ jobs:
             :app:assembleMobileArmeabi_v7aRelease \
             :app:assembleLeanbackArm64_v8aRelease \
             :app:assembleLeanbackArmeabi_v7aRelease \
-            --no-daemon
+            --no-daemon \
+            --stacktrace
 
       - name: Collect artifacts
         run: |

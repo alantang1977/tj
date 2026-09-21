@@ -628,7 +628,7 @@ public class TmdbUIAdapterTest {
         int fullBind = source.indexOf("applyFastTmdbPlaybackFullDetailNextFrame(item);", player);
         int canApply = source.indexOf("private boolean canApplyPlayerResult()");
         int fastCanApply = source.indexOf("mFastPlaybackFlag != null && mFastPlaybackEpisode != null && mHistory != null", canApply);
-        int actionVisibility = source.indexOf("setOriginalEnhancedActionVisibility(loadTmdbDetail && (Setting.isOriginalEnhancedDetailPage() || isIntentTmdbPlayback()));");
+        int actionVisibility = source.indexOf("setOriginalEnhancedActionVisibility(loadTmdbDetail && (isRuntimeOriginalEnhancedMode() || isIntentTmdbPlayback()));");
         int checkFlag = source.indexOf("private void checkFlag(Vod item)");
         int fastCheckFlag = source.indexOf("mFastTmdbPlaybackStarted && mFastPlaybackFlag != null && mFastPlaybackEpisode != null", checkFlag);
         int bindEpisodes = source.indexOf("setEpisodeAdapter(mFastPlaybackFlag.getEpisodes(), false);", fastCheckFlag);

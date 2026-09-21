@@ -105,7 +105,7 @@ public class PersonalRecommendationService {
     private static volatile boolean doubanCooldownLoaded;
 
     public PersonalRecommendationService() {
-        this(new TmdbService(), TmdbConfig.objectFrom(Setting.getTmdbConfig()));
+        this(new TmdbService(), TmdbConfig.effectiveCurrent());
     }
 
     public PersonalRecommendationService(TmdbService tmdbService, TmdbConfig tmdbConfig) {

@@ -134,7 +134,14 @@ public class HistoryDialog extends BaseAlertDialog implements ConfigAdapter.OnCl
 
     @Override
     public void onDeleteClick(Config item) {
-        if (adapter.remove(item) == 0) dismiss();
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.config_delete_title)
+                .setMessage(getString(R.string.config_delete_message, item.getDesc()))
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
+                    if (adapter.remove(item) == 0) dismiss();
+                })
+                .show();
     }
 
     @Override

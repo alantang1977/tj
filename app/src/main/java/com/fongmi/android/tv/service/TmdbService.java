@@ -5,6 +5,7 @@ import android.text.TextUtils;
 import androidx.annotation.NonNull;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.api.config.SubscriptionTmdbCredentialStore;
 import com.fongmi.android.tv.bean.TmdbConfig;
 import com.fongmi.android.tv.bean.TmdbEpisode;
 import com.fongmi.android.tv.bean.TmdbItem;
@@ -19,6 +20,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -121,6 +123,16 @@ public class TmdbService {
         String cacheKey = fallbackKeys.remove(0);
         if (!includeRelated) fallbackKeys.add(detailUrl(item, config, true));
         return requestJson(url, config, "detail", cacheKey, fallbackKeys, DETAIL_CACHE_TTL, "TMDB 详情返回为空", "TMDB 详情失败: HTTP ", false);
+    }
+
+    public JsonObject detailForFollowing(@NonNull TmdbItem item, @NonNull TmdbConfig config, boolean refresh) throws Exception {
+        ensureReady(config);
+        String url = detailUrl(item, config, false);
+        List<String> fallbackKeys = detailCacheKeys(item, config, false);
+        String cacheKey = "following-" + fallbackKeys.remove(0);
+        long ttl = TimeUnit.MINUTES.toMillis(30);
+        return requestJson(url, config, "detail-following", cacheKey, fallbackKeys, ttl,
+                "TMDB 追更详情返回为空", "TMDB 追更详情失败: HTTP ", refresh);
     }
 
     public JsonObject detailForSource(@NonNull TmdbItem item, int seasonNumber, @NonNull TmdbConfig config, @NonNull Set<String> missing) throws Exception {
@@ -593,12 +605,22 @@ public class TmdbService {
 
     private void ensureReady(TmdbConfig config) {
         if (!config.sanitize().isReady()) throw new IllegalStateException("请先配置 TMDB API Key");
+        ensureCredentialTransport(config);
     }
 
     private HttpUrl.Builder apiBuilder(String url, TmdbConfig config) {
+        ensureCredentialTransport(config);
         HttpUrl.Builder builder = HttpUrl.parse(url).newBuilder();
         if (TextUtils.isEmpty(config.getAccessToken())) builder.addQueryParameter("api_key", config.getApiKey());
         return builder;
+    }
+
+    private void ensureCredentialTransport(TmdbConfig config) {
+        if (config == null || !config.isTransientSubscriptionCredential()) return;
+        if (!SubscriptionTmdbCredentialStore.isCurrent(config.getCredentialSubscriptionKey(), config.getCredentialScopeEpoch())) {
+            throw new IllegalStateException("TMDB 临时凭据已失效");
+        }
+        if (!TmdbConfig.isOfficialApiBase(config.getApiBase())) throw new IllegalStateException("TMDB 临时凭据仅允许访问官方 HTTPS API");
     }
 
     void throwIfAuthBlocked(TmdbConfig config) {
@@ -616,6 +638,9 @@ public class TmdbService {
 
     RuntimeException httpFailure(TmdbConfig config, int statusCode, String message) {
         if (statusCode == 401 || statusCode == 403) {
+            if (config != null && config.isTransientSubscriptionCredential()) {
+                SubscriptionTmdbCredentialStore.clearIfCurrent(config.getCredentialSubscriptionKey(), config.getCredentialScopeEpoch());
+            }
             AUTH_FAILURE_BLOCKS.put(authCircuitKey(config), System.currentTimeMillis() + AUTH_FAILURE_COOLDOWN);
             SpiderDebug.log("tmdb", "authentication circuit opened status=%d cooldown=%dms", statusCode, AUTH_FAILURE_COOLDOWN);
             return new AuthException(statusCode, message);
@@ -638,7 +663,18 @@ public class TmdbService {
         throwIfAuthBlocked(config);
         Request.Builder builder = new Request.Builder().url(url);
         if (!TextUtils.isEmpty(config.getAccessToken())) builder.header("Authorization", "Bearer " + config.getAccessToken());
-        return com.github.catvod.net.OkHttp.client().newCall(builder.build()).execute();
+        try {
+            return com.github.catvod.net.OkHttp.client().newCall(builder.build()).execute();
+        } catch (Exception e) {
+            throw new IOException(redactMessage(e.getMessage()));
+        }
+    }
+
+    public static String redactMessage(String message) {
+        if (TextUtils.isEmpty(message) || message.trim().isEmpty()) return "TMDB request failed";
+        String redacted = message.replaceAll("(?i)([?&](?:api_key|apikey|key|token|access_token)=)[^&\\s]+", "$1<redacted>");
+        redacted = redacted.replaceAll("(?i)(Bearer\\s+)[A-Za-z0-9._~+/-]+=*", "$1<redacted>");
+        return redacted;
     }
 
     private JsonObject requestVideoJson(String url, TmdbConfig config, String cacheKey) throws Exception {

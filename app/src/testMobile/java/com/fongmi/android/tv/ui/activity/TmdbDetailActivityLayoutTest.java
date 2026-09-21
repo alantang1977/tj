@@ -2238,6 +2238,7 @@ public class TmdbDetailActivityLayoutTest {
                 "adapter_tmdb_person_photo.xml",
                 "adapter_tmdb_rail_item.xml",
                 "adapter_tmdb_rail_landscape.xml",
+                "adapter_tmdb_recommendation.xml",
                 "adapter_tmdb_recommendation_landscape.xml",
                 "adapter_tmdb_work.xml",
                 "item_tmdb_person_photo.xml",
@@ -3498,6 +3499,7 @@ public class TmdbDetailActivityLayoutTest {
         assertTrue("unmapped cards and API failures must still open a source detail dialog",
                 detail.contains("if (boundTmdbEpisode == null)")
                         && detail.contains("EpisodeDetailDialog.show(this, episode, getSite(), null, null, dismissListener);")
+                        && detail.contains("EpisodeDetailDialog.show(this, episode, boundTmdbEpisode, getSite(), null, null, dismissListener);")
                         && detail.contains("if (!isTmdbEpisodeDetailSeasonCurrent(displaySeasonNumber)) return;"));
     }
 

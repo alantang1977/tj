@@ -94,9 +94,10 @@ abstract class BaseConfig {
 
     public void load(Callback callback) {
         beforeLoad();
+        Config loadingConfig = getConfig();
         int id = taskId.incrementAndGet();
         if (future != null && !future.isDone()) future.cancel(true);
-        future = Task.submit(() -> loadConfig(id, config, callback));
+        future = Task.submit(() -> loadConfig(id, loadingConfig, callback));
         callback.start();
     }
 

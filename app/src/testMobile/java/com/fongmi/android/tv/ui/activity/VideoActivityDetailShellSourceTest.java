@@ -36,7 +36,7 @@ public class VideoActivityDetailShellSourceTest {
         assertTrue("unconfigured TMDB must retain ordinary detail actions",
                 prepare.contains("boolean tmdbDetail = shouldLoadTmdbDetail();"));
         assertTrue("enhanced actions require both available TMDB and an enhanced/direct entry",
-                prepare.contains("tmdbDetail && (Setting.isOriginalEnhancedDetailPage() || isIntentTmdbPlayback())"));
+                prepare.contains("tmdbDetail && (isRuntimeOriginalEnhancedMode() || isIntentTmdbPlayback())"));
         assertTrue("initial actions must use the same visibility policy as later detail binding",
                 prepare.contains("setOriginalEnhancedActionVisibility(enhancedDetail);"));
         assertTrue("source text must only be suppressed for an enhanced TMDB layout",

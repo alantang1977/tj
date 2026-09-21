@@ -2,15 +2,21 @@ package com.fongmi.android.tv.bean;
 
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.api.config.SubscriptionTmdbCredentialStore;
+import com.fongmi.android.tv.setting.Setting;
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
 public class TmdbConfig {
+
+    public static final String ORIGIN_USER = "USER";
+    public static final String ORIGIN_TRANSIENT_SUBSCRIPTION = "TRANSIENT_SUBSCRIPTION";
 
     private static final Gson GSON = new Gson();
     private static final String DEFAULT_API_BASE = "https://api.tmdb.org/3";
@@ -58,6 +64,9 @@ public class TmdbConfig {
     private List<String> disabledSites;
     @SerializedName(value = "allowedSites", alternate = {"includeSites", "whitelistSites"})
     private List<String> allowedSites;
+    private transient String credentialOrigin = ORIGIN_USER;
+    private transient String credentialSubscriptionKey = "";
+    private transient long credentialScopeEpoch;
 
     public static TmdbConfig objectFrom(String json) {
         try {
@@ -68,7 +77,36 @@ public class TmdbConfig {
         }
     }
 
+    public static TmdbConfig effectiveCurrent() {
+        TmdbConfig configured = objectFrom(Setting.getTmdbConfig());
+        if (configured.isReady()) SubscriptionTmdbCredentialStore.discardCredential();
+        SubscriptionTmdbCredentialStore.Scope scope = SubscriptionTmdbCredentialStore.currentScope();
+        return effective(configured, SubscriptionTmdbCredentialStore.snapshot(scope));
+    }
+
+    public static TmdbConfig effective(TmdbConfig configured, SubscriptionTmdbCredentialStore.Snapshot snapshot) {
+        TmdbConfig effective = configured == null ? new TmdbConfig() : configured.copy();
+        effective.sanitize();
+        if (effective.isReady()) {
+            effective.credentialOrigin = ORIGIN_USER;
+            return effective;
+        }
+        if (snapshot != null && !snapshot.isEmpty() && isOfficialApiBase(DEFAULT_API_BASE)) {
+            effective.apiBase = DEFAULT_API_BASE;
+            effective.apiKey = snapshot.getApiKey();
+            effective.apiKeyCompat = effective.apiKey;
+            effective.accessToken = "";
+            effective.credentialOrigin = ORIGIN_TRANSIENT_SUBSCRIPTION;
+            effective.credentialSubscriptionKey = snapshot.getSubscriptionKey();
+            effective.credentialScopeEpoch = snapshot.getScopeEpoch();
+            return effective;
+        }
+        effective.credentialOrigin = ORIGIN_USER;
+        return effective;
+    }
+
     public TmdbConfig sanitize() {
+        if (TextUtils.isEmpty(credentialOrigin)) credentialOrigin = ORIGIN_USER;
         apiBase = normalizeApiBase(trimOr(apiBase, DEFAULT_API_BASE));
         apiKey = trimOr(apiKey, trimOr(apiKeyCompat, ""));
         apiKeyCompat = apiKey;
@@ -164,6 +202,37 @@ public class TmdbConfig {
         return !TextUtils.isEmpty(getAccessToken()) || !TextUtils.isEmpty(getApiKey());
     }
 
+    public boolean isTransientSubscriptionCredential() {
+        return ORIGIN_TRANSIENT_SUBSCRIPTION.equals(credentialOrigin);
+    }
+
+    public String getCredentialOrigin() {
+        return credentialOrigin;
+    }
+
+    public String getCredentialSubscriptionKey() {
+        return credentialSubscriptionKey == null ? "" : credentialSubscriptionKey;
+    }
+
+    public long getCredentialScopeEpoch() {
+        return credentialScopeEpoch;
+    }
+
+    public static boolean isOfficialApiBase(String value) {
+        if (TextUtils.isEmpty(value)) return false;
+        try {
+            URI uri = new URI(value.trim());
+            if (!"https".equalsIgnoreCase(uri.getScheme())) return false;
+            if (uri.getUserInfo() != null || uri.getPort() != -1 || uri.getQuery() != null || uri.getFragment() != null) return false;
+            String host = uri.getHost();
+            if (!"api.tmdb.org".equalsIgnoreCase(host) && !"api.themoviedb.org".equalsIgnoreCase(host)) return false;
+            String path = uri.getPath();
+            return "/3".equals(path) || "/3/".equals(path);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     public boolean hasSiteRules() {
         return !getEnabledSites().isEmpty() || !getAllowedSites().isEmpty() || !getDisabledSites().isEmpty();
     }
@@ -179,7 +248,39 @@ public class TmdbConfig {
     }
 
     public String toJson() {
-        return GSON.toJson(sanitize());
+        TmdbConfig persistable = copy();
+        if (persistable.isTransientSubscriptionCredential()) {
+            persistable.apiKey = "";
+            persistable.apiKeyCompat = "";
+            persistable.accessToken = "";
+            persistable.credentialOrigin = ORIGIN_USER;
+        }
+        return GSON.toJson(persistable.sanitize());
+    }
+
+    private TmdbConfig copy() {
+        TmdbConfig copy = new TmdbConfig();
+        copy.apiBase = apiBase;
+        copy.apiKey = apiKey;
+        copy.apiKeyCompat = apiKeyCompat;
+        copy.accessToken = accessToken;
+        copy.omdbApiKey = omdbApiKey;
+        copy.language = language;
+        copy.imageBase = imageBase;
+        copy.backdropBase = backdropBase;
+        copy.enabledSites = copyList(enabledSites);
+        copy.excludeKeywords = copyList(excludeKeywords);
+        copy.excludeKeywordsConfigured = excludeKeywordsConfigured;
+        copy.disabledSites = copyList(disabledSites);
+        copy.allowedSites = copyList(allowedSites);
+        copy.credentialOrigin = credentialOrigin;
+        copy.credentialSubscriptionKey = credentialSubscriptionKey;
+        copy.credentialScopeEpoch = credentialScopeEpoch;
+        return copy;
+    }
+
+    private static List<String> copyList(List<String> values) {
+        return values == null ? null : new ArrayList<>(values);
     }
 
     private static String trimOr(String value, String fallback) {

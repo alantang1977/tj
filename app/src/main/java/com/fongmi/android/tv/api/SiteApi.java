@@ -172,21 +172,24 @@ public class SiteApi {
         long beforeSpider = System.currentTimeMillis();
         if (isSpider(site)) {
             String detailContent = site.recent().spider().detailContent(Arrays.asList(requestId));
-            SpiderDebug.log("detail", detailContent);
-            result = Result.fromJson(detailContent);
+            TmdbSourceCredentialIngress.Ingress ingress = TmdbSourceCredentialIngress.extractRootAndStrip(detailContent);
+            SpiderDebug.log("detail", ingress.getSanitizedJson());
+            result = Result.fromJson(ingress.getSanitizedJson());
         } else {
             ArrayMap<String, String> params = new ArrayMap<>();
             params.put("ac", ac(site.getType()));
             params.put("ids", requestId);
             String detailContent = call(site, params);
-            SpiderDebug.log("detail", detailContent);
-            result = Result.fromType(site.getType(), detailContent);
+            TmdbSourceCredentialIngress.Ingress ingress = TmdbSourceCredentialIngress.extractRootAndStrip(detailContent);
+            SpiderDebug.log("detail", ingress.getSanitizedJson());
+            result = Result.fromType(site.getType(), ingress.getSanitizedJson());
         }
         Source.get().parse(result.getVod().setFlags());
         result = applyPushTitle(push, result);
         cacheDetail(key, sourceKey, id, result, beforeSpider);
         return result;
     }
+
 
     /**
      * 把详情结果写进缓存，除非这条不该缓存。

@@ -1112,7 +1112,7 @@ public class ExoUtil {
             } catch (Throwable ignored) {
             }
             // Video decode mode is explicit: hardware mode must never register
-            // a software fallback, including for AVS3. Audio has its own policy.
+            // a software fallback. Audio has its own policy.
             if (videoRenderMode == EXTENSION_RENDERER_MODE_OFF) return;
             try {
                 out.add(getExtensionRendererIndex(videoRenderMode, videoPrefer, out), buildFfmpegVideoRenderer(allowedVideoJoiningTimeMs, eventHandler, eventListener));

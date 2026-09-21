@@ -260,6 +260,8 @@
     <string name="history_record_missing">The history record no longer exists</string>
     <string name="history_config_changed">VOD configuration changed. Please try again.</string>
     <string name="dialog_delete_global_history">Delete history from all VOD configurations?</string>
+    <string name="config_delete_title">Delete source?</string>
+    <string name="config_delete_message">Delete “%1$s”? Related playback history may also be lost. This cannot be undone.</string>
     <string name="setting_home_history">Home recent history</string>
     <string name="setting_personal_recommendation">Personal recommendations</string>
     <string name="setting_recommendation_feedback">Not interested management</string>
@@ -1325,6 +1327,7 @@ TVData</string>
     <string name="player_preload_pause_wifi">Wi-Fi only</string>
     <string name="player_preload_pause_always">Always</string>
     <string name="player_auto_play">Auto play VOD</string>
+    <string name="player_live_source_fallback">Switch live source on failure</string>
     <string name="player_auto_change">Auto source change</string>
     <string name="player_remember_brightness">Remember playback brightness</string>
     <string name="player_failure_fallback">Failure fallback</string>
@@ -1831,11 +1834,14 @@ TVData</string>
 
     <string-array name="select_ui_scale">
         <item>Follow system</item>
-        <item>Standard</item>
-        <item>Mild compact</item>
+        <item>Smallest</item>
         <item>Compact</item>
-        <item>More compact</item>
-        <item>Smaller</item>
+        <item>Slightly compact</item>
+        <item>Standard</item>
+        <item>Slightly large</item>
+        <item>Large</item>
+        <item>Larger</item>
+        <item>Largest</item>
     </string-array>
 
     <string-array name="select_language">
@@ -2285,19 +2291,31 @@ TVData</string>
     <string name="ad_stats_reset">Reset stats</string>
     <string name="ad_stats_reset_confirm">Reset all statistics?</string>
     <string name="ad_stats_empty">No statistics yet</string>
+    <string name="ad_stats_filter_empty">No logs match the filters</string>
     <string name="ad_stats_overview">Overview</string>
     <string name="ad_stats_log">Block log</string>
     <string name="ad_stats_chart">Charts</string>
     <string name="ad_log_site_name">Site name</string>
     <string name="ad_log_site_domain">Site domain</string>
-    <string name="ad_log_rule_domain">Block rule (domain)</string>
+    <string name="ad_log_rule_domain">Block rule</string>
+    <string name="ad_log_ad_domain">Ad domain</string>
     <string name="ad_log_blocked_at">Blocked at</string>
     <string name="ad_log_segment_start">Segment start time</string>
     <string name="ad_log_segment_end">Segment end time</string>
     <string name="ad_log_segment_duration">Segment duration</string>
-    <string name="ad_log_playback_context">Playback title / line / episode</string>
+    <string name="ad_log_playback_context">Title</string>
+    <string name="ad_log_line_name">Line name</string>
+    <string name="ad_log_episode_name">Episode name</string>
     <string name="ad_log_pipeline">Pipeline</string>
     <string name="ad_log_unknown">Unknown</string>
+    <string name="ad_log_filter_hint">Filter</string>
+    <string name="ad_log_filter_search_hint">Search filter values</string>
+    <string name="ad_log_filter_all">Select all</string>
+    <string name="ad_log_filter_clear">Clear selection</string>
+    <string name="ad_log_filter_apply">Apply</string>
+    <string name="ad_log_filter_cancel">Cancel</string>
+    <string name="ad_log_filter_options_empty">No filter values</string>
+    <string name="ad_log_filter_selected">%d selected</string>
     <string name="ad_site_overview">Site overview</string>
     <string name="ad_site_count">Sites involved</string>
     <string name="ad_top_site">Most blocked site</string>
@@ -2769,4 +2787,56 @@ TVData</string>
     <string name="dialog_tmdb_test_omdb_success">OMDb API: connected and returned valid data (%1$d ms)</string>
     <string name="dialog_tmdb_test_omdb_failed">OMDb API: failed (%1$s, %2$d ms)</string>
     <string name="site_health_report_search_hint">Search by site name</string>
+    <string name="nav_following">Following</string>
+    <string name="home_following">Following</string>
+    <string name="sync_item_follow">Following</string>
+    <string name="following">Follow</string>
+    <string name="following_add">Add to following</string>
+    <string name="following_added">Following</string>
+    <string name="following_channel_name">Following updates</string>
+    <string name="following_channel_description">New episode updates for followed shows</string>
+    <string name="following_notification_title">%1$s has a new episode</string>
+    <string name="following_notification_text">Official release: episode %1$d; current source: episode %2$d</string>
+    <string name="following_check_all">Check updates</string>
+    <string name="following_check">Check</string>
+    <string name="following_checking">Checking…</string>
+    <string name="following_check_done">Update check complete</string>
+    <string name="following_check_failed">Update check failed. Previous data was kept.</string>
+    <string name="following_empty">No followed shows yet. Open a series detail page and tap “Add to following”.</string>
+    <string name="following_summary">%1$d followed · %2$d unread</string>
+    <string name="following_continue">Continue</string>
+    <string name="following_read">Mark read</string>
+    <string name="following_notify_on">Notify on</string>
+    <string name="following_notify_off">Notify off</string>
+    <string name="following_change_source">Source</string>
+    <string name="following_cancel">Unfollow</string>
+    <string name="following_delete_title">Unfollow this show?</string>
+    <string name="following_delete_message">The viewing history and TMDB progress will be kept.</string>
+    <string name="following_official">Official: episode %1$d</string>
+    <string name="following_official_unknown">Official status unknown</string>
+    <string name="following_source">Current source: episode %1$d</string>
+    <string name="following_source_unknown">Current source not checked</string>
+    <string name="following_watched">Watched to episode %1$d</string>
+    <string name="following_unwatched">%1$d episodes remaining</string>
+    <string name="following_unwatched_none">Up to date</string>
+    <string name="following_new_count">New %1$d</string>
+    <string name="following_enabled_hint">Following is currently disabled.</string>
+    <string name="following_notification_permission_hint">Notifications were not authorized; in-app badges still work.</string>
+    <string name="following_server_import">Import subscriptions</string>
+    <string name="following_server_url">Server address (http/https)</string>
+    <string name="following_server_token">Token (not stored)</string>
+    <string name="following_server_preview">Preview</string>
+    <string name="following_server_import_action">Import</string>
+    <string name="following_server_invalid">Enter a valid http/https server address</string>
+    <string name="following_server_empty">No importable subscriptions found</string>
+    <string name="following_server_preview_title">Subscriptions to import</string>
+    <string name="following_server_result">Imported %1$d, updated %2$d</string>
+    <string name="following_filter_updates">Updates only</string>
+    <string name="following_filter_all">Show all</string>
+    <string name="following_filter_empty">No followed shows have unwatched updates.</string>
+    <string name="following_filter_unwatched">Unfinished</string>
+    <string name="following_filter_ended">Ended</string>
+    <string name="following_filter_failed">Check failed</string>
+    <string name="setting_following">Following updates</string>
+    <string name="following_next_season">Follow new season S%1$d</string>
 </resources>

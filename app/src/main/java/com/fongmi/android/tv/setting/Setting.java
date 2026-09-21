@@ -106,7 +106,10 @@ public class Setting {
     public static final int UI_SCALE_SMALLER = 3;
     public static final int UI_SCALE_MILD_COMPACT = 4;
     public static final int UI_SCALE_MORE_COMPACT = 5;
-    private static final int[] UI_SCALE_OPTIONS = {UI_SCALE_FOLLOW_SYSTEM, UI_SCALE_STANDARD, UI_SCALE_MILD_COMPACT, UI_SCALE_COMPACT, UI_SCALE_MORE_COMPACT, UI_SCALE_SMALLER};
+    public static final int UI_SCALE_LARGE = 6;
+    public static final int UI_SCALE_LARGER = 7;
+    public static final int UI_SCALE_LARGEST = 8;
+    private static final int[] UI_SCALE_OPTIONS = {UI_SCALE_FOLLOW_SYSTEM, UI_SCALE_SMALLER, UI_SCALE_MORE_COMPACT, UI_SCALE_COMPACT, UI_SCALE_MILD_COMPACT, UI_SCALE_STANDARD, UI_SCALE_LARGE, UI_SCALE_LARGER, UI_SCALE_LARGEST};
 
     public static final int WALL_CINEMA = 5;
     public static final int WALL_CINEMA_WARM = 6;
@@ -487,8 +490,11 @@ public class Setting {
         float factor = getUiScaleFactor(scale);
         Configuration config = new Configuration(context.getResources().getConfiguration());
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        int stableDensity = DisplayMetrics.DENSITY_DEVICE_STABLE > 0 ? DisplayMetrics.DENSITY_DEVICE_STABLE : metrics.densityDpi;
-        int densityDpi = Math.max(DisplayMetrics.DENSITY_LOW, Math.round(stableDensity * factor));
+        // Scale from the density currently selected by the system. Using the device's
+        // stable density makes the same option behave differently on phones, head units
+        // and virtual machines whose default display size overrides the stable density.
+        int baseDensity = metrics.densityDpi;
+        int densityDpi = Math.max(DisplayMetrics.DENSITY_LOW, Math.round(baseDensity * factor));
         config.densityDpi = densityDpi;
         config.fontScale = 1.0f;
         config.screenWidthDp = pxToDp(metrics.widthPixels, densityDpi);
@@ -499,11 +505,14 @@ public class Setting {
 
     public static float getUiScaleFactor(int scale) {
         return switch (scale) {
-            case UI_SCALE_STANDARD -> 0.8f;
-            case UI_SCALE_MILD_COMPACT -> 0.75f;
-            case UI_SCALE_COMPACT -> 0.7f;
-            case UI_SCALE_MORE_COMPACT -> 0.65f;
-            case UI_SCALE_SMALLER -> 0.6f;
+            case UI_SCALE_SMALLER -> 0.8f;
+            case UI_SCALE_MORE_COMPACT -> 0.85f;
+            case UI_SCALE_COMPACT -> 0.9f;
+            case UI_SCALE_MILD_COMPACT -> 0.95f;
+            case UI_SCALE_STANDARD -> 1.0f;
+            case UI_SCALE_LARGE -> 1.1f;
+            case UI_SCALE_LARGER -> 1.2f;
+            case UI_SCALE_LARGEST -> 1.3f;
             default -> 1.0f;
         };
     }
@@ -1145,6 +1154,10 @@ public class Setting {
         return isTmdbMode(getDetailOpenMode()) && getTmdbModel() == TMDB_MODEL_NATIVE && TmdbConfig.objectFrom(getTmdbConfig()).isReady();
     }
 
+    public static boolean isTmdbDetailModeConfigured() {
+        return isTmdbMode(getDetailOpenMode()) && getTmdbModel() == TMDB_MODEL_NATIVE;
+    }
+
     public static int getDetailOpenMode() {
         int mode;
         if (Prefers.getPrefers().contains("detail_open_mode")) {
@@ -1166,7 +1179,7 @@ public class Setting {
             mode = isTmdbEnabled() ? DETAIL_OPEN_ORIGINAL_ENHANCED : DETAIL_OPEN_DIRECT;
             migrateCurrentDetailTheme(mode);
         }
-        return isTmdbMode(mode) && !isTmdbReady() ? DETAIL_OPEN_DIRECT : mode;
+        return mode;
     }
 
     public static void putDetailOpenMode(int mode) {

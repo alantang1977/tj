@@ -859,7 +859,12 @@ public final class MpvHlsProxy extends NanoHTTPD {
                 }
                 // Keep timestamps, implicit AES IVs, byte ranges and rendition
                 // synchronization intact; MpvPlayer skips the detected time ranges.
-                // Statistics are recorded only after actual playback-time skips.
+                // Notify as soon as a valid removal plan is available so MPV has the
+                // same user-visible adblock confirmation as Exo. Runtime skip
+                // accounting remains separate and is recorded only after playback.
+                if (!TextUtils.equals(outcome.manifest(), text)) {
+                    recordAndNotifyAdblock(url, outcome);
+                }
                 return text;
             }
             if (!TextUtils.equals(outcome.manifest(), text)) {

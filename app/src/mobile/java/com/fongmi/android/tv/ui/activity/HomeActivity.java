@@ -29,6 +29,9 @@ import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.event.ServerEvent;
 import com.fongmi.android.tv.event.StateEvent;
+import com.fongmi.android.tv.following.FollowingPlaybackBridge;
+import com.fongmi.android.tv.following.FollowingSettings;
+import com.fongmi.android.tv.following.FollowingScheduler;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.lab.LabActivity;
 import com.fongmi.android.tv.lab.LabConfig;
@@ -107,6 +110,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> checkWindowShape(right - left, bottom - top));
         mBinding.navigation.setOnItemSelectedListener(this);
         PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this));
+        FollowingScheduler.ensurePeriodic(this);
+        FollowingScheduler.enqueueDueNow(this);
         initFragment(savedInstanceState);
         initConfig();
     }
@@ -114,7 +119,9 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     protected void onResume() {
         super.onResume();
-        if (mBinding.navigation.getMenu().findItem(R.id.lab).isVisible() != LabConfig.get().getNavEntry()) setNavigation();
+        if (mBinding.navigation.getMenu().findItem(R.id.lab).isVisible() != LabConfig.get().getNavEntry()
+                || mBinding.navigation.getMenu().findItem(R.id.following).isVisible() != FollowingSettings.isEnabled()) setNavigation();
+        updateFollowingBadge();
     }
 
     @Override
@@ -218,6 +225,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mBinding.navigation.getMenu().findItem(R.id.setting).setVisible(true);
         mBinding.navigation.getMenu().findItem(R.id.lab).setVisible(LabConfig.get().getNavEntry());
         mBinding.navigation.getMenu().findItem(R.id.live).setVisible(LiveConfig.hasUrl());
+        mBinding.navigation.getMenu().findItem(R.id.following).setVisible(FollowingSettings.isEnabled());
+        updateFollowingBadge();
         syncNavigationSelection();
     }
 
@@ -286,7 +295,33 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         }
         if (item.getItemId() == R.id.vod) return changeFragment(0);
         if (item.getItemId() == R.id.live) return openLive();
+        if (item.getItemId() == R.id.following) {
+            FollowingActivity.start(this, null);
+            return false;
+        }
         return false;
+    }
+
+    private void updateFollowingBadge() {
+        if (mBinding == null || mBinding.navigation.getMenu().findItem(R.id.following) == null) return;
+        if (!FollowingSettings.isEnabled()) {
+            mBinding.navigation.removeBadge(R.id.following);
+            return;
+        }
+        applyFollowingBadge(FollowingPlaybackBridge.cachedUnreadCount());
+        FollowingPlaybackBridge.refreshUnreadCountAsync(unread -> {
+            if (!isFinishing() && !isDestroyed()) applyFollowingBadge(unread);
+        });
+    }
+
+    private void applyFollowingBadge(int unread) {
+        if (mBinding == null || mBinding.navigation.getMenu().findItem(R.id.following) == null) return;
+        if (!FollowingSettings.isEnabled()) {
+            mBinding.navigation.removeBadge(R.id.following);
+            return;
+        }
+        if (unread > 0) mBinding.navigation.getOrCreateBadge(R.id.following).setNumber(unread);
+        else mBinding.navigation.removeBadge(R.id.following);
     }
 
     private void selectNavigation(int position) {

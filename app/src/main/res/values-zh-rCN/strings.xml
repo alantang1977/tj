@@ -258,6 +258,8 @@
     <string name="history_record_missing">历史记录已不存在</string>
     <string name="history_config_changed">点播配置已切换，请重新操作</string>
     <string name="dialog_delete_global_history">确定删除所有点播配置的历史记录吗？</string>
+    <string name="config_delete_title">删除播放源？</string>
+    <string name="config_delete_message">确定删除“%1$s”吗？相关播放历史也可能丢失，此操作无法撤销。</string>
     <string name="setting_home_history">首页最近观看</string>
     <string name="setting_personal_recommendation">个性推荐</string>
     <string name="setting_recommendation_feedback">不感兴趣管理</string>
@@ -1322,6 +1324,7 @@ TVData</string>
     <string name="player_preload_pause_wifi">仅 WiFi</string>
     <string name="player_preload_pause_always">始终</string>
     <string name="player_auto_play">点播自动播放</string>
+    <string name="player_live_source_fallback">直播源失效自动切换</string>
     <string name="player_auto_change">自动换源</string>
     <string name="player_remember_brightness">记住播放亮度</string>
     <string name="player_failure_fallback">播放失败回退</string>
@@ -1795,11 +1798,14 @@ TVData</string>
 
     <string-array name="select_ui_scale">
         <item>跟随系统</item>
-        <item>标准</item>
-        <item>较紧凑</item>
-        <item>紧凑</item>
-        <item>更紧凑</item>
         <item>更小</item>
+        <item>紧凑</item>
+        <item>较紧凑</item>
+        <item>标准</item>
+        <item>稍大</item>
+        <item>较大</item>
+        <item>大</item>
+        <item>特大</item>
     </string-array>
 
     <string-array name="select_language">
@@ -2617,19 +2623,31 @@ TVData</string>
     <string name="ad_stats_reset">重置统计</string>
     <string name="ad_stats_reset_confirm">确定重置所有统计数据吗？</string>
     <string name="ad_stats_empty">暂无统计数据</string>
+    <string name="ad_stats_filter_empty">没有符合筛选条件的日志</string>
     <string name="ad_stats_overview">概览</string>
     <string name="ad_stats_log">拦截日志</string>
     <string name="ad_stats_chart">统计图表</string>
     <string name="ad_log_site_name">站点名称</string>
     <string name="ad_log_site_domain">站点域名</string>
-    <string name="ad_log_rule_domain">拦截规则（域名）</string>
+    <string name="ad_log_rule_domain">拦截规则</string>
+    <string name="ad_log_ad_domain">广告域名</string>
     <string name="ad_log_blocked_at">拦截时间</string>
     <string name="ad_log_segment_start">切片开始时间</string>
     <string name="ad_log_segment_end">切片结束时间</string>
     <string name="ad_log_segment_duration">切片时长</string>
-    <string name="ad_log_playback_context">剧名 / 线路名称 / 集数名称</string>
+    <string name="ad_log_playback_context">剧名</string>
+    <string name="ad_log_line_name">线路名称</string>
+    <string name="ad_log_episode_name">集数名称</string>
     <string name="ad_log_pipeline">播放链路</string>
     <string name="ad_log_unknown">未知</string>
+    <string name="ad_log_filter_hint">筛选</string>
+    <string name="ad_log_filter_search_hint">输入关键词查找</string>
+    <string name="ad_log_filter_all">全选</string>
+    <string name="ad_log_filter_clear">清除选择</string>
+    <string name="ad_log_filter_apply">应用</string>
+    <string name="ad_log_filter_cancel">取消</string>
+    <string name="ad_log_filter_options_empty">暂无可选值</string>
+    <string name="ad_log_filter_selected">已选 %d 项</string>
     <string name="ad_site_overview">站点统计概览</string>
     <string name="ad_site_count">涉及站点数</string>
     <string name="ad_top_site">拦截最多站点</string>
@@ -2764,4 +2782,56 @@ TVData</string>
     <string name="dialog_tmdb_test_omdb_success">OMDb API：连接成功并返回有效数据（%1$d 毫秒）</string>
     <string name="dialog_tmdb_test_omdb_failed">OMDb API：测试失败（%1$s，%2$d 毫秒）</string>
     <string name="site_health_report_search_hint">按站点名称搜索</string>
+    <string name="nav_following">追更</string>
+    <string name="home_following">追更</string>
+    <string name="sync_item_follow">追更</string>
+    <string name="following">追更</string>
+    <string name="following_add">加入追更</string>
+    <string name="following_added">已追更</string>
+    <string name="following_channel_name">追更更新</string>
+    <string name="following_channel_description">已追剧集的新集更新提醒</string>
+    <string name="following_notification_title">《%1$s》有新集</string>
+    <string name="following_notification_text">官方已更新至第 %1$d 集，当前源可播至第 %2$d 集</string>
+    <string name="following_check_all">检查更新</string>
+    <string name="following_check">检查</string>
+    <string name="following_checking">正在检查…</string>
+    <string name="following_check_done">更新检查完成</string>
+    <string name="following_check_failed">更新检查失败，已保留上次数据</string>
+    <string name="following_empty">还没有追更内容。打开剧集详情页，点击“加入追更”。</string>
+    <string name="following_summary">追更 %1$d 部 · 未读 %2$d 部</string>
+    <string name="following_continue">继续看</string>
+    <string name="following_read">标记已读</string>
+    <string name="following_notify_on">提醒开</string>
+    <string name="following_notify_off">提醒关</string>
+    <string name="following_change_source">换源</string>
+    <string name="following_cancel">取消追更</string>
+    <string name="following_delete_title">取消追更？</string>
+    <string name="following_delete_message">观看历史和 TMDB 进度会继续保留。</string>
+    <string name="following_official">官方已更新至第 %1$d 集</string>
+    <string name="following_official_unknown">官方状态未知</string>
+    <string name="following_source">当前源可播至第 %1$d 集</string>
+    <string name="following_source_unknown">当前源尚未检查</string>
+    <string name="following_watched">看到第 %1$d 集</string>
+    <string name="following_unwatched">还有 %1$d 集未看</string>
+    <string name="following_unwatched_none">已看完当前更新</string>
+    <string name="following_new_count">新 %1$d 集</string>
+    <string name="following_enabled_hint">追更功能当前已关闭。</string>
+    <string name="following_notification_permission_hint">未获得通知权限；站内角标和手动检查仍可使用。</string>
+    <string name="following_server_import">导入订阅</string>
+    <string name="following_server_url">服务端地址（http/https）</string>
+    <string name="following_server_token">Token（不会保存）</string>
+    <string name="following_server_preview">预览</string>
+    <string name="following_server_import_action">导入</string>
+    <string name="following_server_invalid">请输入有效的 http/https 服务端地址</string>
+    <string name="following_server_empty">没有可导入的订阅</string>
+    <string name="following_server_preview_title">待导入订阅</string>
+    <string name="following_server_result">已导入 %1$d 条，更新 %2$d 条</string>
+    <string name="following_filter_updates">只看更新</string>
+    <string name="following_filter_all">显示全部</string>
+    <string name="following_filter_empty">当前没有未看更新的追更内容。</string>
+    <string name="following_filter_unwatched">未看完</string>
+    <string name="following_filter_ended">已完结</string>
+    <string name="following_filter_failed">检查失败</string>
+    <string name="setting_following">追更更新</string>
+    <string name="following_next_season">追新季 S%1$d</string>
 </resources>

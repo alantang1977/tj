@@ -171,6 +171,7 @@ dependencies {
     implementation libs.palette
     implementation libs.recyclerview
     implementation libs.room.runtime
+    implementation libs.work.runtime
     implementation libs.splashscreen
     implementation libs.swiperefreshlayout
     implementation libs.viewpager2
@@ -201,11 +202,13 @@ dependencies {
     mobileImplementation libs.biometric
     mobileImplementation libs.zxing.android.embedded
     testImplementation libs.junit
+    testImplementation libs.work.testing
     annotationProcessor libs.room.compiler
     annotationProcessor libs.eventbus.annotation.processor
     annotationProcessor libs.glide.compiler
     coreLibraryDesugaring libs.desugar
     androidTestImplementation libs.junit
+    androidTestImplementation libs.work.testing
     testImplementation libs.okhttp.mockwebserver
     androidTestImplementation libs.androidx.test.runner
     androidTestImplementation libs.androidx.test.rules

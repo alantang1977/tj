@@ -39,4 +39,10 @@
     <color name="site_health_warn">#B7791F</color>
     <color name="site_health_bad">#C53030</color>
 
+    <color name="following_page_bg">#F6F8FB</color>
+    <color name="following_card_bg">#FFFFFF</color>
+    <color name="following_card_stroke">#DADCE0</color>
+    <color name="following_text_primary">#202124</color>
+    <color name="following_text_secondary">#5F6368</color>
+    <color name="following_accent">#174EA6</color>
 </resources>

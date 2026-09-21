@@ -115,7 +115,7 @@ public class TmdbPersonActivity extends BaseActivity {
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        tmdbConfig = TmdbConfig.objectFrom(Setting.getTmdbConfig());
+        tmdbConfig = TmdbConfig.effectiveCurrent();
         siteKey = getIntent().getStringExtra("site_key");
         detailMode = normalizeDetailMode(getIntent().getIntExtra("detail_mode", Setting.getDetailOpenMode()));
         light = resolveLightTheme();

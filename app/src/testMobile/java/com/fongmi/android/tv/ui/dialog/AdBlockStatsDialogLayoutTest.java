@@ -188,6 +188,15 @@ public class AdBlockStatsDialogLayoutTest {
                 strings.contains("<string name=\"ad_pipeline_rank\">播放链路</string>"));
     }
 
+    @Test
+    public void touchFilterOptionsDoNotConsumeTheFirstTapForFocus() throws Exception {
+        String dialog = read(findRepositoryRoot().resolve(Path.of("app", "src", "main", "java", "com", "fongmi", "android", "tv", "ui", "dialog", "AdBlockLogFilterDialog.java")));
+
+        assertTrue(dialog.contains("Configuration.TOUCHSCREEN_NOTOUCH"));
+        assertTrue(dialog.contains("checkBox.setFocusable(!touchDevice)"));
+        assertTrue(dialog.contains("checkBox.setFocusableInTouchMode(!touchDevice)"));
+    }
+
     private static Path findRepositoryRoot() {
         Path current = Path.of("").toAbsolutePath();
         while (current != null) {

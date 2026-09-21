@@ -55,8 +55,16 @@ public class EpisodeDetailDialog {
                            java.util.List<String> preloadedPhotos,
                            java.util.List<TmdbPerson> preloadedGuests,
                            android.content.DialogInterface.OnDismissListener dismissListener) {
+        show(activity, episode, null, site, preloadedPhotos, preloadedGuests, dismissListener);
+    }
+
+    public static void show(FragmentActivity activity, Episode episode, TmdbEpisode boundTmdbEpisode,
+                           com.fongmi.android.tv.bean.Site site,
+                           java.util.List<String> preloadedPhotos,
+                           java.util.List<TmdbPerson> preloadedGuests,
+                           android.content.DialogInterface.OnDismissListener dismissListener) {
         if (activity == null || episode == null) return;
-        TmdbEpisode tmdbEpisode = episode.getTmdbEpisode();
+        TmdbEpisode tmdbEpisode = boundTmdbEpisode != null ? boundTmdbEpisode : episode.getTmdbEpisode();
         if (tmdbEpisode == null) {
             // 电影没有分集对象，尝试从详情页获取影片级数据
             if (activity instanceof com.fongmi.android.tv.ui.host.TmdbDetailHost) {
@@ -193,7 +201,7 @@ public class EpisodeDetailDialog {
         if (movieDetail == null) return;
         Task.execute(() -> {
             try {
-                TmdbConfig config = TmdbConfig.objectFrom(Setting.getTmdbConfig());
+                TmdbConfig config = TmdbConfig.effectiveCurrent();
                 if (config == null || !config.isReady()) return;
                 TmdbService service = new TmdbService();
                 List<String> photos = service.photos(movieDetail, config);
@@ -317,7 +325,7 @@ public class EpisodeDetailDialog {
         if (episode.getTmdbId() == 0) return;
         Task.execute(() -> {
             try {
-                TmdbConfig config = TmdbConfig.objectFrom(Setting.getTmdbConfig());
+                TmdbConfig config = TmdbConfig.effectiveCurrent();
                 if (config == null || !config.isReady()) return;
                 TmdbService service = new TmdbService();
                 JsonObject episodeJson = service.episode(episode.getTmdbId(), episode.getSeasonNumber(), episode.getNumber(), config);

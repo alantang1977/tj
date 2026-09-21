@@ -18,6 +18,7 @@ import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.following.FollowingStore;
 import com.fongmi.android.tv.impl.Diffable;
 import com.fongmi.android.tv.history.HistoryDisplayPolicy;
 import com.fongmi.android.tv.player.VideoAspectMode;
@@ -1132,6 +1133,7 @@ public class History implements Diffable<History> {
             return null;
         });
         if (saved[0] && recommendationSignalsChanged(before[0], this)) notifyChanged();
+        if (saved[0]) FollowingStore.project(this);
     }
 
     public History save(int cid) {
@@ -1168,6 +1170,7 @@ public class History implements Diffable<History> {
             return null;
         });
         if (saved[0] && recommendationSignalsChanged(before[0], this)) notifyChanged();
+        if (saved[0]) FollowingStore.project(this);
         return this;
     }
 

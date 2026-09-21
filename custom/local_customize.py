@@ -65,6 +65,12 @@ try:
     from PIL import Image, ImageDraw, ImageFilter  # 图标生成/缩放需要
 except ImportError:
     pass
+try:
+    import yaml as _yaml  # 可选：用于校验 workflow YAML 改完后仍可解析
+    _YAML_OK = True
+except Exception:
+    _yaml = None
+    _YAML_OK = False
 import shutil
 import sys
 import xml.etree.ElementTree as ET
@@ -137,6 +143,9 @@ CUSTOM_DIR = os.path.join(REPO_ROOT, "custom")
 # 用法：python local_customize.py --force
 # 适用场景：上游同步后文件形态变化、怀疑脚本假阳性 SKIP、或需要确保所有修改落地
 FORCE_MODE = False
+# --auto-rollback：写盘后若读盘校验失败，自动把文件还原成修改前内容，
+# 绝不把"自己都验证不过"的文件留在工作区（宁可保持上游原样，也不让 CI 报错）
+AUTO_ROLLBACK = False
 
 # ==============================================================================
 # 图标生成模块（整合自 custom/gen_app_icon.py）
@@ -1490,6 +1499,10 @@ def modify_build_gradle(config):
                     print("[WARN] app/build.gradle: 未找到 android{} 或 buildFeatures{} 块，viewBinding 补全失败，请人工检查")
 
         if content != original:
+            # 写回前花括号平衡校验：viewBinding 插入若错位会破坏 android{} 块
+            if not _brace_balance(filename, content):
+                print(f"[FATAL] {filename}: 因花括号不平衡，放弃写回（保留原文件，避免 Gradle 解析失败）")
+                continue
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
             changed_any = True
@@ -1704,14 +1717,26 @@ def modify_manifest_banner(config):
     #  - drawable-xhdpi（Android TV 官方推荐位置，320x180 对应 xhdpi）
     #  - drawable-nodpi（兜底）
     src = os.path.join(REPO_ROOT, "app", "src", "leanback", "res", "drawable", "ic_banner.png")
+    copied_any = False
     if os.path.exists(src):
         for sub in ("drawable-xhdpi", "drawable-nodpi"):
             dst = os.path.join(REPO_ROOT, "app", "src", "main", "res", sub, "ic_banner.png")
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copyfile(src, dst)
+            copied_any = True
             print(f"[OK] banner PNG -> {os.path.relpath(dst, REPO_ROOT)}（320x180）")
     else:
         print(f"[WARN] 未找到 leanback banner 源文件: {os.path.relpath(src, REPO_ROOT)}，请先跑图标生成步骤")
+    # 关键校验：manifest 已把 android:banner 指向 @drawable/ic_banner，
+    # 必须保证至少有一个 ic_banner.png 资源存在，否则 AAPT 合并直接报 "resource not found"。
+    banner_glob = glob.glob(os.path.join(REPO_ROOT, "app", "src", "main", "res",
+                                        "drawable*", "ic_banner.png"))
+    if not banner_glob:
+        print("[FATAL] manifest 指向 @drawable/ic_banner，但 main 资源中找不到任何 ic_banner.png！"
+              " 这会导致 AAPT resource-not-found 构建失败。请先让图标生成步骤产出 banner。")
+        any_changed = False
+    else:
+        print(f"[SANITY] @drawable/ic_banner 资源存在：{os.path.relpath(banner_glob[0], REPO_ROOT)}")
     return any_changed
 
 
@@ -1990,6 +2015,58 @@ def _java_sanity_check(content, label, require_patterns=None, forbid_patterns=No
             + "\n  请检查 local_customize.py 中的字符串拼接逻辑，修复后重新运行。"
         )
     print(f"[SANITY] {label}: Java 健全性校验通过（括号平衡 + import 完整 + 语句收尾 + 模式校验）")
+
+
+def _yaml_looks_ok(label, content):
+    """写回 workflow YAML 前做解析校验；pyyaml 不可用时降级为关键片段存在性检查。
+
+    GitHub Actions 对 YAML 缩进极其敏感，行级手术一旦破坏缩进，
+    CI 会在「开始执行」阶段直接报 "Invalid workflow file" 而不是编译错误。
+    这里在本地提前挡住。
+    """
+    if not content:
+        return False
+    if _YAML_OK:
+        try:
+            _yaml.safe_load(content)
+            print(f"[SANITY] {label}: YAML 解析通过（缩进/结构未破坏）")
+            return True
+        except Exception as e:
+            print(f"[FATAL] {label}: YAML 改完后无法解析 —— {e}")
+            print("        这会导致 GitHub Actions 直接报 Invalid workflow file，请检查行级手术逻辑。")
+            return False
+    # 降级：必须有 on/jobs 顶层键（未装 pyyaml 时的粗检）
+    if not (("on:" in content or "name:" in content) and "jobs:" in content):
+        print(f"[WARN] {label}: 未发现 on:/jobs: 结构，疑似 YAML 被破坏（未装 pyyaml，仅粗检）")
+        return False
+    return True
+
+
+def _brace_balance(label, content):
+    """Groovy build.gradle 花括号平衡粗检（写回前），防止行级插入破坏 android{} 块。"""
+    depth = 0
+    in_str = False
+    esc = False
+    min_d = 0
+    for ch in content:
+        if esc:
+            esc = False; continue
+        if ch == "\\" and in_str:
+            esc = True; continue
+        if ch == '"':
+            in_str = not in_str; continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            min_d = min(min_d, depth)
+    if depth != 0 or min_d < 0:
+        print(f"[FATAL] {label}: 花括号不平衡（depth={depth}, min={min_d}），写回会破坏 Gradle 脚本！")
+        return False
+    print(f"[SANITY] {label}: 花括号平衡（depth 最终为 0）")
+    return True
 
 
 # ---------------------------------------------------------------- 8. 更新顺序：CNB 优先
@@ -2844,6 +2921,21 @@ def modify_workflow_files(config):
             else:
                 print("[SKIP] android-release.yml: 无 GRADLE_OPTS（内存由 gradle.properties 统一控制）")
 
+            # 给 gradle 调用补 --stacktrace（幂等）：构建失败时打印完整堆栈，
+            # 让 CI 日志直接定位出错 task/行，而不是只有 "Build failed"。
+            # 仓库里 gradle 调用以「缩进 + --no-daemon」作为最后一个续行参数。
+            if "--stacktrace" not in content:
+                _st_lines = content.split("\n")
+                _st_done = False
+                for _i, _line in enumerate(_st_lines):
+                    if _line.strip() == "--no-daemon":
+                        _indent = _line[:len(_line) - len(_line.lstrip())]
+                        _st_lines[_i] = f"{_indent}--no-daemon \\\n{_indent}--stacktrace"
+                        _st_done = True
+                if _st_done:
+                    content = "\n".join(_st_lines)
+                    print("[OK] android-release.yml: gradle 调用已补 --stacktrace（失败日志更清晰）")
+
             # publish_oci 输入项默认改为 false（GitHub Actions 触发时默认不打勾，需要时再手动勾选）
             # 用逐行扫描实现，零正则回溯风险，保证不卡死
             oci_lines = content.splitlines(keepends=True)
@@ -2879,6 +2971,10 @@ def modify_workflow_files(config):
                     print("[WARN] android-release.yml: 未找到 publish_oci 输入项，跳过")
 
         if content != original:
+            # 写回前 YAML 解析校验：一旦破坏缩进，GitHub Actions 会直接 Invalid workflow file
+            if not _yaml_looks_ok(rel_path, content):
+                print(f"[FATAL] {rel_path}: 因 YAML 校验未通过，放弃写回（保留原文件，避免 CI 直接失败）")
+                continue
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
             # 读盘验证：确认关键修改确实落盘
@@ -2895,6 +2991,12 @@ def modify_workflow_files(config):
                 print(f"[VERIFY] {rel_path}: 写回验证通过（CNB slug 已替换 + chmod + setup-android）{sa_note}")
             else:
                 print(f"[ERROR] {rel_path}: 写回验证失败！CNB已替换={v_cnb}, chmod={v_chmod}, GRADLE_OPTS={v_grace}")
+                if AUTO_ROLLBACK:
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(original)
+                    print(f"[ROLLBACK] {rel_path}: 校验失败，已自动还原为修改前内容（不影响构建）")
+                    changed_any = True
+                    continue
             changed_any = True
             print(f"[OK] {rel_path}: CNB 配置已更新（GRADLE_OPTS 已清理/保持无）")
         else:
@@ -2904,13 +3006,16 @@ def modify_workflow_files(config):
 
 # ---------------------------------------------------------------- 主流程
 def main():
-    global FORCE_MODE
+    global FORCE_MODE, AUTO_ROLLBACK
     FORCE_MODE = "--force" in sys.argv
+    AUTO_ROLLBACK = "--auto-rollback" in sys.argv
     print("=" * 72)
     print("  local_customize.py —— 本地一键自定义（名称 / 图标 / 包名 / CNB / 内存）")
     print(f"  项目根目录: {REPO_ROOT}")
     if FORCE_MODE:
         print("  [模式] 强制模式 --force：跳过幂等判断，强制重写所有可修改文件")
+    if AUTO_ROLLBACK:
+        print("  [模式] --auto-rollback：写盘校验失败时自动还原文件，宁可不改也不破坏构建")
     print("=" * 72)
 
     if not os.path.isdir(REPO_ROOT):
