@@ -1083,7 +1083,8 @@ def render_banner(w, h, style="3d"):
     if style == "cat":
         mark_box = int(bh * 0.95)
         mark = draw_cat(mark_box)
-        img.alpha_composite(mark, (int(bw * 0.06), int((bh - mark_box) / 2)))
+        # 猫咪头像水平+垂直双向居中（当贝 TV banner 长方形，不放左侧）
+        img.alpha_composite(mark, (int((bw - mark_box) / 2), int((bh - mark_box) / 2)))
     else:
         mark_box = int(bh * 0.62)
         mark = draw_wordmark(mark_box, 0.92, style=style)
