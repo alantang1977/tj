@@ -10,7 +10,9 @@ import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.Clock;
+import androidx.media3.common.util.StuckPlayerException;
 import androidx.media3.common.util.Util;
 import androidx.media3.exoplayer.audio.AudioOffloadSupport;
 import androidx.media3.exoplayer.audio.AudioOutput;
@@ -32,17 +34,27 @@ public final class ExoCompressedAudioDirectPolicy
         implements DefaultAudioSink.AudioOffloadSupportProvider {
 
     private static final int VENDOR_DIRECT_BUFFER_SIZE = 256 * 1024;
+    private static final long OUTPUT_STALL_CONFIRMATION_MS = 2_000;
 
     interface DirectPlaybackSupport {
         boolean isSupported(Format format, AudioAttributes audioAttributes);
     }
 
+    interface VendorDirectOutputFactory {
+        AudioOutput create(AudioOutputProvider.OutputConfig config)
+                throws AudioOutputProvider.InitializationException;
+    }
+
     private final DefaultAudioSink.AudioOffloadSupportProvider standardProvider;
     private final DirectPlaybackSupport directPlaybackSupport;
+    private final Clock clock;
+    private final VendorDirectOutputFactory vendorDirectOutputFactory;
     private final Set<OutputKey> vendorDirectConfigs;
     private final Set<OutputKey> failedVendorDirectConfigs;
     private final AtomicReference<OutputKey> pendingPcmFallback = new AtomicReference<>();
     private final ExoAudioOutputState audioOutputState = new ExoAudioOutputState();
+    private final AtomicReference<OutputAttempt> outputAttempt =
+            new AtomicReference<>(new OutputAttempt());
 
     public ExoCompressedAudioDirectPolicy(Context context) {
         this(new DefaultAudioOffloadSupportProvider(context.getApplicationContext()),
@@ -52,8 +64,19 @@ public final class ExoCompressedAudioDirectPolicy
     ExoCompressedAudioDirectPolicy(
             DefaultAudioSink.AudioOffloadSupportProvider standardProvider,
             DirectPlaybackSupport directPlaybackSupport) {
+        this(standardProvider, directPlaybackSupport, Clock.DEFAULT,
+                ExoCompressedAudioDirectPolicy::createVendorDirectAudioOutput);
+    }
+
+    ExoCompressedAudioDirectPolicy(
+            DefaultAudioSink.AudioOffloadSupportProvider standardProvider,
+            DirectPlaybackSupport directPlaybackSupport,
+            Clock clock,
+            VendorDirectOutputFactory vendorDirectOutputFactory) {
         this.standardProvider = standardProvider;
         this.directPlaybackSupport = directPlaybackSupport;
+        this.clock = clock;
+        this.vendorDirectOutputFactory = vendorDirectOutputFactory;
         this.vendorDirectConfigs = ConcurrentHashMap.newKeySet();
         this.failedVendorDirectConfigs = ConcurrentHashMap.newKeySet();
     }
@@ -169,27 +192,17 @@ public final class ExoCompressedAudioDirectPolicy
             @Override
             public AudioOutput getAudioOutput(AudioOutputProvider.OutputConfig config)
                     throws AudioOutputProvider.InitializationException {
+                OutputAttempt attempt = outputAttempt.get();
                 boolean vendorDirect = usesVendorDirect(config);
                 try {
                     AudioOutput output = vendorDirect
-                            ? createVendorDirectAudioOutput(config)
+                            ? vendorDirectOutputFactory.create(config)
                             : super.getAudioOutput(config);
                     output = ExoDiagnosticAudioOutput.wrap(output, config, diagnostics);
-                    if (vendorDirect) output = new ForwardingAudioOutput(output) {
-                        @Override
-                        public boolean write(ByteBuffer buffer, int accessUnitCount,
-                                             long presentationTimeUs)
-                                throws AudioOutput.WriteException {
-                            try {
-                                return super.write(buffer, accessUnitCount,
-                                        presentationTimeUs);
-                            } catch (AudioOutput.WriteException error) {
-                                disableVendorDirect(config, "write-" + error.errorCode);
-                                throw new AudioOutput.WriteException(
-                                        error.errorCode, true);
-                            }
-                        }
-                    };
+                    VendorDirectAudioOutput directOutput = vendorDirect
+                            ? new VendorDirectAudioOutput(output, config) : null;
+                    attempt.output.set(directOutput);
+                    if (directOutput != null) output = directOutput;
                     return audioOutputState.track(output, config);
                 } catch (AudioOutputProvider.InitializationException error) {
                     if (vendorDirect) {
@@ -296,6 +309,32 @@ public final class ExoCompressedAudioDirectPolicy
         return pendingPcmFallback.getAndSet(null) != null;
     }
 
+    /** Forget retired output evidence without retrying a failed configuration. */
+    public void resetOutputProgress() {
+        outputAttempt.set(new OutputAttempt());
+    }
+
+    public boolean requestPcmFallbackForStuckPlayback(PlaybackException error) {
+        if (error == null || error.errorCode != PlaybackException.ERROR_CODE_TIMEOUT) {
+            return false;
+        }
+        boolean stuckPlaying = false;
+        Throwable cause = error.getCause();
+        for (int depth = 0; cause != null && depth < 8; depth++, cause = cause.getCause()) {
+            if (cause instanceof StuckPlayerException stuck) {
+                stuckPlaying = stuck.stuckType == StuckPlayerException.STUCK_PLAYING_NO_PROGRESS;
+                break;
+            }
+        }
+        if (!stuckPlaying) return false;
+        OutputAttempt attempt = outputAttempt.get();
+        VendorDirectAudioOutput output = attempt.output.get();
+        if (output == null || !output.stalled
+                || !attempt.output.compareAndSet(output, null)) return false;
+        disableVendorDirect(output.config, "playing-no-progress");
+        return true;
+    }
+
     void disableVendorDirect(int encoding, int sampleRate, int channelMask) {
         disableVendorDirect(new OutputKey(encoding, sampleRate, channelMask),
                 "test");
@@ -383,6 +422,100 @@ public final class ExoCompressedAudioDirectPolicy
             SpiderDebug.log("exo-audio-direct",
                     "disable encoding=%d sampleRate=%d channelMask=0x%X reason=%s",
                     key.encoding(), key.sampleRate(), key.channelMask(), reason);
+        }
+    }
+
+    private static final class OutputAttempt {
+        final AtomicReference<VendorDirectAudioOutput> output = new AtomicReference<>();
+    }
+
+    private final class VendorDirectAudioOutput extends ForwardingAudioOutput {
+        private final AudioOutputProvider.OutputConfig config;
+        private boolean playing;
+        private boolean acceptedData;
+        private long lastPositionUs = C.TIME_UNSET;
+        private long unchangedSinceMs = C.TIME_UNSET;
+        private volatile boolean stalled;
+
+        VendorDirectAudioOutput(AudioOutput output, AudioOutputProvider.OutputConfig config) {
+            super(output);
+            this.config = config;
+        }
+
+        @Override
+        public boolean write(ByteBuffer buffer, int accessUnitCount, long presentationTimeUs)
+                throws AudioOutput.WriteException {
+            int position = buffer.position();
+            try {
+                boolean handled = super.write(buffer, accessUnitCount, presentationTimeUs);
+                if (buffer.position() > position) acceptedData = true;
+                return handled;
+            } catch (AudioOutput.WriteException error) {
+                disableVendorDirect(config, "write-" + error.errorCode);
+                throw new AudioOutput.WriteException(error.errorCode, true);
+            }
+        }
+
+        @Override
+        public long getPositionUs() {
+            long positionUs = super.getPositionUs();
+            if (playing && acceptedData) {
+                if (positionUs < 0) {
+                    resetObservation();
+                } else {
+                    long nowMs = clock.elapsedRealtime();
+                    if (positionUs != lastPositionUs) {
+                        lastPositionUs = positionUs;
+                        unchangedSinceMs = nowMs;
+                        stalled = false;
+                    } else {
+                        stalled = nowMs - unchangedSinceMs >= OUTPUT_STALL_CONFIRMATION_MS;
+                    }
+                }
+            }
+            return positionUs;
+        }
+
+        @Override
+        public void play() {
+            super.play();
+            if (!playing) resetObservation();
+            playing = true;
+        }
+
+        @Override
+        public void pause() {
+            playing = false;
+            super.pause();
+        }
+
+        @Override
+        public void flush() {
+            acceptedData = false;
+            resetObservation();
+            super.flush();
+        }
+
+        @Override
+        public void stop() {
+            playing = false;
+            acceptedData = false;
+            resetObservation();
+            super.stop();
+        }
+
+        @Override
+        public void release() {
+            playing = false;
+            // Media3 posts stop to the playback thread before notifying the App of a timeout.
+            // Keep already observed evidence for that error; the next output/attempt replaces it.
+            super.release();
+        }
+
+        private void resetObservation() {
+            lastPositionUs = C.TIME_UNSET;
+            unchangedSinceMs = C.TIME_UNSET;
+            stalled = false;
         }
     }
 

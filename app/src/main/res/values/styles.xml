@@ -119,6 +119,21 @@
         <item name="backgroundInsetBottom">0dp</item>
     </style>
 
+    <style name="ThemeOverlay.WebHTV.FollowingConfirmDialog" parent="ThemeOverlay.WebHTV.LightDialog">
+        <item name="alertDialogStyle">@style/MaterialAlertDialog.WebHTV.Rounded</item>
+        <item name="android:windowBackground">@color/following_card_bg</item>
+        <item name="android:colorBackground">@color/following_card_bg</item>
+        <item name="android:textColorPrimary">@color/following_text_primary</item>
+        <item name="android:textColorSecondary">@color/following_text_secondary</item>
+        <item name="colorSurface">@color/following_card_bg</item>
+        <item name="colorSurfaceContainer">@color/following_card_bg</item>
+        <item name="colorOnSurface">@color/following_text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/following_text_secondary</item>
+        <item name="colorPrimary">@color/following_accent</item>
+        <item name="colorControlActivated">@color/following_accent</item>
+        <item name="isLightTheme">true</item>
+    </style>
+
     <style name="ThemeOverlay.WebHTV.LightDialog.NoInset" parent="ThemeOverlay.WebHTV.LightDialog">
         <item name="alertDialogStyle">@style/MaterialAlertDialog.WebHTV.NoInset</item>
     </style>

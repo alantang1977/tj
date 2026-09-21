@@ -713,36 +713,50 @@ def draw_cat(size):
     face_gloss = face_gloss.filter(ImageFilter.GaussianBlur(radius=r * 0.10))
     layer.alpha_composite(face_gloss)
 
-    # 大圆眼（low-poly 眼睛设计元素）：纯白大眼白 + 大黑瞳 + 左上单一高光点
-    # 说明：去掉彩色虹膜 / 瞳孔月牙 / 副高光；眼白较原版略放大，浅奶白脸盘上保留一圈细灰描边。
+    # 大圆眼：白色眼白 + 可选彩色虹膜（CONFIG.EYE_IRIS）+ 深色瞳孔 + 玻璃高光
     eye_y = face_cy - r * 0.10
-    eye_dx, eye_R = r * 0.375, r * 0.205
-    pupil_R = eye_R * 0.70
+    eye_dx, eye_R, pupil_R = r * 0.375, r * 0.19, r * 0.117
+    eye_scheme_name = str(CONFIG.get("EYE_IRIS", "amber")).strip().lower()
+    eye_scheme = EYE_SCHEMES.get(eye_scheme_name)
+    iris_R = eye_R * 0.86
+    iris_tile_img = None
+    if eye_scheme is not None:
+        iris_tile_img = _iris_tile(int(iris_R * 2) + 4, eye_scheme)
     for ex in (cx - eye_dx, cx + eye_dx):
-        # 细灰描边（保证浅脸盘上眼白轮廓可读）
+        # 外圈灰描边 + 白色眼白（彩色虹膜时只露出一圈细白边）
         d.ellipse([ex - eye_R - 1, eye_y - eye_R - 1,
                    ex + eye_R + 1, eye_y + eye_R + 1],
                   fill=(210, 212, 218, 255))
-        # 纯白大眼白（无彩色虹膜）
         d.ellipse([ex - eye_R, eye_y - eye_R, ex + eye_R, eye_y + eye_R],
                   fill=(255, 255, 255, 255))
-        # 大黑瞳
+        if iris_tile_img is not None:
+            # 彩色径向虹膜（中心亮、外缘主色、最外深色环）
+            _ih = iris_tile_img.size[0]
+            layer.alpha_composite(iris_tile_img,
+                                  (int(ex - _ih / 2), int(eye_y - _ih / 2)))
+        else:
+            # 原版：内圈高光白
+            d.ellipse([ex - eye_R * 0.60, eye_y - eye_R * 0.60,
+                       ex + eye_R * 0.60, eye_y + eye_R * 0.60],
+                      fill=(252, 252, 254, 255))
+        # 瞳孔（深蓝黑，与整体蓝调协调）
         d.ellipse([ex - pupil_R, eye_y - pupil_R, ex + pupil_R, eye_y + pupil_R],
-                  fill=(13, 15, 32, 255))
-        # 单一高光点（左上，加大更有神，完整落在瞳孔内）
-        hl_r = eye_R * 0.25
-        d.ellipse([ex - eye_R * 0.30 - hl_r, eye_y - eye_R * 0.30 - hl_r,
-                   ex - eye_R * 0.30 + hl_r, eye_y - eye_R * 0.30 + hl_r],
+                  fill=CAT_DARK)
+        # 瞳孔高光点（偏左上）
+        hl_r = pupil_R * 0.26
+        d.ellipse([ex - pupil_R * 0.32 - hl_r, eye_y - pupil_R * 0.38 - hl_r,
+                   ex - pupil_R * 0.32 + hl_r, eye_y - pupil_R * 0.38 + hl_r],
                   fill=(255, 255, 255, 255))
-
-    # 淡粉腮红（柔光，两颊）
-    for _sg in (-1, 1):
-        _bl = Image.new("RGBA", (size, size), HOLE)
-        _bd = ImageDraw.Draw(_bl)
-        _bx, _by, _br = cx + _sg * r * 0.56, face_cy + r * 0.14, r * 0.135
-        _bd.ellipse([_bx - _br, _by - _br, _bx + _br, _by + _br], fill=(255, 150, 172, 115))
-        _bl = _bl.filter(ImageFilter.GaussianBlur(r * 0.05))
-        layer.alpha_composite(_bl)
+        # 瞳孔底部反光月牙（玻璃感地反射）
+        d.arc([ex - pupil_R * 0.72, eye_y - pupil_R * 0.30,
+               ex + pupil_R * 0.72, eye_y + pupil_R * 0.90],
+              start=20, end=160, fill=(255, 255, 255, 190),
+              width=max(2, int(pupil_R * 0.22)))
+        # 副高光（右上小点，双光源）
+        hl2_r = pupil_R * 0.13
+        d.ellipse([ex + pupil_R * 0.42 - hl2_r, eye_y - pupil_R * 0.45 - hl2_r,
+                   ex + pupil_R * 0.42 + hl2_r, eye_y - pupil_R * 0.45 + hl2_r],
+                  fill=(255, 255, 255, 225))
 
     # 粉鼻（圆润水滴椭圆，日系Q版，与闭眼表情搭配）
     nose_y = face_cy + r * 0.10

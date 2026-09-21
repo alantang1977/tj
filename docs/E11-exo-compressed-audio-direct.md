@@ -1,6 +1,60 @@
 # E11 Exo 压缩音频输出与跳转生命周期
 
-## Recovery anchor（2026-09-18）
+## Recovery anchor（2026-09-20）
+
+- Objective / acceptance：修复 AAC/MP3 厂商压缩直出已接收音频却无播放进度、最终被 Media3 判定超时后未自动回退 PCM 的缺口；仅恢复失败配置，保留视频解码、正常直出、标准 offload、隧道和用户设置。
+- User decision：用户在收到日志/源码定位与最小修复建议后明确要求“修复Bug”。
+- Lane / guard：`quick-fix` / `E11-audio-direct-stall-fallback`。
+- Branch / baseline：`feature/mpv-dv7-fel` / `2623cb812ea842b676bc7d8db699c1a7e70b8e1e`。
+- Scope：`ExoCompressedAudioDirectPolicy.java`、`ExoPlayerEngine.java`、`ExoCompressedAudioDirectPolicyTest.java`、本文与任务索引；保护原有 `app/.cxx/` 下 104 个文件。
+- Evidence：Sony BRAVIA 4K VH2 / Android 12 / armeabi-v7a；反馈日志中 AAC-LC 44.1 kHz stereo 的 encoded AudioTrack 接收 1,929,665 bytes、writeErrors=0、headFrames=0；10 秒后 `STUCK_PLAYING_NO_PROGRESS` / code 1003 被按 FATAL 处理。日志标记的基线 `88aceb110959ff50afc23b10d9b9abe3e0f53255` 与本次基线的策略/引擎文件一致；反馈 APK 标记 dirty，不能仅凭 revision 证明其全部内容。
+- Plan status：类型明确的错误路由、vendor 输出进度观察和 attempt/输出隔离已实现；Leanback armeabi-v7a 编译与 33 项定向测试通过，进入原子提交/tag 收尾。
+- Unverified edits：无未验证代码；任务内两个生产文件、一个测试文件及本文/索引待原子提交。本轮未打包 APK。
+- Risk / limit：本轮依据反馈日志和截图实施，尚未在反馈 Sony 上执行同片源回归；主机测试验证控制流与生命周期，不能冒充 Sony HAL 已通过回归。2026-09-21 合并至 `dev2`（C4 第六轮）后复跑 26 项策略 + 7 项输出所有权测试，全部通过；使用 `unitTests.returnDefaultValues=true` 临时 init 脚本补足 `android.os.SystemClock` 等未打桩 Android API，未修改生产构建配置。
+- Rollback：本次 App 源码、测试、文档作为一个原子提交，可 revert 该提交；不涉及依赖或 native 制品。
+- Next action：使用当前 guard 原子提交并创建恢复 tag；完成后以该提交和 `recovery/E11-audio-direct-stall-fallback/*` 的 Git 记录作为恢复点，不为回填 ID 另开文档提交。
+
+## 2026-09-20 压缩音频直出无进度回退
+
+### 最佳实践与本地合同复核
+
+本次为 E11 已建立的“实际输出失败后恢复同轨 PCM”合同补漏，属于根合同允许的局部纠错。复用现有 Media3 检测器、输出包装和重试入口，不新增定时器、线程、平台兼容分支、解码算法或依赖升级；既有官方 API/issue 研究见下文，不重复泛化搜索。
+
+访问日期：2026-09-20。发货 Media3 为 `1.11.0-alpha01-fongmi`，锁定源 `e3e922d5c01bc0b564849940fe589daf37360d15`；以下为 `third_party/maven/androidx/media3/{media3-common,media3-exoplayer}/1.11.0-alpha01-fongmi/*-sources.jar` 中实际源码（A级证据）：
+
+| 来源 | 可核实合同与决定影响 |
+| --- | --- |
+| `StuckPlayerDetector.StuckPlayingDetector`、`StuckPlayerException` | 只在 `isPlaying()` 且同一 period/广告/媒体位置持续不变时产生 `STUCK_PLAYING_NO_PROGRESS`；暂停/缓冲会撤销检测。按异常类型和 `stuckType` 匹配，不按错误文本或所有 code 1003 猜测。 |
+| `ExoPlayerImpl.ComponentListener.onStuckPlayerDetected/stopInternal` | 使用 `ERROR_CODE_TIMEOUT` 包装异常，先异步要求播放线程 stop，再通知 App；音频 pause/release 与 App 收到错误存在竞争。停滞证据必须属于本次输出，并能保留到本次错误处理。 |
+| `AudioOutput.write/getPositionUs/play/pause/flush/stop/release`、`AudioTrackAudioOutput` | write 的 buffer.position 增量证明实际接受 payload；position 是输出播放时间。仅观察已有调用，不主动跨线程调用 AudioTrack，不复制音频或改变返回值。 |
+| `DefaultAudioSink.getCurrentPositionUs/hasAudioOutputPendingData` | 正常调度已查询输出位置；可在包装层记录进度，无需额外轮询或线程。 |
+| 当前 `ExoCompressedAudioDirectPolicy`、`ExoPlayerEngine.handleError/retryAudioOutputWithPcm/startInternal` | 只处理初始化/写入异常；已有同配置禁用、屏蔽 generic passthrough、保留原位置重启逻辑可直接复用。每次 prepare 清除旧输出证据，但保留引擎内失败配置集合，防止反复直出。 |
+
+没有新的上游提交候选；不改源码锁/补丁/二进制。论文、广泛论坛或性能基准不能改变这条类型明确、数据可观测的错误路由决定；本轮以实际源码、用户日志和可控输出回归验证。保留 E11 既有平台/成熟实现研究及其限制。
+
+### 方案、验收与风险
+
+- 不改：拒绝，已证实在 no-progress 超时后直接终止。
+- 只用原有 Media3 行为：检测准确，但超时默认终止，不能禁用 WebHTV 厂商直出配置。
+- 对所有超时或所有无硬件音频 codec 强制软解：拒绝，会误伤断流、视频故障及正常 DSP 直出。
+- 采用窄适配：只对实际厂商 direct 输出观察已接受数据和播放位置；在连续播放期间输出至少 2 秒无进度时保留证据，再以现有 Media3 10 秒 `STUCK_PLAYING_NO_PROGRESS` 作为恢复触发。仅标记该 encoding/rate/channel-mask 失败并复用 PCM 原位重试。独立的 2 秒证据窗避免把最近仍在前进的音频归因到播放器停滞，也允许线程通知误差；不提前产生错误。
+- 正常 play/resume 重新开始观察；暂停时不累计新的证据；flush、自然 stop、下一次 prepare 和新输出清除不适用证据。旧输出异步释放不能污染新输出；已确认停滞证据保留到异步错误回调。
+- 正常路径只在现有 vendor-direct write/position 调用中更新少量标量，无新增 buffer、解码器、音频复制或工作线程。标准 PCM/offload/隧道不安装检测包装。
+- 定向测试覆盖真实包装层的成功写入但停滞、正常进度、零写入、暂停/恢复、flush/stop、释放先于错误、新输出/新 attempt 隔离、其它错误类型、配置禁用及一次性消费；同时保留原有直出/失败 PCM/隧道/offload 测试。编译一个受影响 App 变体。
+- 设备验收仍需在反馈 Sony 上用同一片源、音频优先软解关闭，确认发生一次 `playing-no-progress` 回退后 PCM 与媒体进度恢复；正常直出设备及暂停/seek 需按风险验证。主机结果不等同于该设备验收。
+
+### 实施与验证记录
+
+- `ExoCompressedAudioDirectPolicy` 的 vendor 输出包装只观察已有 write/position 调用；真实 payload 已接受、播放中位置连续 2 秒不变时保存证据。恢复必须同时匹配 Media3 `ERROR_CODE_TIMEOUT` 的 `StuckPlayerException.STUCK_PLAYING_NO_PROGRESS`，不匹配错误文案，也不泛化其它超时。
+- 每次 prepare/stop/rebuild/release 换新 attempt；初始化前捕获 attempt，旧初始化晚完成也不能填入新 attempt。正常输出替换旧证据，旧 release 不覆盖新实例；已证实停滞可跨越 Media3 异步 pause/release，供同一次错误处理消费。
+- `ExoPlayerEngine.handleError` 复用已有配置禁用与 `retryAudioOutputWithPcm()`，保持原位置/播放意图；成功返回 RECOVERED。已核对 `PlayerManager` 调用链，恢复成功后退出错误处理，不进入视频软解或线路重试。
+- JDK 21.0.10 / Gradle 9.5.1：`:app:testLeanbackArmeabi_v7aDebugUnitTest` 及依赖的 App Java 编译成功，Gradle 执行用时 1 分 32 秒。仅执行 `ExoCompressedAudioDirectPolicyTest`（26 项）与 `ExoAudioOutputStateTest`（7 项），合计 33 项，failures/errors/skipped 均为 0。
+- 测试覆盖反馈的 44.1 kHz 与既有 48 kHz 配置；已接受数据但零进度、非零位置后停滞、正常进度、零写入/未知位置、暂停/恢复、flush/stop、先释放后通知、新输出和延迟初始化隔离、其它错误类型、标准 PCM/offload/隧道以及原有写入失败回退均通过。
+- 通过 `/private/tmp/webhtv-E11-audio-stall-zxepv15j/host-tests.init.gradle` 临时限定两个测试类并启用 Android mock 默认值，原生暂存重定向到同目录 `cxx`；没有修改生产构建配置。主机测试使用实际生产包装层和可控 `AudioOutput`，不是真实 AudioTrack/DSP 运行证明。
+- 完整成功日志：`/private/tmp/webhtv-E11-audio-stall-zxepv15j/gradle-verified.log`；JUnit XML：`app/build/test-results/testLeanbackArmeabi_v7aDebugUnitTest/`。首次沙箱调用只在 Gradle 缓存锁处被拒绝，授权后完成唯一一次实际编译/测试；未重复成功检查。
+- 本次基线和提交/tag 由 `E11-audio-direct-stall-fallback` guard 维护；同一原子提交含源码、测试及本文/索引，不另建 E11 跟进文档。
+
+## 历史 Recovery anchor（2026-09-18）
 
 - Objective / acceptance：修复 seek 后旧音频输出释放清空新状态、输出未知时参与自动调速、厂商压缩输出破坏隧道配置三项合同；不改变视频手动硬/软解选择，保留标准直通/offload、非隧道 vendor-direct 和既有音频失败回退。
 - User decision：用户已明确“实施修复”；无需新增设备日志作为代码修复前置条件。
@@ -176,3 +230,10 @@
 | `A14_Vorbis/Vorbis_2.0_44.1kHz_160kbps.ogg` | Vorbis，44.1 kHz，2.0，160 kbps，Ogg | AndroidX Media3 `2bc207851df311340767e913931ca7b28cab1794` `media.exolist.json`; `https://storage.googleapis.com/exoplayer-test-media-1/ogg/play.ogg` | `d5bdb7257d6b9bb2d22c005685e4fa0984db32ac1963b792414916ee79352f62` |
 
 `samples.ffmpeg.org` 是 MPlayer/FFmpeg 测试样本集合，新增样本仅用于本地/测试设备验证，不对外重新分发。
+
+### 单测门禁修复：夹具脱离 android.os.SystemClock（2026-09-21）
+
+- 问题：合并 `f836d419518d1a93d4ff77414a88558f3854c7e3` 后，以仓库真实单测配置（未开启 `unitTests.returnDefaultValues`）执行 `:app:testMobileArm64_v8aDebugUnitTest` 得到 4765 项 / 12 失败 / 1 跳过，失败全部在 `ExoCompressedAudioDirectPolicyTest`：夹具用 media3 `PlaybackException` 的公开构造函数，其内部调用 `android.os.SystemClock.elapsedRealtime()`，该 native 方法在 JVM 单测桩上抛出 `Method ... not mocked`。上游基线不含本地仓库的严格桩配置，因此该依赖在本地才暴露。
+- 修法：测试夹具改为经 `playbackError(errorCode, cause)` 构造 `TestPlaybackException`（`PlaybackException` 的带时间戳 protected 构造函数，显式 timestamp 0），只影响测试代码；生产路径 `requestPcmFallbackForStuckPlayback(PlaybackException)` 及其读取的 `errorCode`/`getCause()` 语义不变。
+- 拒绝的替代：全局开启 `testOptions.unitTests.returnDefaultValues = true`，会把所有单测的未实现框架方法静默降级为默认值，放宽既有门禁。
+- 验证（真实构建配置，无临时 init 脚本）：`:app:testMobileArm64_v8aDebugUnitTest` 全量 4765 项（失败 0、错误 0、跳过 1）`BUILD SUCCESSFUL`；`:app:testLeanbackArmeabi_v7aDebugUnitTest` 以 `com.fongmi.android.tv.player.exo.*` 与 `FlagSelectionListenerTest` 过滤执行 75 个测试类共 553 项（失败 0、错误 0、跳过 0）`BUILD SUCCESSFUL`，其中含被修复的 `ExoCompressedAudioDirectPolicyTest` 26 项。

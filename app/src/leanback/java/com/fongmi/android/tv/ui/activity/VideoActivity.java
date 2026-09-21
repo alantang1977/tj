@@ -240,6 +240,7 @@ import com.fongmi.android.tv.player.lyrics.LyricsResult;
 import com.fongmi.android.tv.player.lut.LutSetting;
 import com.fongmi.android.tv.player.mpv.MpvConfigStore;
 import com.fongmi.android.tv.setting.LyricsSetting;
+import com.fongmi.android.tv.ui.custom.FlagSelectionListener;
 import com.fongmi.android.tv.ui.custom.AudioPlayerBackgroundDrawable;
 import com.fongmi.android.tv.ui.custom.KaraokeResultView;
 import com.fongmi.android.tv.ui.dialog.CastDialog;
@@ -1591,12 +1592,7 @@ private boolean runtimeSourceOnly;
         mBinding.control.action.opening.setOnLongClickListener(view -> onOpeningReset());
         setActionFocusScroll();
         mBinding.video.setOnTouchListener(this::onVideoTouch);
-        mBinding.flag.addOnChildViewHolderSelectedListener(new OnChildViewHolderSelectedListener() {
-            @Override
-            public void onChildViewHolderSelected(@NonNull RecyclerView parent, @Nullable RecyclerView.ViewHolder child, int position, int subposition) {
-                if (mFlagAdapter.getItemCount() > 0) onItemClick(mFlagAdapter.get(position));
-            }
-        });
+        mBinding.flag.addOnChildViewHolderSelectedListener(new FlagSelectionListener(mBinding.flag, mFlagAdapter, this));
         mBinding.episode.addOnChildViewHolderSelectedListener(new OnChildViewHolderSelectedListener() {
             @Override
             public void onChildViewHolderSelected(@NonNull RecyclerView parent, @Nullable RecyclerView.ViewHolder child, int position, int subposition) {
@@ -3400,6 +3396,7 @@ private boolean runtimeSourceOnly;
 
     @Override
     public void onItemClick(Flag item) {
+        if (isFinishing() || isDestroyed()) return;
         invalidateShortDramaQueue("line-switch");
         if (mFlagAdapter.getItemCount() == 0 || item == null) return;
         int position = mFlagAdapter.indexOf(item);
@@ -8088,6 +8085,7 @@ private boolean runtimeSourceOnly;
     }
 
     private boolean onVideoTouch(View view, MotionEvent event) {
+        if (dispatchDiscMenuTouch(event)) return true;
         if (!isFullscreen()) return false;
         if (!Setting.isTouchOptimized()) return mKeyDown.onTouchEvent(event);
         boolean handled = mKeyDown.onTouchEvent(event);

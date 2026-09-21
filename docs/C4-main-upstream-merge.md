@@ -316,3 +316,37 @@
 - 已知非本轮失败：同组 `AssPlaybackTest#testPauseDelaySurfaceFallbackSeekTracksAndRelease` 无法启动 debug Activity，因为测试硬编码 `com.fongmi.android.tv`，而本地 `dev3` 的 `applicationId` 为 `com.silent.android.webhtv`；本轮 diff 不含 `AssPlaybackTest.java` 或 `app/build.gradle`，因此归类为既有本地夹具契约不一致，不把它冒充上游修复回归，也不在本合并任务中扩围修改。故 7 项设备用例中仅 6 项修复相关用例通过，不能记录为 7/7 全部通过。
 - 风险边界：本轮验证覆盖合并后的 Java/JNI 构建路径和修复相关的原生/策略断言，不声称 HDR/DV 原片逐像素或性能已重新量化；该边界与上游第 17.5 节一致。
 - 唯一下一步：由当前 `C4/upstream` guard 原子提交本轮复评文档并创建本地 annotated recovery tag；随后推送当前 `dev3` 分支及该 recovery tag，创建中文 PR 合入 `beta`，最后拉取远端最新代码。
+
+## 第六轮源码同步：2026-09-21 Asia/Shanghai
+
+### Recovery anchor
+
+- 目标：把 `fish2018/webhtv:main@fa09d226f9f3763bc0f50167d6485178438fad52` 相对上一轮目标 `2623cb812ea842b676bc7d8db699c1a7e70b8e1e` 的两项修复真实合并到 `dev2`，保留本地播放器、触摸优化、线路切换与评估文档结构，并在定向验证后原子提交/打恢复 tag。
+- 授权/车道：用户要求“合并上游最新代码”；`C4/upstream`。范围：`app/build.gradle`、Leanback `VideoActivity`、新增 `FlagSelectionListener` 及其 Robolectric 测试、Exo 压缩音频直出回退策略与其测试、`docs/E11-exo-compressed-audio-direct.md`、`docs/leanback-pan-switch-layout.md`、本文件和评估索引。
+- 冻结基线：本地 `dev2@16ee00828da7f7ab00ae6e53e1222264a54d1745`（`origin/beta` 同步 head）；共同祖先 `2623cb812ea842b676bc7d8db699c1a7e70b8e1e`；上游目标 `fa09d226f9f3763bc0f50167d6485178438fad52`。
+- 上游台账（2 项，均已合并）：
+  1. `f836d419518d1a93d4ff77414a88558f3854c7e3` fix(exo): fall back to PCM when compressed audio stalls —— 厂商压缩直出已接收数据但播放位置 2 秒无进展、随后被 Media3 以 `STUCK_PLAYING_NO_PROGRESS` 超时终止时，标记该 encoding/rate/channel-mask 配置失败并原位回退 PCM。仅 App Java，无依赖/native 变化。
+  2. `fa09d226f9f3763bc0f50167d6485178438fad52` fix: defer leanback cloud route selection until layout completes —— 线路选择回调位于 Leanback 布局期间时，把完整线路切换移出选择回调；快速切换只执行最新一次，退出/列表替换后丢弃失效选择。仅 App Java 与测试配置。
+- 冲突与处理：4 处冲突。
+  - `app/build.gradle`：保留本地已声明的 `testImplementation libs.junit`，只新增上游的 `testOptions.unitTests.includeAndroidResources` 与 `testLeanbackImplementation 'org.robolectric:robolectric:4.16'`，不重复声明 JUnit。
+  - Leanback `VideoActivity`：import 段保留本地既有导入，仅新增 `FlagSelectionListener`；触摸监听保留本地 `onVideoTouch`（触摸优化 + 亮度/音量/seek 手势），并把上游的 `dispatchDiscMenuTouch` 前置进 `onVideoTouch`，同时恢复上游的蓝光菜单触摸派发；`onItemClick` 合并上游退出保护（`isFinishing()/isDestroyed()`）与本地 null 安全、短剧队列失效、焦点/选集通知逻辑。
+  - `ExoPlayerEngine.startInternal`：合并上游 `compressedAudioDirectPolicy.resetOutputProgress()` 与本地 `preCache.setPlaylistPreloadDurationMs`、`queuedSpec/queuedMediaId` 清理。
+  - 评估索引：本地保留 5017 行完整审计台账，只把上游 8 行既有任务队列行（E11/P11/P10/C-AVS3/AV-DIAG-01/E9-3/P2-4/P9）并入“当前任务队列”，不采用上游 90 行精简副本，也不删除任何本地任务文档。
+- 与本地既有修复的交叉核对：本地 `cb21feb42287e2299b3cbc9a6c911254b58060aa` 已让 `FlagAdapter.toggle` 在布局期间不通知列表，上游 `fa09d226f9` 的 `notifyDataSetChanged()` 属不同基线；合并后 `synchronousFocusAndEpisodeRefreshReproduceReportedException` 只断言焦点刷新异常，不再要求 `toggle` 抛异常（测试已按本地合同调整并注明原因）。
+- 验证状态：已完成。`compileMobileArm64_v8aDebugJavaWithJavac`、`compileLeanbackArm64_v8aDebugJavaWithJavac`、`compileLeanbackArmeabi_v7aDebugJavaWithJavac` 一次 `BUILD SUCCESSFUL`（1m 4s）；E11 定向 33 项（26 `ExoCompressedAudioDirectPolicyTest` + 7 `ExoAudioOutputStateTest`）与 `FlagSelectionListenerTest` 8 项分别通过。
+- 验证限制：E11 的 26 项测试需要临时 init 脚本开启 `unitTests.returnDefaultValues=true` 供 `android.os.SystemClock` 使用（上游原验证环境已配置），未改生产构建配置；`FlagSelectionListenerTest` 的 `synchronousFocus...` 按上述本地合同调整后通过。未执行设备安装/实机播放，Sony 同片源与 XGIMI 线路切换仍需实机回归。
+- 不涉及：FFmpeg/Media3/MPV/ijk 源码、锁文件、补丁、native 二进制与资产；`git diff --cached --check` 通过，无冲突标记。
+- 回滚锚点：本轮实施前 `dev2@16ee00828da7f7ab00ae6e53e1222264a54d1745`；本次合并提交可整体 revert。
+- 唯一下一步：本轮改动已由 `C4/upstream` guard 原子提交为 `4d80db9199b3af69b962a6d2fb42ec9a6c435280` 并创建本地 annotated recovery tag `recovery/C4/20260921103442-4d80db9199b3`；后续交付（复评、push、PR）见文末“第六轮复评与收口记录”。
+
+### 第六轮复评与收口记录：2026-09-21 Asia/Shanghai
+
+- 复评对象：相对 `origin/beta@16ee00828da7f7ab00ae6e53e1222264a54d1745` 的已提交未推送改动（merge commit `4d80db9199b3af69b962a6d2fb42ec9a6c435280`，含上游两项修复）。`git rev-list --left-right --count HEAD...origin/beta` = `3 0`，beta 无遗漏提交；净差异 11 个文件（+849/-24），无冲突标记、无 whitespace 错误。
+- E11 音频停滞回退复评：接通点正确——`PlayerManager.onPlayerError` 在错误回调前不会执行 `ExoPlayerEngine.stop()/release()`，因此 `resetOutputProgress()` 不会提前清空停滞证据；恢复成功走 `ErrorAction.RECOVERED` 提前返回，不落入视频软解或线路重试。`getAudioOutput` 在创建前捕获 `OutputAttempt`，`resetOutputProgress()` 以新 attempt 替换，晚完成的旧初始化不会污染新 attempt；标准 PCM/offload/tunneling 输出会清空 vendor 证据，避免把停滞归因到非直出路径。停滞证据只在“已接受数据 + 播放中 + 位置连续 2 秒不变”时保留，且只在 `ERROR_CODE_TIMEOUT` 且 `StuckPlayerException.STUCK_PLAYING_NO_PROGRESS` 下用 `compareAndSet` 一次性消费。
+- Leanback 线路切换复评：`FlagSelectionListener` 把整段 `onItemClick(Flag)` 移出布局临界区，合并最新选择并在执行前复核视图附着、adapter 与候选对象身份；`onItemClick` 增加 `isFinishing()/isDestroyed()` 保护。本地 `cb21feb42287e2299b3cbc9a6c911254b58060aa` 的“布局期间不通知”契约与上游延迟合并后，测试只断言焦点刷新异常（已注明原因），行为未回退。
+- 定向验证：`:app:compileMobileArm64_v8aDebugJavaWithJavac` 与 `:app:testLeanbackArmeabi_v7aDebugUnitTest`（`ExoCompressedAudioDirectPolicyTest` 26 项、`ExoAudioOutputStateTest` 7 项、`FlagSelectionListenerTest` 8 项）一次 `BUILD SUCCESSFUL`（39 秒），JUnit XML 记录 failures/errors/skipped 全 0。
+- 复评新发现（未修复，阻断性）：以提交后的真实构建配置（不加临时 init 脚本）执行 `:app:testMobileArm64_v8aDebugUnitTest` 得到 4765 项 / 12 失败 / 1 跳过，失败全部集中在 `ExoCompressedAudioDirectPolicyTest`；根因为该测试用 media3 `PlaybackException` 的公开构造函数构造夹具，其内部调用 `android.os.SystemClock.elapsedRealtime()`（单元测试桩为 native 方法，抛出 `Method ... not mocked`）。`origin/beta` 不含该类，因此这是本轮合并引入的测试门禁回归；上一轮验证通过靠临时 `unitTests.returnDefaultValues=true` init 脚本掩盖，未写入仓库配置。
+- 未采纳的修法：在 `app/build.gradle` 全局开启 `unitTests.returnDefaultValues=true`，会把整个单测环境的未实现框架方法静默降级为默认值，属于放宽既有门禁，不予采用。
+- 下一动作：在独立的 E11 后续任务中把该测试改为不依赖 `android.os.SystemClock` 的夹具构造方式，并用真实构建配置重跑 mobile 全量单测与 Leanback 定向测试后再交付。
+
+- 修复记录（2026-09-21）：上述 12 项失败已由独立任务 `E11-test-clock-independence` 修复——`ExoCompressedAudioDirectPolicyTest` 的夹具改用 `PlaybackException` 带时间戳的 protected 构造函数，不再触发 `android.os.SystemClock`；未放宽单测门禁。以真实构建配置重跑 mobile 全量单测与 Leanback 定向测试均通过，详见 `docs/E11-exo-compressed-audio-direct.md` 的“单测门禁修复”一节。

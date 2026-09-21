@@ -10,6 +10,9 @@ import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.util.Clock;
+import androidx.media3.common.util.StuckPlayerException;
 import androidx.media3.common.util.Util;
 import androidx.media3.exoplayer.audio.AudioOffloadSupport;
 import androidx.media3.exoplayer.audio.AudioOutput;
@@ -18,7 +21,9 @@ import androidx.media3.exoplayer.audio.AudioOutputProvider;
 import org.junit.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.lang.reflect.Proxy;
+import java.nio.ByteBuffer;
 
 public class ExoCompressedAudioDirectPolicyTest {
 
@@ -277,6 +282,300 @@ public class ExoCompressedAudioDirectPolicyTest {
         assertTrue(actual.supportLevel
                 == AudioOutputProvider.FORMAT_UNSUPPORTED);
         assertTrue(directQueries.get() == 0);
+    }
+
+    @Test
+    public void acceptedDirectAudio_stuckPlaying_requestsOnePcmRetry() throws Exception {
+        for (int sampleRate : new int[]{44_100, 48_000}) {
+            DirectOutputFixture fixture = new DirectOutputFixture(sampleRate);
+            fixture.stall();
+
+            assertTrue(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+            assertTrue(fixture.policy.consumePcmFallbackRequest());
+            assertFalse(fixture.policy.consumePcmFallbackRequest());
+            assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+            // Even a delegate advertising generic passthrough must now force decoder + PCM.
+            assertEquals(AudioOutputProvider.FORMAT_UNSUPPORTED,
+                    fixture.provider.getFormatSupport(formatConfig(fixture.format)).supportLevel);
+            assertFalse(fixture.policy.usesVendorDirect(C.ENCODING_AAC_LC, sampleRate,
+                    Util.getAudioTrackChannelConfig(fixture.format)));
+        }
+    }
+
+    @Test
+    public void otherTimeoutsAndErrors_doNotDisableStalledDirectOutput() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.stall();
+        for (int type : new int[]{StuckPlayerException.STUCK_BUFFERING_NOT_LOADING,
+                StuckPlayerException.STUCK_BUFFERING_NO_PROGRESS,
+                StuckPlayerException.STUCK_PLAYING_NOT_ENDING,
+                StuckPlayerException.STUCK_SUPPRESSED}) {
+            assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuck(type)));
+        }
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(
+                playbackError(PlaybackException.ERROR_CODE_TIMEOUT,
+                        new IllegalStateException())));
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(
+                playbackError(PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+                        new StuckPlayerException(
+                                StuckPlayerException.STUCK_PLAYING_NO_PROGRESS, 10_000))));
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(null));
+        assertFalse(fixture.policy.consumePcmFallbackRequest());
+        assertEquals(AudioOutputProvider.FORMAT_SUPPORTED_DIRECTLY,
+                fixture.provider.getFormatSupport(formatConfig(fixture.format)).supportLevel);
+    }
+
+    @Test
+    public void recentAudioProgress_doesNotBlameDirectOutput() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.stall();
+        fixture.raw.positionUs = 4_000_000;
+        assertEquals(4_000_000, fixture.output.getPositionUs());
+
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+        assertFalse(fixture.policy.consumePcmFallbackRequest());
+    }
+
+    @Test
+    public void outputStallsAfterProgress_canRecoverAtNonzeroPosition() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.writeAndPlay();
+        fixture.output.getPositionUs();
+        fixture.nowMs.addAndGet(5_000);
+        fixture.raw.positionUs = 5_000_000;
+        fixture.output.getPositionUs();
+        fixture.nowMs.addAndGet(10_000);
+        fixture.output.getPositionUs();
+
+        assertTrue(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+    }
+
+    @Test
+    public void zeroWritesOrUnknownPosition_doNotProveOutputStall() throws Exception {
+        DirectOutputFixture noData = new DirectOutputFixture(44_100);
+        noData.raw.acceptWrites = false;
+        noData.stall();
+        assertFalse(noData.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+
+        DirectOutputFixture unknown = new DirectOutputFixture(44_100);
+        unknown.raw.positionUs = C.TIME_UNSET;
+        unknown.stall();
+        assertFalse(unknown.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+    }
+
+    @Test
+    public void pauseAndResume_restartObservationWindow() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.writeAndPlay();
+        fixture.output.getPositionUs();
+        fixture.output.pause();
+        fixture.nowMs.addAndGet(20_000);
+        fixture.output.getPositionUs();
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+
+        fixture.output.play();
+        fixture.output.getPositionUs();
+        fixture.nowMs.addAndGet(1_000);
+        fixture.output.getPositionUs();
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+        fixture.nowMs.addAndGet(1_000);
+        fixture.output.getPositionUs();
+        assertTrue(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+    }
+
+    @Test
+    public void flush_requiresFreshInputAndProgressEvidence() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.stall();
+        fixture.output.flush();
+        fixture.nowMs.addAndGet(10_000);
+        fixture.output.getPositionUs();
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+
+        fixture.stall();
+        assertTrue(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+    }
+
+    @Test
+    public void naturalStop_discardsStallEvidence() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.stall();
+        fixture.output.stop();
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+    }
+
+    @Test
+    public void pauseAndReleaseBeforeError_preserveObservedEvidence() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.stall();
+        fixture.output.pause();
+        fixture.output.release();
+
+        assertFalse(fixture.policy.getAudioOutputSnapshot().initialized());
+        assertTrue(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+        assertTrue(fixture.policy.consumePcmFallbackRequest());
+    }
+
+    @Test
+    public void oldRelease_doesNotContaminateNewOutput() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.stall();
+        AudioOutput old = fixture.output;
+        fixture.createOutput();
+        old.release();
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+
+        fixture.stall();
+        assertTrue(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+    }
+
+    @Test
+    public void newPlaybackAttempt_rejectsOldAndLateInitializationEvidence() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.stall();
+        fixture.policy.resetOutputProgress();
+        fixture.output.getPositionUs();
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+
+        fixture.duringCreation = fixture.policy::resetOutputProgress;
+        fixture.createOutput();
+        fixture.stall();
+        assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+
+        fixture.duringCreation = null;
+        fixture.createOutput();
+        fixture.stall();
+        assertTrue(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+    }
+
+    @Test
+    public void standardPcmOffloadAndTunneling_replaceVendorEvidence() throws Exception {
+        AudioOutputProvider.OutputConfig pcm = new AudioOutputProvider.OutputConfig.Builder()
+                .setEncoding(C.ENCODING_PCM_16BIT).setSampleRate(44_100)
+                .setChannelMask(12).setBufferSize(4096).build();
+        for (AudioOutputProvider.OutputConfig config : new AudioOutputProvider.OutputConfig[]{
+                pcm, encodedOutput(false, true), encodedOutput(true, false)}) {
+            DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+            fixture.stall();
+            AudioOutput standard = fixture.policy.wrapOutputProvider(
+                    new StandardAudioOutputProvider(config)).getAudioOutput(config);
+
+            assertFalse(fixture.policy.requestPcmFallbackForStuckPlayback(stuckPlaying()));
+            assertFalse(fixture.policy.consumePcmFallbackRequest());
+            standard.release();
+        }
+    }
+
+    @Test
+    public void writeFailure_stillRequestsRecoverablePcmFallback() throws Exception {
+        DirectOutputFixture fixture = new DirectOutputFixture(44_100);
+        fixture.raw.writeFailure = new AudioOutput.WriteException(-6, false);
+        AudioOutput.WriteException error = assertThrows(AudioOutput.WriteException.class,
+                fixture::writeAndPlay);
+
+        assertEquals(-6, error.errorCode);
+        assertTrue(error.isRecoverable);
+        assertTrue(fixture.policy.consumePcmFallbackRequest());
+        assertEquals(AudioOutputProvider.FORMAT_UNSUPPORTED,
+                fixture.provider.getFormatSupport(formatConfig(fixture.format)).supportLevel);
+    }
+
+    private static PlaybackException stuckPlaying() {
+        return stuck(StuckPlayerException.STUCK_PLAYING_NO_PROGRESS);
+    }
+
+    private static PlaybackException stuck(int type) {
+        return playbackError(PlaybackException.ERROR_CODE_TIMEOUT,
+                new StuckPlayerException(type, 10_000));
+    }
+
+    private static PlaybackException playbackError(int errorCode, Throwable cause) {
+        // Media3's public PlaybackException constructor reads android.os.SystemClock, which
+        // the JVM unit-test android stub rejects as an unmocked native method. The
+        // timestamped constructor keeps this fixture free of android.os framework calls.
+        return new TestPlaybackException(errorCode, cause);
+    }
+
+    private static final class TestPlaybackException extends PlaybackException {
+
+        TestPlaybackException(int errorCode, Throwable cause) {
+            super("stuck", cause, errorCode, null, 0);
+        }
+    }
+
+    private static final class DirectOutputFixture {
+        final AtomicLong nowMs = new AtomicLong();
+        final Format format;
+        final ExoCompressedAudioDirectPolicy policy;
+        final AudioOutputProvider provider;
+        AudioOutput output;
+        FakeAudioOutput raw;
+        Runnable duringCreation;
+
+        DirectOutputFixture(int sampleRate) throws Exception {
+            format = aacStereo().buildUpon().setSampleRate(sampleRate).build();
+            Clock clock = (Clock) Proxy.newProxyInstance(Clock.class.getClassLoader(),
+                    new Class<?>[]{Clock.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("elapsedRealtime")) return nowMs.get();
+                        throw new AssertionError("Unexpected Clock call: " + method.getName());
+                    });
+            policy = new ExoCompressedAudioDirectPolicy(
+                    (ignoredFormat, attributes) -> AudioOffloadSupport.DEFAULT_UNSUPPORTED,
+                    (ignoredFormat, attributes) -> true, clock, config -> {
+                        if (duringCreation != null) duringCreation.run();
+                        return raw.output;
+                    });
+            provider = policy.wrapOutputProvider(new FixedFormatSupportAudioOutputProvider(
+                    new AudioOutputProvider.FormatSupport.Builder()
+                            .setFormatSupportLevel(AudioOutputProvider.FORMAT_SUPPORTED_DIRECTLY)
+                            .build()));
+            provider.getFormatSupport(formatConfig(format));
+            createOutput();
+        }
+
+        void createOutput() throws Exception {
+            raw = new FakeAudioOutput();
+            output = provider.getAudioOutput(provider.getOutputConfig(formatConfig(format)));
+        }
+
+        void writeAndPlay() throws AudioOutput.WriteException {
+            ByteBuffer buffer = ByteBuffer.allocateDirect(32);
+            output.write(buffer, 1, 1_027_599_000L);
+            output.play();
+        }
+
+        void stall() throws AudioOutput.WriteException {
+            writeAndPlay();
+            output.getPositionUs();
+            nowMs.addAndGet(10_000);
+            output.getPositionUs();
+        }
+    }
+
+    private static final class FakeAudioOutput {
+        long positionUs;
+        boolean acceptWrites = true;
+        boolean released;
+        AudioOutput.WriteException writeFailure;
+        final AudioOutput output = (AudioOutput) Proxy.newProxyInstance(
+                AudioOutput.class.getClassLoader(), new Class<?>[]{AudioOutput.class},
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "getPositionUs":
+                            if (released) throw new AssertionError("Queried released output");
+                            return positionUs;
+                        case "write":
+                            if (writeFailure != null) throw writeFailure;
+                            ByteBuffer buffer = (ByteBuffer) args[0];
+                            if (acceptWrites) buffer.position(buffer.limit());
+                            return !buffer.hasRemaining();
+                        case "release":
+                            released = true;
+                            return null;
+                        default:
+                            return null;
+                    }
+                });
     }
 
     private static AudioOutputProvider wrapped(

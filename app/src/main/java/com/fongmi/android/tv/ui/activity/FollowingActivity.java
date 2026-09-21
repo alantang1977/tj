@@ -123,9 +123,6 @@ public class FollowingActivity extends AppCompatActivity implements FollowingAda
     }
 
     private void initView() {
-        setSupportActionBar(binding.toolbar);
-        if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        binding.toolbar.setNavigationOnClickListener(view -> finish());
         binding.recycler.setLayoutManager(new LinearLayoutManager(this));
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 8));
         binding.recycler.setAdapter(adapter = new FollowingAdapter(this));
@@ -547,7 +544,7 @@ public class FollowingActivity extends AppCompatActivity implements FollowingAda
 
     @Override
     public void onDelete(Following item) {
-        new MaterialAlertDialogBuilder(this)
+        new MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_WebHTV_FollowingConfirmDialog)
                 .setTitle(R.string.following_delete_title)
                 .setMessage(R.string.following_delete_message)
                 .setNegativeButton(R.string.dialog_negative, null)

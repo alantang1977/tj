@@ -32,7 +32,7 @@ public class TmdbEpisodeAdapterTest {
         assertTrue("native-enhanced grid sizing must use one page-wide TMDB data decision",
                 source.contains("private boolean pageHasTmdbEpisodeData;")
                         && source.contains("pageHasTmdbEpisodeData = hasPageTmdbEpisodeData();")
-                        && source.contains("applyCardSize(holder, compact, pageHasTmdbEpisodeData);")
+                        && source.contains("applyCardSize(holder, position, compact, pageHasTmdbEpisodeData);")
                         && source.contains("private boolean hasPageTmdbEpisodeData()")
                         && !source.contains("applyCardSize(holder, compact, tmdbEpisode != null);"));
     }
@@ -99,7 +99,7 @@ public class TmdbEpisodeAdapterTest {
         String source = tmdbEpisodeAdapterSource();
         int setMode = source.indexOf("public void setMode(Mode mode)");
         int setGridSpan = source.indexOf("public void setGridSpanCount(int gridSpanCount)");
-        int applyCardSize = source.indexOf("private void applyCardSize(ViewHolder holder, boolean compact, boolean hasTmdbEpisodeData)");
+        int applyCardSize = source.indexOf("private void applyCardSize(ViewHolder holder, int position, boolean compact, boolean hasTmdbEpisodeData)");
 
         assertTrue("TMDB episode adapter must rebind visible cards when grid/list style changes",
                 setMode >= 0
@@ -115,19 +115,23 @@ public class TmdbEpisodeAdapterTest {
     }
 
     @Test
-    public void gridEpisodeCardsAlignToStartWithoutChangingCardWidths() throws Exception {
+    public void gridEpisodeCardsMatchPlaybackGridOuterAndInnerEdges() throws Exception {
         String source = tmdbEpisodeAdapterSource();
-        int method = source.indexOf("private void applyCardSize(ViewHolder holder, boolean compact, boolean hasTmdbEpisodeData)");
+        int method = source.indexOf("private void applyCardSize(ViewHolder holder, int position, boolean compact, boolean hasTmdbEpisodeData)");
         int methodEnd = source.indexOf("private boolean nativeEnhancedMobileGrid", method);
         String body = method >= 0 && methodEnd > method ? source.substring(method, methodEnd) : "";
 
-        assertTrue("grid cards must all share zero start margin and one end spacing so their widths and inner gaps stay consistent",
-                body.contains("int gridSpacing = dp(holder.itemView, standardGridItem ? 8 : isNativeEnhanced() ? 12 : 8);")
-                        && body.contains("int marginStart = 0;")
-                        && body.contains("int marginEnd = mode == Mode.GRID ? gridSpacing : dp(holder.itemView, 12);")
+        assertTrue("detail grid margins must match the playback grid's column distribution so both outer edges align and cards stay equal width",
+                source.contains("applyCardSize(holder, position, compact, pageHasTmdbEpisodeData);")
+                        && body.contains("int gridSpacing = dp(holder.itemView, standardGridItem ? 8 : isNativeEnhanced() ? 12 : 8);")
+                        && body.contains("int gridColumn = position >= 0 ? position % gridSpanCount : 0;")
+                        && body.contains("int marginStart = mode == Mode.GRID ? gridSpacing * gridColumn / gridSpanCount : 0;")
+                        && body.contains("int marginEnd = mode == Mode.GRID")
+                        && body.contains("? gridSpacing - gridSpacing * (gridColumn + 1) / gridSpanCount")
                         && body.contains("marginParams.setMarginStart(marginStart);")
-                        && body.contains("marginParams.getMarginStart() != marginStart")
-                        && !body.contains("getBindingAdapterPosition()"));
+                        && body.contains("marginParams.getMarginStart() != marginStart"));
+        assertTrue("grid column margins must come from the bind position instead of holder state read mid-bind",
+                method >= 0 && !body.contains("getBindingAdapterPosition()"));
     }
 
     @Test
