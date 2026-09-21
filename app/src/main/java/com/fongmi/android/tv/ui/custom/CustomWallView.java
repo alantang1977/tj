@@ -183,6 +183,9 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
 
     public static int getDesignResId(int wall) {
         return switch (wall) {
+            case Setting.WALL_GREEN -> R.drawable.wallpaper_1;
+            case Setting.WALL_CLASSIC_2 -> R.drawable.wallpaper_2;
+            case Setting.WALL_CLASSIC_3 -> R.drawable.wallpaper_3;
             case Setting.WALL_AURORA_GLASS -> R.drawable.wallpaper_design_10_aurora_glass;
             case Setting.WALL_SUNSET_PRISM -> R.drawable.wallpaper_design_11_sunset_prism;
             case Setting.WALL_MINT_GLACIER -> R.drawable.wallpaper_design_12_mint_glacier;

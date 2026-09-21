@@ -144,8 +144,11 @@ public class Setting {
     public static final int WALL_CYAN_CRYSTAL = 35;
     public static final int WALL_LAVENDER_CRYSTAL = 36;
     public static final int WALL_GREEN = 1;
+    public static final int WALL_CLASSIC_2 = 2;   // 经典内置壁纸 wallpaper_2
+    public static final int WALL_CLASSIC_3 = 3;   // 经典内置壁纸 wallpaper_3
 
-    private static final int[] DEFAULT_WALLS = {
+    // 设计壁纸（10..36）保持原有顺序与功能不变
+    private static final int[] DESIGN_WALLS = {
             WALL_DREAM_PURPLE, WALL_LAVENDER_CRYSTAL, WALL_PASTEL_PRISM, WALL_ROSE_VEIL, WALL_VIOLET_SMOKE,
             WALL_NEON_BERRY, WALL_MIDNIGHT_MOON, WALL_NEON_CYBER, WALL_DEEP_SPACE_GLASS, WALL_GRAPHITE_SMOKE,
             WALL_DAYLIGHT_MINIMAL, WALL_SKY_MINT, WALL_POLAR_LIGHT_GLASS, WALL_GLASS_GRADIENT, WALL_CRYSTAL_SKY,
@@ -153,6 +156,18 @@ public class Setting {
             WALL_LIQUID_CHROME, WALL_FOREST_MIST, WALL_EMERALD_AURORA, WALL_WARM_MOON_GLASS, WALL_PEACH_DAWN,
             WALL_CHAMPAGNE_MIST, WALL_SUNSET_PRISM
     };
+
+    // 默认内置壁纸：经典 wallpaper_1/2/3 置顶（顺序按 TV/手机 flavor 由 WallFlavor 提供），其后保留全部设计壁纸
+    private static final int[] DEFAULT_WALLS = buildDefaultWalls();
+
+    private static int[] buildDefaultWalls() {
+        int[] classic = WallFlavor.classicIds();
+        int[] design = DESIGN_WALLS;
+        int[] all = new int[classic.length + design.length];
+        System.arraycopy(classic, 0, all, 0, classic.length);
+        System.arraycopy(design, 0, all, classic.length, design.length);
+        return all;
+    }
 
     public static String getDoh() {
         return Prefers.getString("doh");
@@ -211,8 +226,9 @@ public class Setting {
     }
 
     public static int getWall() {
-        int wall = Prefers.getInt("wall", WALL_DREAM_PURPLE);
-        return wall == WALL_GREEN || isLegacyColorWall(wall) ? WALL_DREAM_PURPLE : wall;
+        // 初始安装默认显示经典壁纸 wallpaper_1（WALL_GREEN）；仅旧版纯色壁纸(5..9)回退到梦幻紫霞
+        int wall = Prefers.getInt("wall", WALL_GREEN);
+        return isLegacyColorWall(wall) ? WALL_DREAM_PURPLE : wall;
     }
 
     public static void putWall(int wall) {
@@ -263,6 +279,9 @@ public class Setting {
     }
 
     public static int getBuiltInWallColor(int wall) {
+        if (wall == WALL_GREEN) return 0xFF40C090;
+        if (wall == WALL_CLASSIC_2) return 0xFF6A6BD8;
+        if (wall == WALL_CLASSIC_3) return 0xFF5E97B0;
         if (wall == WALL_AURORA_GLASS) return 0xFF2B8ECB;
         if (wall == WALL_SUNSET_PRISM) return 0xFFB65B88;
         if (wall == WALL_MINT_GLACIER) return 0xFF55BCA8;
@@ -294,6 +313,9 @@ public class Setting {
     }
 
     public static String getBuiltInWallName(int wall) {
+        if (wall == WALL_GREEN) return "翠绿晨光";
+        if (wall == WALL_CLASSIC_2) return "紫蓝渐变";
+        if (wall == WALL_CLASSIC_3) return "梦幻光斑";
         if (wall == WALL_AURORA_GLASS) return "蓝紫流光";
         if (wall == WALL_SUNSET_PRISM) return "珊瑚暮色";
         if (wall == WALL_MINT_GLACIER) return "薄荷星云";

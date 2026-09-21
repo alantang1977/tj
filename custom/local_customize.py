@@ -2991,6 +2991,237 @@ def modify_workflow_files(config):
     return changed_any
 
 
+# ------------------------------------------------------------ 5c. 默认内置壁纸
+def customize_default_wallpapers(config):
+    """把经典内置壁纸 wallpaper_1/2/3 置顶为初始默认壁纸，并补中文名/主题色（幂等，可重复执行）。
+
+    需求：
+      · 全新安装首次打开，首页背景默认显示 wallpaper_1（WALL_GREEN=1）。
+      · 「默认壁纸」循环顺序：TV(leanback) 1→3→2；手机(mobile) 1→2→3；
+        经典壁纸循环完后，仍保留原有 27 张设计壁纸（不删减任何既有功能）。
+      · 给 wallpaper_1/2/3 增加与设计壁纸一致的中文名称与主题色。
+    改动文件：
+      · Setting.java：新增 WALL_CLASSIC_2/3；DESIGN_WALLS 维持原序，
+        DEFAULT_WALLS = flavor 经典序列 + 设计壁纸；getWall() 默认改为 WALL_GREEN；
+        补 getBuiltInWallColor/getBuiltInWallName 的 1/2/3 分支。
+      · CustomWallView.getDesignResId()：补 1/2/3 -> wallpaper_1/2/3。
+      · 各 flavor 新增同包 WallFlavor.java 提供经典壁纸顺序（main 共享代码按 flavor 取序）。
+    """
+    changed_any = False
+    setting_rel = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "setting", "Setting.java")
+    wallview_rel = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "ui", "custom", "CustomWallView.java")
+
+    def _brace_ok(text):
+        depth = 0
+        in_str = False
+        esc = False
+        for ch in text:
+            if esc:
+                esc = False
+                continue
+            if ch == "\\":
+                esc = True
+                continue
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+        return depth == 0
+
+    def _patch(label, rel, edits):
+        """edits: [(marker, old, new, ok_desc)]。任一锚点失败则整文件回滚，绝不留半改状态。"""
+        nonlocal changed_any
+        full = os.path.join(REPO_ROOT, rel)
+        if not os.path.exists(full):
+            print(f"[SKIP] 文件不存在: {rel}")
+            return False
+        with open(full, "r", encoding="utf-8") as f:
+            original = f.read()
+        content = original
+        applied = 0
+        for marker, old, new, ok_desc in edits:
+            if marker in content:
+                print(f"[SKIP] {os.path.basename(rel)}: 已包含 {marker.strip()}（{ok_desc}）")
+                continue
+            if old not in content:
+                print(f"[FATAL] {rel}: 未找到锚点，跳过该文件修改以避免破坏构建：{ok_desc}")
+                if AUTO_ROLLBACK:
+                    with open(full, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(original)
+                    print(f"[ROLLBACK] 已还原 {rel}")
+                return False
+            content = content.replace(old, new, 1)
+            applied += 1
+            print(f"[OK] {os.path.basename(rel)}: {ok_desc}")
+        if content != original:
+            if not _brace_ok(content):
+                print(f"[FATAL] {rel}: 花括号不平衡，放弃写回" + ("（自动回滚）" if AUTO_ROLLBACK else ""))
+                if AUTO_ROLLBACK:
+                    with open(full, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(original)
+                return False
+            with open(full, "w", encoding="utf-8", newline="\n") as f:
+                f.write(content)
+            # 读盘回验
+            with open(full, "r", encoding="utf-8") as f:
+                reread = f.read()
+            for marker, _old, _new, _desc in edits:
+                if marker not in reread:
+                    print(f"[FATAL] {rel}: 写盘后回验缺少 {marker.strip()}")
+                    return False
+            changed_any = True
+        return True
+
+    # ---------- A. Setting.java ----------
+    setting_edits = [
+        (
+            "WALL_CLASSIC_2 = 2",
+            "    public static final int WALL_GREEN = 1;\n",
+            "    public static final int WALL_GREEN = 1;\n"
+            "    public static final int WALL_CLASSIC_2 = 2;   // 经典内置壁纸 wallpaper_2\n"
+            "    public static final int WALL_CLASSIC_3 = 3;   // 经典内置壁纸 wallpaper_3\n",
+            "新增 WALL_CLASSIC_2/3 常量",
+        ),
+        (
+            "private static final int[] DESIGN_WALLS",
+            "    private static final int[] DEFAULT_WALLS = {\n"
+            "            WALL_DREAM_PURPLE, WALL_LAVENDER_CRYSTAL, WALL_PASTEL_PRISM, WALL_ROSE_VEIL, WALL_VIOLET_SMOKE,\n"
+            "            WALL_NEON_BERRY, WALL_MIDNIGHT_MOON, WALL_NEON_CYBER, WALL_DEEP_SPACE_GLASS, WALL_GRAPHITE_SMOKE,\n"
+            "            WALL_DAYLIGHT_MINIMAL, WALL_SKY_MINT, WALL_POLAR_LIGHT_GLASS, WALL_GLASS_GRADIENT, WALL_CRYSTAL_SKY,\n"
+            "            WALL_BLUE_SILK, WALL_CYAN_CRYSTAL, WALL_MINT_GLACIER, WALL_AURORA_GLASS, WALL_DEEP_SEA,\n"
+            "            WALL_LIQUID_CHROME, WALL_FOREST_MIST, WALL_EMERALD_AURORA, WALL_WARM_MOON_GLASS, WALL_PEACH_DAWN,\n"
+            "            WALL_CHAMPAGNE_MIST, WALL_SUNSET_PRISM\n"
+            "    };\n",
+            "    // 设计壁纸（10..36）保持原有顺序与功能不变\n"
+            "    private static final int[] DESIGN_WALLS = {\n"
+            "            WALL_DREAM_PURPLE, WALL_LAVENDER_CRYSTAL, WALL_PASTEL_PRISM, WALL_ROSE_VEIL, WALL_VIOLET_SMOKE,\n"
+            "            WALL_NEON_BERRY, WALL_MIDNIGHT_MOON, WALL_NEON_CYBER, WALL_DEEP_SPACE_GLASS, WALL_GRAPHITE_SMOKE,\n"
+            "            WALL_DAYLIGHT_MINIMAL, WALL_SKY_MINT, WALL_POLAR_LIGHT_GLASS, WALL_GLASS_GRADIENT, WALL_CRYSTAL_SKY,\n"
+            "            WALL_BLUE_SILK, WALL_CYAN_CRYSTAL, WALL_MINT_GLACIER, WALL_AURORA_GLASS, WALL_DEEP_SEA,\n"
+            "            WALL_LIQUID_CHROME, WALL_FOREST_MIST, WALL_EMERALD_AURORA, WALL_WARM_MOON_GLASS, WALL_PEACH_DAWN,\n"
+            "            WALL_CHAMPAGNE_MIST, WALL_SUNSET_PRISM\n"
+            "    };\n\n"
+            "    // 默认内置壁纸：经典 wallpaper_1/2/3 置顶（顺序按 TV/手机 flavor 由 WallFlavor 提供），其后保留全部设计壁纸\n"
+            "    private static final int[] DEFAULT_WALLS = buildDefaultWalls();\n\n"
+            "    private static int[] buildDefaultWalls() {\n"
+            "        int[] classic = WallFlavor.classicIds();\n"
+            "        int[] design = DESIGN_WALLS;\n"
+            "        int[] all = new int[classic.length + design.length];\n"
+            "        System.arraycopy(classic, 0, all, 0, classic.length);\n"
+            "        System.arraycopy(design, 0, all, classic.length, design.length);\n"
+            "        return all;\n"
+            "    }\n",
+            "DEFAULT_WALLS 改为 flavor 经典序列 + 设计壁纸",
+        ),
+        (
+            'getInt("wall", WALL_GREEN)',
+            "    public static int getWall() {\n"
+            "        int wall = Prefers.getInt(\"wall\", WALL_DREAM_PURPLE);\n"
+            "        return wall == WALL_GREEN || isLegacyColorWall(wall) ? WALL_DREAM_PURPLE : wall;\n"
+            "    }\n",
+            "    public static int getWall() {\n"
+            "        // 初始安装默认显示经典壁纸 wallpaper_1（WALL_GREEN）；仅旧版纯色壁纸(5..9)回退到梦幻紫霞\n"
+            "        int wall = Prefers.getInt(\"wall\", WALL_GREEN);\n"
+            "        return isLegacyColorWall(wall) ? WALL_DREAM_PURPLE : wall;\n"
+            "    }\n",
+            "getWall() 初始默认改为 wallpaper_1",
+        ),
+        (
+            "if (wall == WALL_CLASSIC_2) return 0xFF6A6BD8;",
+            "    public static int getBuiltInWallColor(int wall) {\n"
+            "        if (wall == WALL_AURORA_GLASS) return 0xFF2B8ECB;",
+            "    public static int getBuiltInWallColor(int wall) {\n"
+            "        if (wall == WALL_GREEN) return 0xFF40C090;\n"
+            "        if (wall == WALL_CLASSIC_2) return 0xFF6A6BD8;\n"
+            "        if (wall == WALL_CLASSIC_3) return 0xFF5E97B0;\n"
+            "        if (wall == WALL_AURORA_GLASS) return 0xFF2B8ECB;",
+            "补经典壁纸主题色 1/2/3",
+        ),
+        (
+            'if (wall == WALL_CLASSIC_2) return "紫蓝渐变";',
+            "    public static String getBuiltInWallName(int wall) {\n"
+            '        if (wall == WALL_AURORA_GLASS) return "蓝紫流光";',
+            "    public static String getBuiltInWallName(int wall) {\n"
+            '        if (wall == WALL_GREEN) return "翠绿晨光";\n'
+            '        if (wall == WALL_CLASSIC_2) return "紫蓝渐变";\n'
+            '        if (wall == WALL_CLASSIC_3) return "梦幻光斑";\n'
+            '        if (wall == WALL_AURORA_GLASS) return "蓝紫流光";',
+            "补经典壁纸中文名称 1/2/3",
+        ),
+    ]
+    _patch("Setting.java", setting_rel, setting_edits)
+
+    # ---------- B. CustomWallView.java：getDesignResId 补 1/2/3 ----------
+    wallview_edits = [
+        (
+            "case Setting.WALL_CLASSIC_2 -> R.drawable.wallpaper_2;",
+            "        return switch (wall) {\n"
+            "            case Setting.WALL_AURORA_GLASS -> R.drawable.wallpaper_design_10_aurora_glass;",
+            "        return switch (wall) {\n"
+            "            case Setting.WALL_GREEN -> R.drawable.wallpaper_1;\n"
+            "            case Setting.WALL_CLASSIC_2 -> R.drawable.wallpaper_2;\n"
+            "            case Setting.WALL_CLASSIC_3 -> R.drawable.wallpaper_3;\n"
+            "            case Setting.WALL_AURORA_GLASS -> R.drawable.wallpaper_design_10_aurora_glass;",
+            "getDesignResId() 补 wallpaper_1/2/3 映射",
+        ),
+    ]
+    _patch("CustomWallView.java", wallview_rel, wallview_edits)
+
+    # ---------- C. 各 flavor 的 WallFlavor.java（经典壁纸顺序）----------
+    pkg_dir = os.path.join("app", "src", "{flavor}", "java", "com", "fongmi", "android", "tv", "setting")
+    flavors = {
+        "leanback": ("TV(leanback)：wallpaper_1 -> wallpaper_3 -> wallpaper_2",
+                     "        return new int[]{Setting.WALL_GREEN, Setting.WALL_CLASSIC_3, Setting.WALL_CLASSIC_2};"),
+        "mobile": ("手机(mobile)：wallpaper_1 -> wallpaper_2 -> wallpaper_3",
+                   "        return new int[]{Setting.WALL_GREEN, Setting.WALL_CLASSIC_2, Setting.WALL_CLASSIC_3};"),
+    }
+    for flavor, (desc, order_line) in flavors.items():
+        rel = os.path.join(pkg_dir.format(flavor=flavor), "WallFlavor.java")
+        full = os.path.join(REPO_ROOT, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        body = (
+            "package com.fongmi.android.tv.setting;\n\n"
+            "/**\n"
+            " * 各 flavor 默认内置经典壁纸（wallpaper_1/2/3）的循环顺序。\n"
+            f" * {desc}。\n"
+            " * 由 Setting.buildDefaultWalls() 拼到默认壁纸列表最前，设计壁纸顺序与功能保持不变。\n"
+            " * 该类按 flavor 各提供一份（main 共享代码按编译 flavor 取对应顺序）。\n"
+            " */\n"
+            "final class WallFlavor {\n\n"
+            "    private WallFlavor() {\n"
+            "    }\n\n"
+            "    static int[] classicIds() {\n"
+            + order_line + "\n"
+            "    }\n"
+            "}\n"
+        )
+        if os.path.exists(full):
+            with open(full, "r", encoding="utf-8") as f:
+                old_body = f.read()
+            if "classicIds" in old_body and order_line.strip() in old_body:
+                print(f"[SKIP] {flavor}/WallFlavor.java 已存在且顺序正确")
+                continue
+        with open(full, "w", encoding="utf-8", newline="\n") as f:
+            f.write(body)
+        print(f"[OK] 写入 {rel}（{desc}）")
+        changed_any = True
+
+    # ---------- D. 资源存在性硬校验（缺图直接报错，避免编译失败）----------
+    for flavor in ("leanback", "mobile"):
+        res_dir = os.path.join(REPO_ROOT, "app", "src", flavor, "res", "drawable-nodpi")
+        for n in (1, 2, 3):
+            p = os.path.join(res_dir, f"wallpaper_{n}.webp")
+            if not os.path.exists(p):
+                print(f"[FATAL] 缺少内置壁纸资源: {os.path.relpath(p, REPO_ROOT)}")
+                changed_any = False
+    return changed_any
+
+
 # ---------------------------------------------------------------- 主流程
 def main():
     global FORCE_MODE, AUTO_ROLLBACK
@@ -3035,6 +3266,9 @@ def main():
 
     print("\n--- [5b/11] TV banner 接线（android:banner 指向 320x180 PNG，当贝桌面长方形）---")
     results.append(modify_manifest_banner(config))
+
+    print("\n--- [5c/11] 默认内置壁纸（经典 wallpaper_1/2/3 置顶 + 中文名，TV:1-3-2 / 手机:1-2-3）---")
+    results.append(customize_default_wallpapers(config))
 
     print("\n--- [6/11] 设置页作者链接（URL_GITHUB / URL_CNB）---")
     results.append(modify_author_links(config))
