@@ -2,12 +2,11 @@
 
 ## Recovery anchor
 
-- 目标：在已完成的首轮 C4 基础上，将 `fish2018/webhtv:main@784b90420d646eb6c7ddcc63ad622a92c65b02b4` 相对 `ec478b0b697422a7785171c7b51a35b7a526564e` 的 51 个最新提交合并到当前 `dev2`，保留本地播放器修复、评估记录和用户备份文件。
-- 状态：第二轮增量已完成；merge commit `188553addf6692220a2a715790fb8706b2f423b0` 与 recovery tag `recovery/C4/20260907105426-188553addf66` 已创建；本地基线 `912208261e4e342ced009b1a0b71feed4855a01d`，上游目标 `784b90420d646eb6c7ddcc63ad622a92c65b02b4`，共同祖先 `ec478b0b697422a7785171c7b51a35b7a526564e`。
-- 回滚锚点：首轮 C4 合并 `d0809f804f812b818bcb22f36cae8634022db673`；本轮实施前 `dev2@912208261e4e342ced009b1a0b71feed4855a01d`。
-- 任务 guard：复用稳定任务 ID `C4`，范围为 194 个上游净变更路径以及本文和评估索引；5 个会话初始 `.bak20260906*` 文件由 guard 保护且不得提交。
-- 接受条件：形成以本地基线和完整上游目标为双父的 merge commit；无未解决冲突/冲突标记；本地任务文档和 5 个备份文件不丢失；上游目标成为 HEAD 祖先；双 ABI native 资产门禁、受影响 JVM 测试以及 Mobile/Leanback Java 编译通过；原子提交和 annotated recovery tag 已创建。
-- 下一动作：代码任务已闭合；保持当前分支和 recovery tag，不执行远端 push。
+- 当前状态（第七轮，2026-09-21）：`dev5` 基线 `150e29340200a1cb2173880a3ef7b92651bc2879`，上游 `fish2018/webhtv:main@8e4d9333de8ea7346491e71a0b1ab6858a852298` 已通过双父 merge commit `1bae44dba685867ae5d1bd282c9dda98ed0a3596` 合并；recovery tag 为 `recovery/C4/20260921211550-1bae44dba685`。刷新上游后 `HEAD..upstream/main` 为空，上游头是当前 HEAD 祖先。
+- 本轮接受条件：真实双父合并保留本地 E11 立即 PCM 回退，接入上游失败记忆、直通开关和已缓冲起播恢复；无冲突标记；Leanback/Mobile ARM64 Java 编译与受影响 JVM 测试通过；原子提交和 annotated recovery tag 已创建。
+- 验证边界：81 项定向用例中 80 项通过、1 项因 `ExoPlaybackException.createForRenderer()` 在 JVM 桩读取 `SystemClock` 显式跳过；同一恢复路径的 3 项真实 Media3 集成用例全部通过。未执行 emulator/device 播放。
+- 回滚锚点：`git revert -m 1 1bae44dba685867ae5d1bd282c9dda98ed0a3596` 恢复本轮实施前 `dev5@150e29340200a1cb2173880a3ef7b92651bc2879`。历史第一/第二轮细节继续见下方“第二轮增量”和 Closure 章节。
+- 下一动作：无；保持当前分支、merge commit 和 recovery tag，不执行远端 push。
 
 ## Authority and scope
 
@@ -350,3 +349,45 @@
 - 下一动作：在独立的 E11 后续任务中把该测试改为不依赖 `android.os.SystemClock` 的夹具构造方式，并用真实构建配置重跑 mobile 全量单测与 Leanback 定向测试后再交付。
 
 - 修复记录（2026-09-21）：上述 12 项失败已由独立任务 `E11-test-clock-independence` 修复——`ExoCompressedAudioDirectPolicyTest` 的夹具改用 `PlaybackException` 带时间戳的 protected 构造函数，不再触发 `android.os.SystemClock`；未放宽单测门禁。以真实构建配置重跑 mobile 全量单测与 Leanback 定向测试均通过，详见 `docs/E11-exo-compressed-audio-direct.md` 的“单测门禁修复”一节。
+
+## 第七轮源码同步：2026-09-21 Asia/Shanghai
+
+### 冻结来源与目标
+
+- 本地实施前基线：`dev5@150e29340200a1cb2173880a3ef7b92651bc2879`。
+- 上游目标与最终态：`fish2018/webhtv:main@8e4d9333de8ea7346491e71a0b1ab6858a852298`。
+- 本地播放器基线：`1050dba289abca6f0ad05dce8bc76df330ebcbc9`，用于保留厂商直出初始化失败后立即通知并重启 PCM 的修复。
+- 范围：`PlaybackErrorClassifier`、`ExoPlayerEngine`、`ExoCompressedAudioDirectPolicy`、`ExoUtil`、原生新增失败记忆/恢复 renderer、对应 JVM/集成测试及 E11/C4 文档；不改依赖锁、native 二进制或 MPV。
+
+### 上游增量完整台账
+
+| 完整 commit ID | 功能 | 处置 | 合并决定 |
+| --- | --- | --- | --- |
+| `8d7ccf42b449db6ae12eb04a38f95196ef29c737` | 记录 E11 起播研究与批准 | 已合入 | 保留研究记录；本轮实现以同一 E11 文档整合 |
+| `123d871c027eb686702766bca995f616e8d2bd1e` | 按媒体、音轨格式和实际路由记忆已确认失败 | 已合入 | 接入有界进程内记忆；本地立即初始化失败路径保留并向该记忆提供证据 |
+| `e9fef2b90ee8aa634327c2c179eb3dc5d22cb1be` | 定义完整首次起播恢复方案 | 已合入 | 作为后续 `8e4d9333de` 的设计依据 |
+| `24fa078d2dc8a404fad23fc30972e5fc4a8a1b5b` | 关闭音频直通时禁止所有编码输出 | 已合入 | 保留 track selector、policy 和最终初始化三层准入；正常关闭设置直接走 PCM |
+| `8e4d9333de8ea7346491e71a0b1ab6858a852298` | 已缓冲音频起播停滞时复用当前 period 快速恢复 | 已合入 | 接入 `ExoStartupAudioRenderer` 的 Media3 可恢复错误路径；保留本地错误分类与立即回退 |
+
+### 冲突处理与行为组合
+
+- `ExoPlayerEngine`：普通 `startInternal` 和显式 PCM 重试统一经过 `prepareForPlayback(..., pcmRetry)`；每次起播推进 `audioOutputAttemptGeneration`，避免旧初始化失败回调重启新播放；本地空 player/spec 保护和预缓存停止逻辑保留。
+- `ExoCompressedAudioDirectPolicy`：以失败记忆、路由校验、启动供数门槛和 `maybeRequestStartupPcmFallback` 为上游主体；本地 `InitializationFailureListener` 在厂商初始化异常现场只通知一次，并同步重置到每次 preparation。
+- `ExoUtil`：保留本地 `PlaybackMediaSignalHub`/`PlaybackMediaClock` 输出流水线，同时使用上游 `directPolicy` 和 renderer 包装；直通关闭时不再注册编码 offload 或编码输出。
+- `PlaybackErrorClassifier`：保留上游对 `StuckPlayerException` 的 `playback-stuck` 分类，不把 IJK 的超时错误码误改为网络错误。
+- JVM 适配：`ExoCompressedAudioDirectPolicyTest` 中唯一直接构造 `ExoPlaybackException` 的平台桩用例显式 `@Ignore`，原因是锁定 Media3 的 `createForRenderer` 调用未 mock 的 `SystemClock.elapsedRealtime()`；恢复行为改由 `ExoStartupRecoveryIntegrationTest` 的真实 Media3 路径覆盖。未开启全局 `returnDefaultValues`，未放宽测试门禁。
+
+### 验证记录
+
+- `bash ./gradlew --console=plain :app:compileLeanbackArm64_v8aDebugJavaWithJavac`：`BUILD SUCCESSFUL in 1m 2s`。
+- `bash ./gradlew --console=plain :app:testLeanbackArmeabi_v7aDebugUnitTest --tests com.fongmi.android.tv.player.exo.ExoCompressedAudioDirectPolicyTest --tests com.fongmi.android.tv.player.exo.ExoAudioDirectFailureMemoryTest --tests com.fongmi.android.tv.player.exo.ExoStartupRecoveryIntegrationTest --tests com.fongmi.android.tv.player.PlaybackErrorClassifierTest`：81 项，80 通过、0 失败、1 显式跳过；其中 3/3 恢复集成用例通过。
+- `bash ./gradlew --console=plain :app:compileMobileArm64_v8aDebugJavaWithJavac`：`BUILD SUCCESSFUL in 30s`。
+- 合并后再次 `git fetch --no-tags upstream main`：上游仍为 `8e4d9333de8ea7346491e71a0b1ab6858a852298`，`HEAD..upstream/main` 为空，`git merge-base --is-ancestor upstream/main HEAD` 通过。
+- 未连接模拟器/设备；真实 Sony 厂商直出初始化失败与已缓冲停顿时延仍需目标设备复测，不能把 JVM/集成验证表述为硬件验收。
+
+### 交付与回滚
+
+- Merge commit：`1bae44dba685867ae5d1bd282c9dda98ed0a3596`，第一父 `150e29340200a1cb2173880a3ef7b92651bc2879`，第二父 `8e4d9333de8ea7346491e71a0b1ab6858a852298`。
+- Recovery tag：`recovery/C4/20260921211550-1bae44dba685`；不推送。
+- 回滚：`git revert -m 1 1bae44dba685867ae5d1bd282c9dda98ed0a3596`。
+- 唯一下一步：无；后续若上游 `main` 继续前进，从本文和稳定评估索引恢复，再按新的 E/P/C 任务边界处理新增提交。

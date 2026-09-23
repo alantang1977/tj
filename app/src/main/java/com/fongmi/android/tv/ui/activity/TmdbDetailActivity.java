@@ -148,6 +148,7 @@ import com.fongmi.android.tv.setting.TmdbSitePolicy;
 import com.fongmi.android.tv.title.MediaTitleLearningExample;
 import com.fongmi.android.tv.title.MediaTitleLearningStore;
 import com.fongmi.android.tv.title.MediaTitleParser;
+import com.fongmi.android.tv.utils.PushParser;
 import com.fongmi.android.tv.title.MediaTitleRequest;
 import com.fongmi.android.tv.title.MediaTitleResolution;
 import com.fongmi.android.tv.title.MediaTitleResolver;
@@ -583,6 +584,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                               @Nullable TmdbItem tmdbItem, int detailMode, boolean autoPlay,
                               @Nullable History resumeHistory, String playFlag, String playFlagKey,
                               String playEpisodeName, String playEpisodeUrl, String searchKeyword) {
+        if (SiteApi.PUSH.equals(key) && PushParser.fromId(id).shouldSkipAutoTmdbMatch()) {
+            startDirectFromHistory(activity, key, id, name, pic, mark, playFlag, playFlagKey, playEpisodeName, playEpisodeUrl, resumeHistory);
+            return;
+        }
         if (!TextUtils.isEmpty(key) && !SiteApi.PUSH.equals(key) && AudioUtil.isAudioSiteEnabled(key)) {
             startDirectFromHistory(activity, key, id, name, pic, mark, playFlag, playFlagKey, playEpisodeName, playEpisodeUrl, resumeHistory);
             return;

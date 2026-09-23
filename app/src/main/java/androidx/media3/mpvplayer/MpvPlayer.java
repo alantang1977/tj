@@ -62,6 +62,7 @@ import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.MpvPerformanceSetting;
 import com.fongmi.android.tv.setting.PreloadSetting;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.utils.AudioUtil;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.github.catvod.crawler.SpiderDebug;
 import com.google.common.collect.ImmutableList;
@@ -1724,13 +1725,27 @@ public final class MpvPlayer extends SimpleBasePlayer implements MPVLib.EventObs
     private boolean isSurfaceReadyForLoad() {
         // A visible SurfaceView may exist before Android creates its Surface.
         // Headless/background audio must not wait for a window that is not shown.
-        if (videoOutput instanceof SurfaceView view && view.isShown()
-                && view.getWindowVisibility() == View.VISIBLE
-                && (surface == null || !surface.isValid() || !surfaceAttached
-                || attachedSurface != surface)) return false;
+        boolean surfaceViewShown = videoOutput instanceof SurfaceView view
+                && view.isShown() && view.getWindowVisibility() == View.VISIBLE;
+        boolean videoSurfaceReady = !(videoOutput instanceof SurfaceView)
+                || (surface != null && surface.isValid() && surfaceAttached
+                && attachedSurface == surface);
+        if (MpvSurfaceLoadPolicy.shouldWaitForVideoSurface(
+                isLikelyAudioOnlyMedia(), requiresOsdSurface(),
+                surfaceViewShown, videoSurfaceReady)) return false;
         return !requiresOsdSurface() || !(videoOutput instanceof SurfaceView)
                 || (pendingOsdSurfaceRequestId == 0
                 && osdSurfaceAttached == osdSurfaceRequested);
+    }
+
+    private boolean isLikelyAudioOnlyMedia() {
+        String mimeType = mediaItem == null || mediaItem.localConfiguration == null
+                ? null : mediaItem.localConfiguration.mimeType;
+        if (!TextUtils.isEmpty(mimeType)
+                && mimeType.toLowerCase(Locale.ROOT).startsWith("audio/")) {
+            return true;
+        }
+        return AudioUtil.isAudioUrl(currentPlayableUri);
     }
 
     private boolean deferLoadUntilSurfaceReady(long generation) {
