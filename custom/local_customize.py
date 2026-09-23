@@ -472,10 +472,10 @@ def _mask(size, shape, radius_ratio=0.0):
 
 # ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
 import math as _math
-CAT_BLUE_TOP = (190, 245, 235, 255)
-CAT_BLUE_MID = (100, 205, 195, 255)
-CAT_BLUE_BOT = (40, 150, 145, 255)
-CAT_BLUE_SIDE = (20, 100, 95, 255)
+CAT_BLUE_TOP = (200, 232, 255, 255)
+CAT_BLUE_MID = (96, 168, 240, 255)
+CAT_BLUE_BOT = (40, 110, 200, 255)
+CAT_BLUE_SIDE = (24, 70, 150, 255)
 CAT_PINK = (255, 150, 180, 255)
 CAT_DARK = (15, 60, 60, 255)
 CAT_NOSE = (247, 122, 152, 255)
@@ -619,12 +619,12 @@ def draw_cat(size):
 
     for side in (-1, 1):
         tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da = ear_geom(side)
-        # 外侧半（深青）：tip -> outer -> 沿弧 -> mid -> tip
+        # 外侧半（晴空藏蓝）：tip -> outer -> 沿弧 -> mid -> tip
         outer_half = _round_tip([tip] + arc_pts[:mid_idx + 1], 0, ER)
         d.polygon(outer_half, fill=CAT_BLUE_SIDE)
-        # 内侧半（浅青）：tip -> mid -> 沿弧 -> inner -> tip
+        # 内侧半（蜜桃珊瑚点缀）：tip -> mid -> 沿弧 -> inner -> tip
         inner_half = _round_tip([tip] + arc_pts[mid_idx:], 0, ER)
-        d.polygon(inner_half, fill=CAT_BLUE_MID)
+        d.polygon(inner_half, fill=(250, 150, 120, 255))
         # 耳根即头圆圆弧，不再画直线弦 / 深色缝线
 
     # ===== 球体头：径向渐变（主光左上）=====
@@ -704,7 +704,7 @@ def draw_cat(size):
                                      fill=(0, 40, 50, 40))
     face_sh = face_sh.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(face_sh)
-    d.ellipse(face_box, fill=(248, 236, 208, 255))
+    d.ellipse(face_box, fill=(247, 240, 228, 255))
     # 脸瓷面柔光（上半部分微妙高光，瓷面质感，与猫头光泽统一）
     face_gloss = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(face_gloss).ellipse([cx - r * 0.55, face_cy - r * 0.50,
@@ -722,7 +722,7 @@ def draw_cat(size):
         # 细灰描边（保证浅脸盘上眼白轮廓可读）
         d.ellipse([ex - eye_R - 1, eye_y - eye_R - 1,
                    ex + eye_R + 1, eye_y + eye_R + 1],
-                  fill=(210, 212, 218, 255))
+                  fill=(206, 212, 222, 255))
         # 纯白大眼白（无彩色虹膜）
         d.ellipse([ex - eye_R, eye_y - eye_R, ex + eye_R, eye_y + eye_R],
                   fill=(255, 255, 255, 255))
