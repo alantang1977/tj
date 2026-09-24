@@ -472,10 +472,10 @@ def _mask(size, shape, radius_ratio=0.0):
 
 # ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
 import math as _math
-CAT_BLUE_TOP = (190, 245, 235, 255)
-CAT_BLUE_MID = (100, 205, 195, 255)
-CAT_BLUE_BOT = (40, 150, 145, 255)
-CAT_BLUE_SIDE = (20, 100, 95, 255)
+CAT_BLUE_TOP = (200, 232, 255, 255)
+CAT_BLUE_MID = (96, 168, 240, 255)
+CAT_BLUE_BOT = (40, 110, 200, 255)
+CAT_BLUE_SIDE = (24, 70, 150, 255)
 CAT_PINK = (255, 150, 180, 255)
 CAT_DARK = (15, 60, 60, 255)
 CAT_NOSE = (247, 122, 152, 255)
@@ -619,12 +619,12 @@ def draw_cat(size):
 
     for side in (-1, 1):
         tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da = ear_geom(side)
-        # 外侧半（深青）：tip -> outer -> 沿弧 -> mid -> tip
+        # 外侧半（晴空藏蓝）：tip -> outer -> 沿弧 -> mid -> tip
         outer_half = _round_tip([tip] + arc_pts[:mid_idx + 1], 0, ER)
         d.polygon(outer_half, fill=CAT_BLUE_SIDE)
-        # 内侧半（浅青）：tip -> mid -> 沿弧 -> inner -> tip
+        # 内侧半（蜜桃珊瑚点缀）：tip -> mid -> 沿弧 -> inner -> tip
         inner_half = _round_tip([tip] + arc_pts[mid_idx:], 0, ER)
-        d.polygon(inner_half, fill=CAT_BLUE_MID)
+        d.polygon(inner_half, fill=(250, 150, 120, 255))
         # 耳根即头圆圆弧，不再画直线弦 / 深色缝线
 
     # ===== 球体头：径向渐变（主光左上）=====
@@ -704,7 +704,7 @@ def draw_cat(size):
                                      fill=(0, 40, 50, 40))
     face_sh = face_sh.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(face_sh)
-    d.ellipse(face_box, fill=(248, 236, 208, 255))
+    d.ellipse(face_box, fill=(247, 240, 228, 255))
     # 脸瓷面柔光（上半部分微妙高光，瓷面质感，与猫头光泽统一）
     face_gloss = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(face_gloss).ellipse([cx - r * 0.55, face_cy - r * 0.50,
@@ -713,50 +713,36 @@ def draw_cat(size):
     face_gloss = face_gloss.filter(ImageFilter.GaussianBlur(radius=r * 0.10))
     layer.alpha_composite(face_gloss)
 
-    # 大圆眼：白色眼白 + 可选彩色虹膜（CONFIG.EYE_IRIS）+ 深色瞳孔 + 玻璃高光
+    # 大圆眼（low-poly 眼睛设计元素）：纯白大眼白 + 大黑瞳 + 左上单一高光点
+    # 说明：去掉彩色虹膜 / 瞳孔月牙 / 副高光；眼白较原版略放大，浅奶白脸盘上保留一圈细灰描边。
     eye_y = face_cy - r * 0.10
-    eye_dx, eye_R, pupil_R = r * 0.375, r * 0.19, r * 0.117
-    eye_scheme_name = str(CONFIG.get("EYE_IRIS", "amber")).strip().lower()
-    eye_scheme = EYE_SCHEMES.get(eye_scheme_name)
-    iris_R = eye_R * 0.86
-    iris_tile_img = None
-    if eye_scheme is not None:
-        iris_tile_img = _iris_tile(int(iris_R * 2) + 4, eye_scheme)
+    eye_dx, eye_R = r * 0.375, r * 0.205
+    pupil_R = eye_R * 0.70
     for ex in (cx - eye_dx, cx + eye_dx):
-        # 外圈灰描边 + 白色眼白（彩色虹膜时只露出一圈细白边）
+        # 细灰描边（保证浅脸盘上眼白轮廓可读）
         d.ellipse([ex - eye_R - 1, eye_y - eye_R - 1,
                    ex + eye_R + 1, eye_y + eye_R + 1],
-                  fill=(210, 212, 218, 255))
+                  fill=(206, 212, 222, 255))
+        # 纯白大眼白（无彩色虹膜）
         d.ellipse([ex - eye_R, eye_y - eye_R, ex + eye_R, eye_y + eye_R],
                   fill=(255, 255, 255, 255))
-        if iris_tile_img is not None:
-            # 彩色径向虹膜（中心亮、外缘主色、最外深色环）
-            _ih = iris_tile_img.size[0]
-            layer.alpha_composite(iris_tile_img,
-                                  (int(ex - _ih / 2), int(eye_y - _ih / 2)))
-        else:
-            # 原版：内圈高光白
-            d.ellipse([ex - eye_R * 0.60, eye_y - eye_R * 0.60,
-                       ex + eye_R * 0.60, eye_y + eye_R * 0.60],
-                      fill=(252, 252, 254, 255))
-        # 瞳孔（深蓝黑，与整体蓝调协调）
+        # 大黑瞳
         d.ellipse([ex - pupil_R, eye_y - pupil_R, ex + pupil_R, eye_y + pupil_R],
-                  fill=CAT_DARK)
-        # 瞳孔高光点（偏左上）
-        hl_r = pupil_R * 0.26
-        d.ellipse([ex - pupil_R * 0.32 - hl_r, eye_y - pupil_R * 0.38 - hl_r,
-                   ex - pupil_R * 0.32 + hl_r, eye_y - pupil_R * 0.38 + hl_r],
+                  fill=(13, 15, 32, 255))
+        # 单一高光点（左上，加大更有神，完整落在瞳孔内）
+        hl_r = eye_R * 0.25
+        d.ellipse([ex - eye_R * 0.30 - hl_r, eye_y - eye_R * 0.30 - hl_r,
+                   ex - eye_R * 0.30 + hl_r, eye_y - eye_R * 0.30 + hl_r],
                   fill=(255, 255, 255, 255))
-        # 瞳孔底部反光月牙（玻璃感地反射）
-        d.arc([ex - pupil_R * 0.72, eye_y - pupil_R * 0.30,
-               ex + pupil_R * 0.72, eye_y + pupil_R * 0.90],
-              start=20, end=160, fill=(255, 255, 255, 190),
-              width=max(2, int(pupil_R * 0.22)))
-        # 副高光（右上小点，双光源）
-        hl2_r = pupil_R * 0.13
-        d.ellipse([ex + pupil_R * 0.42 - hl2_r, eye_y - pupil_R * 0.45 - hl2_r,
-                   ex + pupil_R * 0.42 + hl2_r, eye_y - pupil_R * 0.45 + hl2_r],
-                  fill=(255, 255, 255, 225))
+
+    # 淡粉腮红（柔光，两颊）
+    for _sg in (-1, 1):
+        _bl = Image.new("RGBA", (size, size), HOLE)
+        _bd = ImageDraw.Draw(_bl)
+        _bx, _by, _br = cx + _sg * r * 0.56, face_cy + r * 0.14, r * 0.135
+        _bd.ellipse([_bx - _br, _by - _br, _bx + _br, _by + _br], fill=(255, 150, 172, 115))
+        _bl = _bl.filter(ImageFilter.GaussianBlur(r * 0.05))
+        layer.alpha_composite(_bl)
 
     # 粉鼻（圆润水滴椭圆，日系Q版，与闭眼表情搭配）
     nose_y = face_cy + r * 0.10
@@ -3005,6 +2991,237 @@ def modify_workflow_files(config):
     return changed_any
 
 
+# ------------------------------------------------------------ 5c. 默认内置壁纸
+def customize_default_wallpapers(config):
+    """把经典内置壁纸 wallpaper_1/2/3 置顶为初始默认壁纸，并补中文名/主题色（幂等，可重复执行）。
+
+    需求：
+      · 全新安装首次打开，首页背景默认显示 wallpaper_1（WALL_GREEN=1）。
+      · 「默认壁纸」循环顺序：TV(leanback) 1→3→2；手机(mobile) 1→2→3；
+        经典壁纸循环完后，仍保留原有 27 张设计壁纸（不删减任何既有功能）。
+      · 给 wallpaper_1/2/3 增加与设计壁纸一致的中文名称与主题色。
+    改动文件：
+      · Setting.java：新增 WALL_CLASSIC_2/3；DESIGN_WALLS 维持原序，
+        DEFAULT_WALLS = flavor 经典序列 + 设计壁纸；getWall() 默认改为 WALL_GREEN；
+        补 getBuiltInWallColor/getBuiltInWallName 的 1/2/3 分支。
+      · CustomWallView.getDesignResId()：补 1/2/3 -> wallpaper_1/2/3。
+      · 各 flavor 新增同包 WallFlavor.java 提供经典壁纸顺序（main 共享代码按 flavor 取序）。
+    """
+    changed_any = False
+    setting_rel = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "setting", "Setting.java")
+    wallview_rel = os.path.join("app", "src", "main", "java", "com", "fongmi", "android", "tv", "ui", "custom", "CustomWallView.java")
+
+    def _brace_ok(text):
+        depth = 0
+        in_str = False
+        esc = False
+        for ch in text:
+            if esc:
+                esc = False
+                continue
+            if ch == "\\":
+                esc = True
+                continue
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+        return depth == 0
+
+    def _patch(label, rel, edits):
+        """edits: [(marker, old, new, ok_desc)]。任一锚点失败则整文件回滚，绝不留半改状态。"""
+        nonlocal changed_any
+        full = os.path.join(REPO_ROOT, rel)
+        if not os.path.exists(full):
+            print(f"[SKIP] 文件不存在: {rel}")
+            return False
+        with open(full, "r", encoding="utf-8") as f:
+            original = f.read()
+        content = original
+        applied = 0
+        for marker, old, new, ok_desc in edits:
+            if marker in content:
+                print(f"[SKIP] {os.path.basename(rel)}: 已包含 {marker.strip()}（{ok_desc}）")
+                continue
+            if old not in content:
+                print(f"[FATAL] {rel}: 未找到锚点，跳过该文件修改以避免破坏构建：{ok_desc}")
+                if AUTO_ROLLBACK:
+                    with open(full, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(original)
+                    print(f"[ROLLBACK] 已还原 {rel}")
+                return False
+            content = content.replace(old, new, 1)
+            applied += 1
+            print(f"[OK] {os.path.basename(rel)}: {ok_desc}")
+        if content != original:
+            if not _brace_ok(content):
+                print(f"[FATAL] {rel}: 花括号不平衡，放弃写回" + ("（自动回滚）" if AUTO_ROLLBACK else ""))
+                if AUTO_ROLLBACK:
+                    with open(full, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(original)
+                return False
+            with open(full, "w", encoding="utf-8", newline="\n") as f:
+                f.write(content)
+            # 读盘回验
+            with open(full, "r", encoding="utf-8") as f:
+                reread = f.read()
+            for marker, _old, _new, _desc in edits:
+                if marker not in reread:
+                    print(f"[FATAL] {rel}: 写盘后回验缺少 {marker.strip()}")
+                    return False
+            changed_any = True
+        return True
+
+    # ---------- A. Setting.java ----------
+    setting_edits = [
+        (
+            "WALL_CLASSIC_2 = 2",
+            "    public static final int WALL_GREEN = 1;\n",
+            "    public static final int WALL_GREEN = 1;\n"
+            "    public static final int WALL_CLASSIC_2 = 2;   // 经典内置壁纸 wallpaper_2\n"
+            "    public static final int WALL_CLASSIC_3 = 3;   // 经典内置壁纸 wallpaper_3\n",
+            "新增 WALL_CLASSIC_2/3 常量",
+        ),
+        (
+            "private static final int[] DESIGN_WALLS",
+            "    private static final int[] DEFAULT_WALLS = {\n"
+            "            WALL_DREAM_PURPLE, WALL_LAVENDER_CRYSTAL, WALL_PASTEL_PRISM, WALL_ROSE_VEIL, WALL_VIOLET_SMOKE,\n"
+            "            WALL_NEON_BERRY, WALL_MIDNIGHT_MOON, WALL_NEON_CYBER, WALL_DEEP_SPACE_GLASS, WALL_GRAPHITE_SMOKE,\n"
+            "            WALL_DAYLIGHT_MINIMAL, WALL_SKY_MINT, WALL_POLAR_LIGHT_GLASS, WALL_GLASS_GRADIENT, WALL_CRYSTAL_SKY,\n"
+            "            WALL_BLUE_SILK, WALL_CYAN_CRYSTAL, WALL_MINT_GLACIER, WALL_AURORA_GLASS, WALL_DEEP_SEA,\n"
+            "            WALL_LIQUID_CHROME, WALL_FOREST_MIST, WALL_EMERALD_AURORA, WALL_WARM_MOON_GLASS, WALL_PEACH_DAWN,\n"
+            "            WALL_CHAMPAGNE_MIST, WALL_SUNSET_PRISM\n"
+            "    };\n",
+            "    // 设计壁纸（10..36）保持原有顺序与功能不变\n"
+            "    private static final int[] DESIGN_WALLS = {\n"
+            "            WALL_DREAM_PURPLE, WALL_LAVENDER_CRYSTAL, WALL_PASTEL_PRISM, WALL_ROSE_VEIL, WALL_VIOLET_SMOKE,\n"
+            "            WALL_NEON_BERRY, WALL_MIDNIGHT_MOON, WALL_NEON_CYBER, WALL_DEEP_SPACE_GLASS, WALL_GRAPHITE_SMOKE,\n"
+            "            WALL_DAYLIGHT_MINIMAL, WALL_SKY_MINT, WALL_POLAR_LIGHT_GLASS, WALL_GLASS_GRADIENT, WALL_CRYSTAL_SKY,\n"
+            "            WALL_BLUE_SILK, WALL_CYAN_CRYSTAL, WALL_MINT_GLACIER, WALL_AURORA_GLASS, WALL_DEEP_SEA,\n"
+            "            WALL_LIQUID_CHROME, WALL_FOREST_MIST, WALL_EMERALD_AURORA, WALL_WARM_MOON_GLASS, WALL_PEACH_DAWN,\n"
+            "            WALL_CHAMPAGNE_MIST, WALL_SUNSET_PRISM\n"
+            "    };\n\n"
+            "    // 默认内置壁纸：经典 wallpaper_1/2/3 置顶（顺序按 TV/手机 flavor 由 WallFlavor 提供），其后保留全部设计壁纸\n"
+            "    private static final int[] DEFAULT_WALLS = buildDefaultWalls();\n\n"
+            "    private static int[] buildDefaultWalls() {\n"
+            "        int[] classic = WallFlavor.classicIds();\n"
+            "        int[] design = DESIGN_WALLS;\n"
+            "        int[] all = new int[classic.length + design.length];\n"
+            "        System.arraycopy(classic, 0, all, 0, classic.length);\n"
+            "        System.arraycopy(design, 0, all, classic.length, design.length);\n"
+            "        return all;\n"
+            "    }\n",
+            "DEFAULT_WALLS 改为 flavor 经典序列 + 设计壁纸",
+        ),
+        (
+            'getInt("wall", WALL_GREEN)',
+            "    public static int getWall() {\n"
+            "        int wall = Prefers.getInt(\"wall\", WALL_DREAM_PURPLE);\n"
+            "        return wall == WALL_GREEN || isLegacyColorWall(wall) ? WALL_DREAM_PURPLE : wall;\n"
+            "    }\n",
+            "    public static int getWall() {\n"
+            "        // 初始安装默认显示经典壁纸 wallpaper_1（WALL_GREEN）；仅旧版纯色壁纸(5..9)回退到梦幻紫霞\n"
+            "        int wall = Prefers.getInt(\"wall\", WALL_GREEN);\n"
+            "        return isLegacyColorWall(wall) ? WALL_DREAM_PURPLE : wall;\n"
+            "    }\n",
+            "getWall() 初始默认改为 wallpaper_1",
+        ),
+        (
+            "if (wall == WALL_CLASSIC_2) return 0xFF6A6BD8;",
+            "    public static int getBuiltInWallColor(int wall) {\n"
+            "        if (wall == WALL_AURORA_GLASS) return 0xFF2B8ECB;",
+            "    public static int getBuiltInWallColor(int wall) {\n"
+            "        if (wall == WALL_GREEN) return 0xFF40C090;\n"
+            "        if (wall == WALL_CLASSIC_2) return 0xFF6A6BD8;\n"
+            "        if (wall == WALL_CLASSIC_3) return 0xFF5E97B0;\n"
+            "        if (wall == WALL_AURORA_GLASS) return 0xFF2B8ECB;",
+            "补经典壁纸主题色 1/2/3",
+        ),
+        (
+            'if (wall == WALL_CLASSIC_2) return "紫蓝渐变";',
+            "    public static String getBuiltInWallName(int wall) {\n"
+            '        if (wall == WALL_AURORA_GLASS) return "蓝紫流光";',
+            "    public static String getBuiltInWallName(int wall) {\n"
+            '        if (wall == WALL_GREEN) return "翠绿晨光";\n'
+            '        if (wall == WALL_CLASSIC_2) return "紫蓝渐变";\n'
+            '        if (wall == WALL_CLASSIC_3) return "梦幻光斑";\n'
+            '        if (wall == WALL_AURORA_GLASS) return "蓝紫流光";',
+            "补经典壁纸中文名称 1/2/3",
+        ),
+    ]
+    _patch("Setting.java", setting_rel, setting_edits)
+
+    # ---------- B. CustomWallView.java：getDesignResId 补 1/2/3 ----------
+    wallview_edits = [
+        (
+            "case Setting.WALL_CLASSIC_2 -> R.drawable.wallpaper_2;",
+            "        return switch (wall) {\n"
+            "            case Setting.WALL_AURORA_GLASS -> R.drawable.wallpaper_design_10_aurora_glass;",
+            "        return switch (wall) {\n"
+            "            case Setting.WALL_GREEN -> R.drawable.wallpaper_1;\n"
+            "            case Setting.WALL_CLASSIC_2 -> R.drawable.wallpaper_2;\n"
+            "            case Setting.WALL_CLASSIC_3 -> R.drawable.wallpaper_3;\n"
+            "            case Setting.WALL_AURORA_GLASS -> R.drawable.wallpaper_design_10_aurora_glass;",
+            "getDesignResId() 补 wallpaper_1/2/3 映射",
+        ),
+    ]
+    _patch("CustomWallView.java", wallview_rel, wallview_edits)
+
+    # ---------- C. 各 flavor 的 WallFlavor.java（经典壁纸顺序）----------
+    pkg_dir = os.path.join("app", "src", "{flavor}", "java", "com", "fongmi", "android", "tv", "setting")
+    flavors = {
+        "leanback": ("TV(leanback)：wallpaper_1 -> wallpaper_3 -> wallpaper_2",
+                     "        return new int[]{Setting.WALL_GREEN, Setting.WALL_CLASSIC_3, Setting.WALL_CLASSIC_2};"),
+        "mobile": ("手机(mobile)：wallpaper_1 -> wallpaper_2 -> wallpaper_3",
+                   "        return new int[]{Setting.WALL_GREEN, Setting.WALL_CLASSIC_2, Setting.WALL_CLASSIC_3};"),
+    }
+    for flavor, (desc, order_line) in flavors.items():
+        rel = os.path.join(pkg_dir.format(flavor=flavor), "WallFlavor.java")
+        full = os.path.join(REPO_ROOT, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        body = (
+            "package com.fongmi.android.tv.setting;\n\n"
+            "/**\n"
+            " * 各 flavor 默认内置经典壁纸（wallpaper_1/2/3）的循环顺序。\n"
+            f" * {desc}。\n"
+            " * 由 Setting.buildDefaultWalls() 拼到默认壁纸列表最前，设计壁纸顺序与功能保持不变。\n"
+            " * 该类按 flavor 各提供一份（main 共享代码按编译 flavor 取对应顺序）。\n"
+            " */\n"
+            "final class WallFlavor {\n\n"
+            "    private WallFlavor() {\n"
+            "    }\n\n"
+            "    static int[] classicIds() {\n"
+            + order_line + "\n"
+            "    }\n"
+            "}\n"
+        )
+        if os.path.exists(full):
+            with open(full, "r", encoding="utf-8") as f:
+                old_body = f.read()
+            if "classicIds" in old_body and order_line.strip() in old_body:
+                print(f"[SKIP] {flavor}/WallFlavor.java 已存在且顺序正确")
+                continue
+        with open(full, "w", encoding="utf-8", newline="\n") as f:
+            f.write(body)
+        print(f"[OK] 写入 {rel}（{desc}）")
+        changed_any = True
+
+    # ---------- D. 资源存在性硬校验（缺图直接报错，避免编译失败）----------
+    for flavor in ("leanback", "mobile"):
+        res_dir = os.path.join(REPO_ROOT, "app", "src", flavor, "res", "drawable-nodpi")
+        for n in (1, 2, 3):
+            p = os.path.join(res_dir, f"wallpaper_{n}.webp")
+            if not os.path.exists(p):
+                print(f"[FATAL] 缺少内置壁纸资源: {os.path.relpath(p, REPO_ROOT)}")
+                changed_any = False
+    return changed_any
+
+
 # ---------------------------------------------------------------- 主流程
 def main():
     global FORCE_MODE, AUTO_ROLLBACK
@@ -3049,6 +3266,9 @@ def main():
 
     print("\n--- [5b/11] TV banner 接线（android:banner 指向 320x180 PNG，当贝桌面长方形）---")
     results.append(modify_manifest_banner(config))
+
+    print("\n--- [5c/11] 默认内置壁纸（经典 wallpaper_1/2/3 置顶 + 中文名，TV:1-3-2 / 手机:1-2-3）---")
+    results.append(customize_default_wallpapers(config))
 
     print("\n--- [6/11] 设置页作者链接（URL_GITHUB / URL_CNB）---")
     results.append(modify_author_links(config))
