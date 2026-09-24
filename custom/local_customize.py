@@ -1081,6 +1081,59 @@ def _cat_square_tile(size, zoom):
     return layer.resize((size, size), Image.LANCZOS)
 
 
+# --- 形状边界的“内部间隙”解析函数（像素，内部为正）---
+def _dist_circle(x, y, R):
+    return R - (x * x + y * y) ** 0.5
+
+
+def _dist_rect(x, y, a, b):
+    return min(a - abs(x), b - abs(y))
+
+
+def _dist_rounded(x, y, a, b, cr):
+    ax = max(abs(x) - (a - cr), 0)
+    ay = max(abs(y) - (b - cr), 0)
+    return min(a - abs(x), b - abs(y), cr - (ax * ax + ay * ay) ** 0.5)
+
+
+def _place_balanced(tile, W, H, distf, thr=CAT_KEEP_ALPHA):
+    """把透明底实体猫(alpha>=thr)贴入 W×H 画布，并在垂直方向做“等间隙”平衡：
+    猫的最上点是两只耳尖（同时最宽，落在斜上方位），最下点是铃铛（落在正下方）。
+    纯 bbox 居中会让耳尖几乎贴到圆形边、而铃铛下方空一大片（视觉偏上）。这里搜索一个
+    整数纵向位移，使上方(耳尖)与下方(铃铛)到形状边界的最小间隙相等且最大；水平仍居中。
+    """
+    b = tile.split()[3].point(lambda v: v if v >= thr else 0).getbbox()
+    if b is None:
+        return Image.new("RGBA", (W, H), HOLE)
+    x0, y0, x1, y1 = b
+    # 极值点（tile 局部，取像素中心 +0.5）：两个耳尖 + 底部铃铛
+    pts_top = [(x0 + 0.5, y0 + 0.5), (x1 - 0.5, y0 + 0.5)]
+    pts_bot = [((x0 + x1) / 2.0, y1 - 0.5)]
+    cx_t, cy_t = tile.width / 2.0, tile.height / 2.0
+
+    def clearances(oy):
+        def cv(px, py):
+            return distf(px - cx_t, py - cy_t + oy)
+        dt = min(cv(*p) for p in pts_top)
+        db = min(cv(*p) for p in pts_bot)
+        return dt, db
+
+    best = None
+    for oy in range(-H // 4, H // 4 + 1):
+        dt, db = clearances(oy)
+        if dt <= 0 or db <= 0:
+            continue
+        score = min(dt, db)
+        bal = abs(dt - db)
+        cand = (score, -bal, -abs(oy))
+        if best is None or cand > best[0]:
+            best = (cand, oy)
+    oy_use = best[1] if best else 0
+    out = Image.new("RGBA", (W, H), HOLE)
+    out.alpha_composite(tile, ((W - tile.width) // 2, (H - tile.height) // 2 + oy_use))
+    return out
+
+
 def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
            inset=None, badge=None, style="3d"):
     """渲染完整图标。
@@ -1105,12 +1158,19 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
         if shape != "square":
             img.putalpha(_mask(big, shape, radius_ratio))
         img = img.resize((size, size), Image.LANCZOS)
-        # 猫：big 超采样渲染→降到 size→在最终画布上严格居中（实体 bbox 中心偏移为 0）
+        # 猫：big 超采样渲染→降到 size→按形状边界做上下等间隙平衡（耳尖/铃铛到边距离一致）
         cat = _fit_cat(big, CAT_ZOOM)
         layer = Image.new("RGBA", (big, big), HOLE)
         layer.alpha_composite(cat, ((big - cat.width) // 2, (big - cat.height) // 2))
         catf = layer.resize((size, size), Image.LANCZOS)
-        img.alpha_composite(_exact_centered(catf, size, size))
+        if shape == "circle":
+            distf = lambda x, y: _dist_circle(x, y, size / 2.0)
+        elif shape == "rounded":
+            distf = lambda x, y: _dist_rounded(x, y, size / 2.0, size / 2.0,
+                                               radius_ratio * size)
+        else:
+            distf = lambda x, y: _dist_rect(x, y, size / 2.0, size / 2.0)
+        img.alpha_composite(_place_balanced(catf, size, size, distf))
         return img
 
     # 非 cat 风格：沿用原 big 合成→裁切→降采样路径
@@ -1130,13 +1190,14 @@ def render_banner(w, h, style="3d"):
     img = add_iphone17_background_flare(img)
 
     if style == "cat":
-        # 背景降到最终尺寸；猫以 0.95 高度为基准放大 CAT_ZOOM，降到最终后严格居中（完整不裁切）
+        # 背景降到最终尺寸；猫放大后在长方形 banner 内做上下等间隙平衡、水平居中（完整不裁切）
         img = img.resize((w, h), Image.LANCZOS)
         cat = _fit_cat(int(bh * 0.95), CAT_ZOOM)
         layer = Image.new("RGBA", (bw, bh), HOLE)
         layer.alpha_composite(cat, ((bw - cat.width) // 2, (bh - cat.height) // 2))
         catf = layer.resize((w, h), Image.LANCZOS)
-        img.alpha_composite(_exact_centered(catf, w, h))
+        distf = lambda x, y: _dist_rect(x, y, w / 2.0, h / 2.0)
+        img.alpha_composite(_place_balanced(catf, w, h, distf))
         return img
 
     mark_box = int(bh * 0.62)
@@ -1166,7 +1227,9 @@ def render_cat_foreground(size):
     cw = max(1, int(round(cat_big.width / SS)))
     ch = max(1, int(round(cat_big.height / SS)))
     cat = cat_big.resize((cw, ch), Image.LANCZOS)
-    return _exact_centered(cat, size, size)
+    # 在 72dp 安全圆（R=size/3）内做上下等间隙平衡，耳尖/铃铛到安全圆边距离一致、不裁切
+    distf = lambda x, y: _dist_circle(x, y, size / 3.0)
+    return _place_balanced(cat, size, size, distf)
 def _remove_if_exists(rel):
     """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
     path = os.path.join(REPO, rel)
