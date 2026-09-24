@@ -5,11 +5,29 @@ import org.junit.Test;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertFalse;
 
 public class FollowingUiSourceTest {
+
+    @Test
+    public void followingTvHeaderScrollsWithContent() throws Exception {
+        String layout = read("app/src/leanback/res/layout/activity_following.xml");
+
+        assertTrue(layout.contains("androidx.core.widget.NestedScrollView"));
+        assertTrue(layout.contains("android:nestedScrollingEnabled=\"false\""));
+        assertTrue(layout.contains("android:layout_height=\"wrap_content\""));
+    }
+
+    @Test
+    public void followingPageKeepsTvSafeTopInset() throws Exception {
+        String layout = read("app/src/main/res/layout/activity_following.xml");
+
+        assertTrue(layout.contains("android:paddingTop=\"28dp\""));
+        assertFalse(layout.contains("android:paddingTop=\"12dp\""));
+    }
 
     @Test
     public void mobileBottomNavigationPlacesFollowingBetweenLiveAndSettings() throws Exception {
@@ -37,6 +55,28 @@ public class FollowingUiSourceTest {
         assertTrue(homeButton.indexOf("ids.add(\"8\")") > homeButton.indexOf("ids.add(\"3\")"));
         assertTrue(func.contains("ic_home_following"));
         assertTrue(home.contains("FollowingActivity.start(this, null)"));
+    }
+
+    @Test
+    public void followingContinueUsesFlavorPlaybackRouterToPreserveSourceBinding() throws Exception {
+        String activity = read("app/src/main/java/com/fongmi/android/tv/ui/activity/FollowingActivity.java");
+        int method = activity.indexOf("public void onContinue(Following item, FollowingSource source)");
+        int end = activity.indexOf("public void onFollowNextSeason", method);
+        String body = activity.substring(method, end);
+
+        assertTrue(body.contains("VideoActivity.startFromFollowingHistory(this, history)"));
+        assertFalse(body.contains("VideoActivity.startFromHistory(this, history)"));
+        assertFalse(body.contains("TmdbDetailActivity.startFromHistory(this, history)"));
+
+        for (String path : List.of(
+                "app/src/leanback/java/com/fongmi/android/tv/ui/activity/VideoActivity.java",
+                "app/src/mobile/java/com/fongmi/android/tv/ui/activity/VideoActivity.java")) {
+            String video = read(path);
+            int route = video.indexOf("public static void startFromFollowingHistory(Activity activity, History item)");
+            int routeEnd = video.indexOf("public static void startFromHistory(Activity activity, History item)", route);
+            String routeBody = video.substring(route, routeEnd);
+            assertTrue(routeBody.contains("startFromHistory(activity, item)"));
+        }
     }
 
     @Test

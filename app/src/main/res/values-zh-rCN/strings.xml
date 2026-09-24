@@ -260,6 +260,7 @@
     <string name="dialog_delete_global_history">确定删除所有点播配置的历史记录吗？</string>
     <string name="config_delete_title">删除播放源？</string>
     <string name="config_delete_message">确定删除“%1$s”吗？相关播放历史也可能丢失，此操作无法撤销。</string>
+    <string name="config_current_delete_message">当前接口正在使用中，请先切换到其他接口再删除。</string>
     <string name="setting_home_history">首页最近观看</string>
     <string name="setting_personal_recommendation">个性推荐</string>
     <string name="setting_recommendation_feedback">不感兴趣管理</string>
@@ -1500,6 +1501,7 @@ TVData</string>
     <string name="dialog_config_choose_failed">读不到所选内容，请重新选择包目录或 zip</string>
     <string name="dialog_config_name">请输入名称…</string>
     <string name="dialog_config_url">请输入地址…</string>
+    <string name="dialog_config_addresses">备用地址，每行一个…</string>
 
     
     <string name="error_config_get">配置取得失败</string>
@@ -1970,9 +1972,17 @@ TVData</string>
     <string name="dialog_tmdb_api_key_tip">免费获取 API Key: https://www.themoviedb.org/settings/api</string>
     <string name="dialog_tmdb_language_label">TMDB 语言</string>
     <string name="dialog_tmdb_language_hint">例如 zh-CN</string>
-    <string name="dialog_tmdb_api_host_label">API 域名</string>
-    <string name="dialog_tmdb_api_host_hint">例如 https://api.tmdb.org</string>
-    <string name="dialog_tmdb_image_host_label">图片域名</string>
+    <string name="dialog_tmdb_api_host_label">TMDB API 线路</string>
+    <string name="dialog_tmdb_image_itv666">itv666 图片代理</string>
+    <string name="dialog_tmdb_image_direct">官方图片（直连）</string>
+    <string name="dialog_tmdb_api_itv666">itv666 API 代理</string>
+    <string name="dialog_tmdb_api_direct">官方 API（直连）</string>
+    <string name="dialog_tmdb_api_auto">自动（低延迟优先，失败切换）</string>
+    <string name="dialog_tmdb_image_auto">自动（低延迟优先，失败切换）</string>
+    <string name="dialog_tmdb_image_wsrv">wsrv.nl 图片代理</string>
+    <string name="dialog_tmdb_api_host_hint">默认 https://api.tmdb.org，可选择内置代理或输入自定义地址</string>
+    <string name="dialog_tmdb_proxy_host_help">API 和图片线路可以分别选择。自动模式会按已验证线路的延迟排序，失败时切换；已加入 itv666 和 wsrv.nl，也支持输入自定义地址。</string>
+    <string name="dialog_tmdb_image_host_label">TMDB 图片线路</string>
     <string name="dialog_tmdb_image_host_hint">例如 https://images.tmdb.org</string>
     <string name="dialog_tmdb_section_data">数据源</string>
     <string name="dialog_tmdb_section_ratings">评分扩展</string>
@@ -2695,7 +2705,7 @@ TVData</string>
     <string name="ad_audio_skipped_title">已跳过广告</string>
     <string name="ad_audio_skipped_message">可在 %1$d 秒内撤销。</string>
     <string name="ad_audio_undo">撤销</string>
-    <string name="setting_ad_audio_title">音频指纹去广告（实验）</string>
+    <string name="setting_ad_audio_title">音频指纹去广告（实验性：开启后可能导致播放失败或掉帧）</string>
     <string name="setting_ad_audio_no_rules">无规则</string>
     <string name="setting_ad_audio_rule_error">规则错误</string>
     <string name="setting_ad_audio_rule_count">规则 %1$d · %2$s</string>
@@ -2705,7 +2715,7 @@ TVData</string>
     <string name="setting_ad_audio_imported">已导入 %1$d 条规则 · %2$s</string>
     <string name="setting_ad_audio_import_failed">规则导入失败，已保留原规则。</string>
     <string name="setting_ad_audio_clear_done">已清除音频指纹规则</string>
-    <string name="speech_ad_enabled">语音广告识别</string>
+    <string name="speech_ad_enabled">语音广告识别（实验性：开启后可能导致播放失败或掉帧）</string>
     <string name="speech_ad_keywords">广告关键词</string>
     <string name="speech_ad_keyword_count">%1$d 个关键词</string>
     <string name="speech_ad_rules">语音规则</string>
