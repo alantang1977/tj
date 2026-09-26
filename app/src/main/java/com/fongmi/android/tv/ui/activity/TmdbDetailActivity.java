@@ -9,8 +9,15 @@ import android.content.pm.ActivityInfo;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.Intent;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
@@ -221,6 +228,7 @@ import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
 import com.fongmi.android.tv.ui.utils.TmdbDetailLayoutUtils;
 import com.fongmi.android.tv.utils.TmdbDetailCache;
+import com.fongmi.android.tv.utils.TmdbLanguagePolicy;
 import com.fongmi.android.tv.utils.TmdbEpisodeSorter;
 import com.fongmi.android.tv.utils.TmdbImageSelector;
 import com.fongmi.android.tv.utils.TmdbImageSaver;
@@ -955,6 +963,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         binding.personalAiList.setNestedScrollingEnabled(false);
         binding.personalAiList.setAdapter(personalAiAdapter);
         applyDetailTheme();
+        // BaseActivity applies the global Material theme after initView/initEvent. Profile
+        // detail owns translucent cards and backdrop surfaces, so reapply that contract
+        // after the global pass instead of letting tokens.surface() force opaque cards.
+        binding.root.post(this::applyDetailTheme);
     }
 
     private void initModeController() {
@@ -968,6 +980,11 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             @Override
             public ViewBinding binding() {
                 return binding;
+            }
+
+            @Override
+            public boolean isCinemaStyle() {
+                return rawCinemaMode();
             }
 
             @Override
@@ -1964,6 +1981,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         if (posterAdapter != null) posterAdapter.setLight(lightTheme);
         setDetailAdaptersLight(lightTheme);
         if (modeController.isCinemaStyle()) scheduleBackdropSlide(BACKDROP_SLIDE_DELAY_MS);
+        applyLightCinemaCopyPlate();
     }
 
     private void styleSourceValue() {
@@ -2158,7 +2176,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private Drawable cinemaBackdropShade() {
-        if (lightTheme) return cinemaLightBackdropShade();
+        if (lightTheme) return TmdbDetailLayoutUtils.colorDrawable(Color.TRANSPARENT);
         boolean compact = isCompactWidth();
         GradientDrawable horizontal = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, compact ? new int[]{
                 0xEC090B0F, 0xD6090B0F, 0x78090B0F, 0x42090B0F, 0x96090B0F
@@ -2173,19 +2191,16 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         return new LayerDrawable(new Drawable[]{horizontal, vertical});
     }
 
-    private Drawable cinemaLightBackdropShade() {
-        boolean compact = isCompactWidth();
-        GradientDrawable horizontal = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, compact ? new int[]{
-                0xB8F4F7FA, 0x99F4F7FA, 0x55F4F7FA, 0x24F4F7FA, 0x70F4F7FA
-        } : new int[]{
-                0x99F4F7FA, 0x80F4F7FA, 0x40F4F7FA, 0x1AF4F7FA, 0x55F4F7FA
-        });
-        GradientDrawable vertical = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, compact ? new int[]{
-                0x0AF4F7FA, 0x18F4F7FA, 0x55F4F7FA, 0x99F4F7FA
-        } : new int[]{
-                0x04F4F7FA, 0x0FF4F7FA, 0x3DF4F7FA, 0x70F4F7FA
-        });
-        return new LayerDrawable(new Drawable[]{horizontal, vertical});
+    private void applyLightCinemaCopyPlate() {
+        if (binding == null || binding.detailInfo == null) return;
+        if (!(lightTheme && isCinemaStyle())) {
+            binding.detailInfo.setBackground(null);
+            binding.detailInfo.setPadding(0, 0, 0, 0);
+            return;
+        }
+        int feather = ResUtil.dp2px(72);
+        binding.detailInfo.setBackground(new LightCinemaCopyPlateDrawable(feather, ResUtil.dp2px(18)));
+        binding.detailInfo.setPadding(ResUtil.dp2px(18), ResUtil.dp2px(18), feather, ResUtil.dp2px(18));
     }
 
     private void tintInlineControl(View view) {
@@ -2340,11 +2355,17 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private void applyEpisodeTitleButtonFocus(MaterialButton button, ThemeColors colors) {
         boolean actionable = button.isFocusable() && button.isEnabled();
         boolean focused = actionable && button.hasFocus();
-        button.setBackgroundTintList(ColorStateList.valueOf(focused ? colors.control : Color.TRANSPARENT));
+        boolean lightCinemaPlate = lightTheme && isCinemaStyle();
+        button.setCornerRadius(ResUtil.dp2px(18));
+        button.setBackgroundTintList(ColorStateList.valueOf(focused ? colors.control : episodeTitleRestingColor(lightCinemaPlate, colors)));
         button.setTextColor(colors.primary);
         button.setIconTint(ColorStateList.valueOf(colors.primary));
-        button.setStrokeWidth(focused ? ResUtil.dp2px(FOCUS_STROKE_DP) : 0);
-        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : Color.TRANSPARENT));
+        button.setStrokeWidth(focused ? ResUtil.dp2px(FOCUS_STROKE_DP) : (lightCinemaPlate ? ResUtil.dp2px(CHIP_STROKE_DP) : 0));
+        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : (lightCinemaPlate ? colors.line : Color.TRANSPARENT)));
+    }
+
+    private int episodeTitleRestingColor(boolean lightCinemaPlate, ThemeColors colors) {
+        return lightCinemaPlate ? colors.chip : Color.TRANSPARENT;
     }
 
     private void applyEpisodeToolButtonFocus(MaterialButton button, ThemeColors colors) {
@@ -2438,7 +2459,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                 return;
             }
             if (sourceBundle != null) {
-                if (reusableBundle != null) sourceBundle = TmdbSourceMerger.merge(sourceBundle, sourcePayload, reusableBundle, null).bundle();
+                if (reusableBundle != null) sourceBundle = TmdbSourceMerger.merge(sourceBundle, sourcePayload, reusableBundle, null, TmdbLanguagePolicy.requestLanguage(tmdbConfig)).bundle();
                 TmdbBundle initialBundle = sourceBundle;
                 runOnAliveUi(() -> {
                     if (generation != loadGeneration) return;
@@ -2448,14 +2469,14 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                     applyLoaded(finalVod, initialBundle, new ArrayList<>(), finalError, false);
                 });
                 if (!decision.networkAllowed()) return;
-                TmdbSourceCapabilityPlanner.Plan plan = TmdbSourceCapabilityPlanner.plan(initialBundle, sourcePayload, TmdbSourceCapabilityPlanner.UiState.initialScreen());
+                TmdbSourceCapabilityPlanner.Plan plan = TmdbSourceCapabilityPlanner.plan(initialBundle, sourcePayload, TmdbSourceCapabilityPlanner.UiState.initialScreen(), TmdbLanguagePolicy.requestLanguage(tmdbConfig));
                 SpiderDebug.log("tmdb-detail-flow", "source payload plan required=%s missing=%s total=%dms", plan.required(), plan.missing(), System.currentTimeMillis() - loadStart);
                 if (!plan.hasInitialNetworkGaps()) return;
                 try {
                     long sourceFillStart = System.currentTimeMillis();
                     JsonObject detail = tmdbService.detailForSource(initialBundle.item(), sourcePayload.getSeasonNumber(), tmdbConfig, plan.missing());
                     TmdbBundle networkBundle = TmdbSourceAdapter.fromNetwork(initialBundle.item(), detail, tmdbConfig);
-                    TmdbBundle mergedBundle = TmdbSourceMerger.fillOnly(initialBundle, sourcePayload, networkBundle);
+                    TmdbBundle mergedBundle = TmdbSourceMerger.fillOnly(initialBundle, sourcePayload, networkBundle, TmdbLanguagePolicy.requestLanguage(tmdbConfig));
                     SpiderDebug.log("tmdb-detail-flow", "source payload network fill cost=%dms groups=%s total=%dms", System.currentTimeMillis() - sourceFillStart, plan.missing(), System.currentTimeMillis() - loadStart);
                     if (generation != loadGeneration || Thread.currentThread().isInterrupted()) return;
                     runOnAliveUi(() -> {
@@ -2888,10 +2909,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private String tmdbDetailTitle(TmdbItem item, JsonObject detail) {
-        if (item == null || detail == null) return "";
-        String primary = "movie".equalsIgnoreCase(item.getMediaType()) ? string(detail, "title") : string(detail, "name");
-        if (!TextUtils.isEmpty(primary)) return primary;
-        return "movie".equalsIgnoreCase(item.getMediaType()) ? string(detail, "name") : string(detail, "title");
+        return tmdbService.preferredTitle(item, detail, tmdbConfig);
     }
 
     private void loadTmdbMediaBlocks(TmdbBundle bundle) {
@@ -3432,11 +3450,14 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         binding.episodeTitle.setContentDescription(visible
                 ? getString(R.string.tmdb_season_match_current, binding.episodeTitle.getText())
                 : binding.episodeTitle.getText());
+        setEpisodeTitleButton(binding.episodeTitle, currentThemeColors());
         Drawable icon = visible ? getDrawable(R.drawable.ic_expand_more) : null;
-        if (icon != null) icon.setTint(binding.episodeTitle.getCurrentTextColor());
+        if (icon != null) {
+            icon = icon.mutate();
+            icon.setTint(binding.episodeTitle.getCurrentTextColor());
+        }
         binding.episodeTitle.setCompoundDrawablePadding(visible ? ResUtil.dp2px(4) : 0);
         binding.episodeTitle.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, icon, null);
-        setEpisodeTitleButton(binding.episodeTitle, currentThemeColors());
     }
 
     private boolean canApplyValidatedFlatSeasonMapping(List<Episode> episodes) {
@@ -3559,9 +3580,9 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         if (!isTmdbAllowedForCurrentSite()) return null;
         TmdbMatchCache cache = Setting.getTmdbMatchCache();
         // 手动选择优先，且不做标题兼容性校验：用户之所以手动选，正是因为标题解析结果不对。
-        TmdbItem manual = cache.findManual(getKeyText(), getIdText(), getTmdbRawTitle());
+        TmdbItem manual = cache.findManual(getKeyText(), getIdText(), getTmdbRawTitle(), TmdbLanguagePolicy.requestLanguage(tmdbConfig));
         if (manual != null) return manual;
-        TmdbItem item = cache.find(getKeyText(), getIdText(), getTmdbRawTitle());
+        TmdbItem item = cache.find(getKeyText(), getIdText(), getTmdbRawTitle(), TmdbLanguagePolicy.requestLanguage(tmdbConfig));
         if (!isCachedTmdbMatchCompatible(item)) return null;
         return item;
     }
@@ -3598,7 +3619,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         // 不加锁会让后到的自动结果基于旧快照覆盖掉刚落盘的手动选择。
         synchronized (Setting.class) {
             TmdbMatchCache cache = Setting.getTmdbMatchCache();
-            cache.put(getKeyText(), getIdText(), getTmdbRawTitle(), item);
+            cache.put(getKeyText(), getIdText(), getTmdbRawTitle(), item, TmdbLanguagePolicy.requestLanguage(tmdbConfig));
             Setting.putTmdbMatchCache(cache);
         }
     }
@@ -3609,7 +3630,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         List<String> aliases = tmdbSourceTitleAliases();
         synchronized (Setting.class) {
             TmdbMatchCache cache = Setting.getTmdbMatchCache();
-            cache.putManual(getKeyText(), getIdText(), aliases, item);
+            cache.putManual(getKeyText(), getIdText(), aliases, item, TmdbLanguagePolicy.requestLanguage(tmdbConfig));
             Setting.putTmdbMatchCache(cache);
         }
     }
@@ -4119,7 +4140,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private float backdropSlideAlpha() {
-        return modeController.isCinemaStyle() && !lightTheme ? 0.9f : 1f;
+        if (modeController.isCinemaStyle()) return lightTheme ? 1f : 0.9f;
+        return lightTheme ? 1f : 0.5f;
     }
 
     private int nextBackdropSlideIndex() {
@@ -6571,7 +6593,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             logTmdbMatch("原生增强播放标题：raw=%s，缓存标题=%s，详情标题=%s，播放标题=%s", getTmdbRawTitle(), matchedTmdbItem == null ? "" : matchedTmdbItem.getTitle(), tmdbDetailTitle(matchedTmdbItem, matchedTmdbDetail), playbackHistoryName());
             TmdbItem item = playbackTmdbItem();
             EpisodePosition position = historyEpisodePosition(selectedEpisode);
-            String tmdbDetailCacheKey = TmdbDetailCache.put(item, matchedTmdbDetail, detailCastItems);
+            String tmdbDetailCacheKey = TmdbDetailCache.put(item, matchedTmdbDetail, detailCastItems, TmdbLanguagePolicy.requestLanguage(tmdbConfig));
             SpiderDebug.log("tmdb-tv", "play launch prep cost=%dms title=%s", System.currentTimeMillis() - start, playbackHistoryName());
             VideoActivity.startDirectTmdb(this, getKeyText(), getIdText(), playbackHistoryName(), playbackHistoryPic(), playbackMark(), fastPlaybackEpisodeTitles(), item, playbackTmdbVod(), vod, tmdbDetailCacheKey, playbackFlag(), selectedSeasonFlagKey(), playbackEpisodeName(), playbackEpisodeUrl(), position.season(), position.number(), isResumeFromHistory() ? getIntentResumeHistory() : null);
         });
@@ -6853,7 +6875,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         }
         dialogBinding.meta.setText(episodeMeta(detail));
         dialogBinding.meta.setVisibility(TextUtils.isEmpty(dialogBinding.meta.getText()) ? View.GONE : View.VISIBLE);
-        String overview = string(detail, "overview");
+        String overview = tmdbService.translatedOverview(detail, tmdbConfig);
         if (TextUtils.isEmpty(overview)) overview = episode == null ? "" : episode.getDesc();
         dialogBinding.overview.setText(TextUtils.isEmpty(overview) ? getString(R.string.detail_tmdb_empty) : overview);
         String crew = episodeCrew(detail);
@@ -7237,7 +7259,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private String episodeDetailTitle(Episode episode, int episodeNumber, JsonObject detail) {
-        String name = string(detail, "name");
+        String name = TmdbLanguagePolicy.bestDisplayValue(string(detail, "name"), array(detail, "translations", "translations"), "name", TmdbLanguagePolicy.requestLanguage(tmdbConfig));
         if (TextUtils.isEmpty(name)) {
             TmdbEpisode tmdbEpisode = tmdbEpisodes.get(episodeNumber);
             name = tmdbEpisode == null ? "" : tmdbEpisode.getTitle();
@@ -13505,6 +13527,72 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
                     palette.play(),
                     palette.backdropShade()
             );
+        }
+    }
+
+    private static final class LightCinemaCopyPlateDrawable extends Drawable {
+        private static final int PLATE = 0xC8FFFFFF;
+        private final int featherPx;
+        private final float radiusPx;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final PorterDuffXfermode maskMode = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
+        private int drawnWidth = -1;
+        private int drawnHeight = -1;
+
+        private LightCinemaCopyPlateDrawable(int featherPx, float radiusPx) {
+            this.featherPx = featherPx;
+            this.radiusPx = radiusPx;
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            Rect bounds = getBounds();
+            int width = bounds.width();
+            int height = bounds.height();
+            if (width <= 0 || height <= 0) return;
+            if (width != drawnWidth || height != drawnHeight) {
+                drawnWidth = width;
+                drawnHeight = height;
+                float left = Math.min(radiusPx, width * 0.12f);
+                float feather = Math.min(featherPx, width * 0.5f);
+                float solidStart = left / width;
+                float solidEnd = Math.max(solidStart, (width - feather) / width);
+                paint.setShader(new LinearGradient(0f, 0f, width, 0f,
+                        new int[]{0x00FFFFFF, PLATE, 0xB4FFFFFF, 0x00FFFFFF},
+                        new float[]{0f, solidStart, solidEnd, 1f},
+                        Shader.TileMode.CLAMP));
+                float edge = Math.min(radiusPx, height * 0.22f);
+                float edgeStart = edge / height;
+                maskPaint.setShader(new LinearGradient(0f, 0f, 0f, height,
+                        new int[]{0x00FFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00FFFFFF},
+                        new float[]{0f, edgeStart, 1f - edgeStart, 1f},
+                        Shader.TileMode.CLAMP));
+            }
+            canvas.save();
+            canvas.translate(bounds.left, bounds.top);
+            canvas.saveLayer(0f, 0f, width, height, null);
+            paint.setXfermode(null);
+            canvas.drawRect(0f, 0f, width, height, paint);
+            maskPaint.setXfermode(maskMode);
+            canvas.drawRect(0f, 0f, width, height, maskPaint);
+            maskPaint.setXfermode(null);
+            canvas.restore();
+            canvas.restore();
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+        }
+
+        @Override
+        public void setColorFilter(android.graphics.ColorFilter colorFilter) {
+        }
+
+        @Override
+        @SuppressWarnings("deprecation")
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
         }
     }
 }
