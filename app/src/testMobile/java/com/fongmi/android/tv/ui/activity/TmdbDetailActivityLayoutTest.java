@@ -3152,6 +3152,62 @@ public class TmdbDetailActivityLayoutTest {
     }
 
     @Test
+    public void inlineEpisodeSwitchDoesNotCarryPreviousEpisodePosition() throws Exception {
+        String source = readJava("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java");
+        String updateHistory = javaBlockAt(source, "private void updateInlineHistory(Episode item)");
+        String startPlayer = javaBlockAt(source, "private void startInlinePlayer(Result result, long resumePosition)");
+        String onTime = javaBlockAt(source, "public void onTimeChanged(long time)");
+        String saveHistory = javaBlockAt(source, "private void saveInlineHistory()");
+        String progress = javaBlockAt(source, "private void updateInlineHistoryProgress(long time, long position, long duration)");
+        String stopForReload = javaBlockAt(source, "private void stopInlinePlayerForReload()");
+        String onReplay = javaBlockAt(source, "public void onReplay()");
+        String refresh = javaBlockAt(source, "private void refreshInlinePlayback()");
+
+        assertTrue("field must exist: inline playback settled guard",
+                source.contains("private boolean inlinePlaybackSettled = true;"));
+        // 窗口期开启：history 重指向新集时，播放器仍停留在旧集。
+        assertTrue("switching episodes must open the stale-progress window before touching history fields",
+                updateHistory.contains("inlinePlaybackSettled = false;"));
+        // 窗口期关闭：解析结果接管播放器时恢复写入；且必须在 NovelRouter 拦截之前。
+        assertTrue("startInlinePlayer must close the window before the NovelRouter guard",
+                startPlayer.indexOf("inlinePlaybackSettled = true;") >= 0
+                        && startPlayer.indexOf("inlinePlaybackSettled = true;") < startPlayer.indexOf("NovelRouter.guardInlinePlay"));
+        // 每秒进度写入必须被守卫拦截。
+        assertTrue("per-second progress must be blocked while the player still carries the previous episode",
+                onTime.contains("canUpdateProgress = isInlinePlayerSettledOnSelection();"));
+        assertTrue("saveInlineHistory must not poison the episode position cache during the switch window",
+                saveHistory.contains("if (!isInlinePlayerSettledOnSelection())"));
+        // 单点汇入的进度写入同样必须被守卫拦下，覆盖 syncInlineHistory 等其它调用方；
+        // 双条件：解析归属 settled + 播放器就绪 mediaReady。
+        assertTrue("updateInlineHistoryProgress(long,...) must keep the stale window guard",
+                progress.contains("if (!inlinePlaybackSettled || !isInlinePlayerCurrentMediaReady())")
+                        && progress.indexOf("if (!inlinePlaybackSettled || !isInlinePlayerCurrentMediaReady())") < progress.indexOf("history.setPosition(position)"));
+        // 播放器被清空时窗口态必须回到安全默认，避免泄漏的 false 永久禁用进度。
+        assertTrue("stopInlinePlayerForReload must restore the safe default",
+                stopForReload.contains("inlinePlaybackSettled = true;"));
+        // 同集重播也必须开窗，否则「从头重播」退化为「续播」。
+        assertTrue("same-episode replay must also open the stale-progress window",
+                onReplay.contains("inlinePlaybackSettled = false;")
+                        && refresh.contains("inlinePlaybackSettled = false;"));
+        // 加载期守卫：stop 后到新集 READY 前，播放器 getPosition() 仍是旧集残留位置，
+        // 这段窗口的每秒 tick 同样不得写回（红果短剧快切实测复现点）。
+        assertTrue("media-ready guard field must exist",
+                source.contains("private boolean inlinePlayerMediaReady = true;"));
+        assertTrue("startInlinePlayer must invalidate media readiness before stopping the old episode",
+                startPlayer.indexOf("inlinePlayerMediaReady = false;") >= 0
+                        && startPlayer.indexOf("inlinePlayerMediaReady = false;") < startPlayer.indexOf("player().stop();"));
+        String onStateChanged = javaBlockAt(source, "protected void onStateChanged(int state)");
+        assertTrue("STATE_READY must restore media readiness before applying the resume seek",
+                onStateChanged.indexOf("inlinePlayerMediaReady = true;") >= 0
+                        && onStateChanged.indexOf("inlinePlayerMediaReady = true;") < onStateChanged.indexOf("applyInlineStartPosition();"));
+        assertTrue("cache writes must also require ready media",
+                saveHistory.contains("if (!isInlinePlayerSettledOnSelection())")
+                        && source.contains("return inlinePlaybackSettled && isInlinePlayerCurrentMediaReady();"));
+        assertTrue("stopInlinePlayerForReload must restore the media-ready default too",
+                stopForReload.contains("inlinePlayerMediaReady = true;"));
+    }
+
+    @Test
     public void currentInlineEpisodeCardEntersFullscreenWithoutReloading() throws Exception {
         String source = readJava("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java");
         int onPlay = source.indexOf("private void onPlay()");

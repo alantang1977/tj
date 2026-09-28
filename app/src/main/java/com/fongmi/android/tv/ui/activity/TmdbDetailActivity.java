@@ -444,6 +444,11 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private boolean inlineKeySpeedChanging;
     private float inlineGestureSpeed = 1.0f;
     private boolean inlineStartPositionApplied;
+    /** 切集异步解析窗口期内为 false：此时播放器仍在旧集上，进度禁止写入已指向新集的 history。 */
+    private boolean inlinePlaybackSettled = true;
+    /** 播放器当前媒体是否已就绪（STATE_READY）。stop 后到新集 READY 前，Exo getPosition()
+     * 仍返回旧集残留位置，这段加载期禁止把播放器读数写回 history。 */
+    private boolean inlinePlayerMediaReady = true;
     private boolean inlineFirstReady;
     private boolean inlinePlayHealthRecorded;
     private String inlinePlayHealthKey = "";
@@ -7618,6 +7623,9 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         subtitlePlaybackSession.stop(this);
         inlineStartPosition = C.TIME_UNSET;
         inlineStartPositionApplied = false;
+        // 播放器已清空：窗口态回安全默认，避免残留的 false 永久禁用后续同集进度更新。
+        inlinePlaybackSettled = true;
+        inlinePlayerMediaReady = true;
         pendingInlineResult = null;
         currentInlineResult = null;
         inlinePlaybackEpisode = null;
@@ -7639,6 +7647,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void startInlinePlayer(Result result, long resumePosition) {
         inlinePlaybackPending = false;
+        // 切集窗口在此关闭：本次解析结果就属于当前选中集，此后实时进度重新允许写回 history。
+        // 放在 NovelRouter 拦截之前——阅读器接管后播放器会被清空，进度写入自然早退；
+        // 若放在拦截之后，窗口态会泄漏到阅读器返回后的同集播放，永远禁用进度更新。
+        inlinePlaybackSettled = true;
         // 决定性拦截：play_url 协议为 novel:// / pics:// / manga:// → 直启阅读器，不再喂给内联 player
         // （选集 / quality 切换 / 重连 / resume 全走此汇聚点。）
         if (NovelRouter.guardInlinePlay(this, result,
@@ -7676,6 +7688,12 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         hideInlineControls();
         resetInlineShortDramaMode();
         updateInlineButtons(false);
+        // 媒体就绪态在此失效：stop 之后、新集 READY 之前，getPosition() 仍返回旧集的残留
+        // 位置（Exo stop 不归零，直到新 media prepare 完成）。这段加载期里每秒 tick 若把
+        // 播放器读数写回 history，旧集的末尾位置就会记到新集名下——新集 READY 后
+        // applyInlineStartPosition 会顺着它 seekTo 到上一集看过的位置，表现为「下一集从
+        // 上一集的进度开始」。短剧快切尤其必现（解析快，tick 大概率落在加载窗口内）。
+        inlinePlayerMediaReady = false;
         player().stop();
         player().clear();
         if (resumePosition == C.TIME_UNSET) resetInlineHistoryIfNearEnding();
@@ -8615,6 +8633,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private void refreshInlinePlayback() {
         if (selectedFlag == null || selectedEpisode == null) return;
         if (history != null) history.setPosition(C.TIME_UNSET);
+        // 与 onReplay 同理：清位后若不开窗，重播前的实时进度会立刻回填，重播失效。
+        inlinePlaybackSettled = false;
         playInline();
     }
 
@@ -10388,6 +10408,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         saveInlineHistory();
         stopInlinePlaybackSync();
         inlinePlaybackGeneration++;
+        inlinePlaybackSettled = true;
         introSkipPlayback.reset();
         subtitlePlaybackSession.stop(this);
         hideInlineControls();
@@ -10998,6 +11019,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     protected void onStateChanged(int state) {
         if (!isInlinePlayerMode()) return;
         if (state == Player.STATE_READY) {
+            // 新集媒体真正就绪：此后播放器读数才属于本集，进度写入重新放行。
+            inlinePlayerMediaReady = true;
             hideInlineControls();
             player().reset();
             boolean pendingResumeSeekApplied = applyInlineStartPosition();
@@ -11281,7 +11304,11 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         if (!isInlinePlayerMode() || !inlineStarted || !isOwner() || history == null) return;
 
         // 保存当前集的播放位置到缓存
-        if (!TextUtils.isEmpty(history.getVodRemarks()) && !skipEpisodePositionCache() && service() != null && player() != null && !player().isReleased()) {
+        if (!isInlinePlayerSettledOnSelection()) {
+            // 切集解析窗口期：history 已被 updateInlineHistory 重指向新集，而播放器仍停留在
+            // 旧集。此刻写入会把旧集的实时位置记到新集名下，起播时直接跳到上一集看过的位置。
+            // onPlay() 在窗口开始前已按旧集完整保存过一次，这里跳过不会丢任何进度。
+        } else if (!TextUtils.isEmpty(history.getVodRemarks()) && !skipEpisodePositionCache() && service() != null && player() != null && !player().isReleased()) {
             EpisodePositionCache.get().put(
                 getKeyText(),
                 getIdText(),
@@ -11338,9 +11365,37 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void updateInlineHistoryProgress(long time, long position, long duration) {
         if (history == null) return;
+        if (!inlinePlaybackSettled || !isInlinePlayerCurrentMediaReady()) {
+            // 切集解析窗口期：position/duration 仍来自上一集，写进已指向新集的 history
+            // 就是「下一集从上一集的位置开播」的直接来源。加载期同理：stop 后到新集 READY
+            // 前，播放器读数仍是旧集残留。
+            history.setCreateTime(time);
+            return;
+        }
         history.setCreateTime(time);
         if (position > 0) history.setPosition(position);
         if (duration > 0) history.setDuration(duration);
+    }
+
+    /** 播放器已实际承载本集媒体且进入 READY；期间任何进度写入都可能是旧集残留。 */
+    private boolean isInlinePlayerCurrentMediaReady() {
+        return inlinePlayerMediaReady;
+    }
+
+    /**
+     * 内联播放器当前实际承载的媒体是否就是选中的那一集。
+     * <p>
+     * 沉浸融合/详情直放切集走异步解析：{@code updateInlineHistory} 已把 history 重指向新集，
+     * 但在解析结果返回并 {@code startInlinePlayer} 之前，播放器仍停留在旧集上继续走秒。
+     * 这个窗口内任何把播放器实时进度写回 history 的操作都会把旧集位置记到新集名下，
+     * 新集起播时会顺着 getInlineResumePosition() 续播到上一集看过的位置。
+     * <p>
+     * 与 {@link #isCurrentInlinePlayback(Episode)} 的区别：那个还要求「已起播」
+     * （inlineStarted 且 currentInlineResult 就绪），本守卫只关心「播放器身份与选中集
+     * 一致」，因此同样覆盖 startInlinePlayer 之后、首个 READY 之前的加载段。
+     */
+    private boolean isInlinePlayerSettledOnSelection() {
+        return inlinePlaybackSettled && isInlinePlayerCurrentMediaReady();
     }
 
     /**
@@ -11474,6 +11529,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         long position = player().getPosition();
         long duration = player().getDuration();
         boolean canUpdateProgress = inlineStartPositionApplied || getInlineStartPosition() <= 0;
+        if (canUpdateProgress) canUpdateProgress = isInlinePlayerSettledOnSelection();
         if (canUpdateProgress) {
             updateInlineHistoryProgress(time, position, duration);
         } else {
@@ -11506,6 +11562,9 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         @Override
         public void onReplay() {
             if (history != null) history.setPosition(C.TIME_UNSET);
+            // 同集从头重播也必须开窗：否则窗口期 tick 会把当前实时位置写回 history，
+            // 起播时 getInlineResumePosition() 又读回同一位置，「重播」退化为「续播」。
+            inlinePlaybackSettled = false;
             playInline();
         }
     };
@@ -11521,8 +11580,14 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         boolean sameFlag = TextUtils.equals(history.getVodFlag(), selectedFlag.getFlag());
         if (inlineStarted && (!sameEpisode || !sameFlag)) stopInlinePlaybackSync();
 
+        // 同集换线路也要开窗：播放器仍承载旧线路的解析结果，窗口期写回会把旧位置
+        // 续到新线路的同一集上；开窗后由 startInlinePlayer 或 stopInlinePlayerForReload 关闭。
+        if (sameEpisode && !sameFlag) inlinePlaybackSettled = false;
         if (!sameEpisode) {
-            // 保存当前集的播放位置到缓存
+            // 从这里起到 startInlinePlayer 真正接管播放器为止，播放器仍停留在旧集，
+            // 而 history 已指向新集：禁止把播放器实时进度写回（见 inlinePlaybackSettled）。
+            inlinePlaybackSettled = false;
+            // 保存当前集的播放位置到缓存（此时 history 仍是旧集身份，写入是安全的）
             boolean skipCache = skipEpisodePositionCache();
             if (!TextUtils.isEmpty(history.getVodRemarks()) && !skipCache && service() != null && player() != null && !player().isReleased()) {
                 EpisodePositionCache.get().put(
@@ -11942,6 +12007,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private void wireInlineQuickSearchExtras(Class<?> dialogClass, Object dialog) {
         invokeQuiet(dialog, "title", new Class<?>[]{String.class}, getString(R.string.play_search) + " " + inlineSearchKeyword);
         invokeQuiet(dialog, "keyword", new Class<?>[]{String.class}, inlineSearchKeyword);
+        invokeQuiet(dialog, "currentSiteKey", new Class<?>[]{String.class}, getKeyText());
         // 手机版：弹层内改关键词重搜 + 自有 dismiss 接口
         bindProxyListener(dialogClass, dialog, "searchListener", dialogClass.getName() + "$OnSearchListener",
                 args -> restartInlineSourceSearch(args == null || args.length != 1 ? "" : String.valueOf(args[0])));
