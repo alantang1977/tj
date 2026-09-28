@@ -161,6 +161,8 @@ GRAD_B_HEX = "#F472B6"
 WHITE = (255, 255, 255, 255)
 HOLE = (0, 0, 0, 0)
 SS = 5          # 超采样倍率，先大图绘制再降采样得到干净边缘（5x 比 4x 边缘更锐利）
+CAT_ZOOM = 1.15  # 实体猫放大倍数：圆形耳尖不触边的上限约 1.17(贴边)，1.15 留约1%安全间隙
+CAT_KEEP_ALPHA = 80  # 视为“实体猫”的 alpha 下限（腮红115/暗边130保留，弱光晕26/60剔除）
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
 GRAD_INSET_ADAPTIVE = 1.0 / 6.0
@@ -1029,6 +1031,109 @@ def _bokeh_and_vignette(img):
     img.alpha_composite(vig)
 
 
+def _fit_cat(canvas_size, zoom):
+    """在 canvas_size 方画布上绘制猫，按实体轮廓(alpha>=CAT_KEEP_ALPHA)裁剪、剔除会形成
+    硬边的弱光晕/弱投影，再整体放大 zoom（相对原始 draw_cat 同画布下的实体占比）。
+    返回缩放后的实体猫 RGBA（透明底），由调用方居中贴入目标画布。"""
+    mark = draw_cat(canvas_size)
+    keep = mark.split()[3].point(lambda v: v if v >= CAT_KEEP_ALPHA else 0)
+    bbox = keep.getbbox()
+    if bbox is None:
+        return Image.new("RGBA", (1, 1), HOLE)
+    trim = mark.crop(bbox)
+    trim.putalpha(trim.split()[3].point(lambda v: v if v >= CAT_KEEP_ALPHA else 0))
+    tw, th = trim.size
+    nw, nh = max(1, int(round(tw * zoom))), max(1, int(round(th * zoom)))
+    return trim.resize((nw, nh), Image.LANCZOS)
+
+
+def _exact_centered(tile, W, H, thr=CAT_KEEP_ALPHA):
+    """把透明底 tile 的实体内容(alpha>=thr)严格居中到 W×H，返回新 RGBA。
+    整数像素下若画布与实体宽/高奇偶不一致则无法均分，此时对 tile 做 1px 微缩放
+    （视觉不可察）对齐奇偶，再贴入，使左右、上下边距完全相等、中心偏移为 0。"""
+    def _bbox(im):
+        return im.split()[3].point(lambda v: v if v >= thr else 0).getbbox()
+    t = tile
+    for _ in range(4):
+        b = _bbox(t)
+        if b is None:
+            return Image.new("RGBA", (W, H), HOLE)
+        bw, bh = b[2] - b[0], b[3] - b[1]
+        if (W - bw) % 2 == 0 and (H - bh) % 2 == 0:
+            break
+        if (W - bw) % 2:
+            t = t.resize((t.width + 1, t.height), Image.LANCZOS)
+        if (H - bh) % 2:
+            t = t.resize((t.width, t.height + 1), Image.LANCZOS)
+    b = _bbox(t)
+    bw, bh = b[2] - b[0], b[3] - b[1]
+    out = Image.new("RGBA", (W, H), HOLE)
+    out.alpha_composite(t, ((W - bw) // 2 - b[0], (H - bh) // 2 - b[1]))
+    return out
+
+
+def _cat_square_tile(size, zoom):
+    """方图标用：超采样渲染实体猫并下采样到 size（透明底，尚未严格居中）。"""
+    big = size * SS
+    cat = _fit_cat(big, zoom)
+    layer = Image.new("RGBA", (big, big), HOLE)
+    layer.alpha_composite(cat, ((big - cat.width) // 2, (big - cat.height) // 2))
+    return layer.resize((size, size), Image.LANCZOS)
+
+
+# --- 形状边界的“内部间隙”解析函数（像素，内部为正）---
+def _dist_circle(x, y, R):
+    return R - (x * x + y * y) ** 0.5
+
+
+def _dist_rect(x, y, a, b):
+    return min(a - abs(x), b - abs(y))
+
+
+def _dist_rounded(x, y, a, b, cr):
+    ax = max(abs(x) - (a - cr), 0)
+    ay = max(abs(y) - (b - cr), 0)
+    return min(a - abs(x), b - abs(y), cr - (ax * ax + ay * ay) ** 0.5)
+
+
+def _place_balanced(tile, W, H, distf, thr=CAT_KEEP_ALPHA):
+    """把透明底实体猫(alpha>=thr)贴入 W×H 画布，并在垂直方向做“等间隙”平衡：
+    猫的最上点是两只耳尖（同时最宽，落在斜上方位），最下点是铃铛（落在正下方）。
+    纯 bbox 居中会让耳尖几乎贴到圆形边、而铃铛下方空一大片（视觉偏上）。这里搜索一个
+    整数纵向位移，使上方(耳尖)与下方(铃铛)到形状边界的最小间隙相等且最大；水平仍居中。
+    """
+    b = tile.split()[3].point(lambda v: v if v >= thr else 0).getbbox()
+    if b is None:
+        return Image.new("RGBA", (W, H), HOLE)
+    x0, y0, x1, y1 = b
+    # 极值点（tile 局部，取像素中心 +0.5）：两个耳尖 + 底部铃铛
+    pts_top = [(x0 + 0.5, y0 + 0.5), (x1 - 0.5, y0 + 0.5)]
+    pts_bot = [((x0 + x1) / 2.0, y1 - 0.5)]
+    cx_t, cy_t = tile.width / 2.0, tile.height / 2.0
+
+    def clearances(oy):
+        def cv(px, py):
+            return distf(px - cx_t, py - cy_t + oy)
+        dt = min(cv(*p) for p in pts_top)
+        db = min(cv(*p) for p in pts_bot)
+        return dt, db
+
+    best = None
+    for oy in range(-H // 4, H // 4 + 1):
+        dt, db = clearances(oy)
+        if dt <= 0 or db <= 0:
+            continue
+        score = min(dt, db)
+        bal = abs(dt - db)
+        cand = (score, -bal, -abs(oy))
+        if best is None or cand > best[0]:
+            best = (cand, oy)
+    oy_use = best[1] if best else 0
+    out = Image.new("RGBA", (W, H), HOLE)
+    out.alpha_composite(tile, ((W - tile.width) // 2, (H - tile.height) // 2 + oy_use))
+    return out
+
+
 def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
            inset=None, badge=None, style="3d"):
     """渲染完整图标。
@@ -1048,10 +1153,28 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
     # 背景 bokeh + 右下角暗角
     _bokeh_and_vignette(img)
 
-    # 绘制主体
     if style == "cat":
-        img.alpha_composite(draw_cat(big))
-    elif badge:
+        # 背景先在 big 处裁切（边缘最干净）再降到 size
+        if shape != "square":
+            img.putalpha(_mask(big, shape, radius_ratio))
+        img = img.resize((size, size), Image.LANCZOS)
+        # 猫：big 超采样渲染→降到 size→按形状边界做上下等间隙平衡（耳尖/铃铛到边距离一致）
+        cat = _fit_cat(big, CAT_ZOOM)
+        layer = Image.new("RGBA", (big, big), HOLE)
+        layer.alpha_composite(cat, ((big - cat.width) // 2, (big - cat.height) // 2))
+        catf = layer.resize((size, size), Image.LANCZOS)
+        if shape == "circle":
+            distf = lambda x, y: _dist_circle(x, y, size / 2.0)
+        elif shape == "rounded":
+            distf = lambda x, y: _dist_rounded(x, y, size / 2.0, size / 2.0,
+                                               radius_ratio * size)
+        else:
+            distf = lambda x, y: _dist_rect(x, y, size / 2.0, size / 2.0)
+        img.alpha_composite(_place_balanced(catf, size, size, distf))
+        return img
+
+    # 非 cat 风格：沿用原 big 合成→裁切→降采样路径
+    if badge:
         img.alpha_composite(draw_badge(big))
     else:
         img.alpha_composite(draw_wordmark(big, fill, style=style))
@@ -1067,38 +1190,46 @@ def render_banner(w, h, style="3d"):
     img = add_iphone17_background_flare(img)
 
     if style == "cat":
-        mark_box = int(bh * 0.95)
-        mark = draw_cat(mark_box)
-        # 猫咪头像水平+垂直双向居中（当贝 TV banner 长方形，不放左侧）
-        img.alpha_composite(mark, (int((bw - mark_box) / 2), int((bh - mark_box) / 2)))
-    else:
-        mark_box = int(bh * 0.62)
-        mark = draw_wordmark(mark_box, 0.92, style=style)
-        img.alpha_composite(mark, (int(bw * 0.075), int((bh - mark_box) / 2)))
+        # 背景降到最终尺寸；猫放大后在长方形 banner 内做上下等间隙平衡、水平居中（完整不裁切）
+        img = img.resize((w, h), Image.LANCZOS)
+        cat = _fit_cat(int(bh * 0.95), CAT_ZOOM)
+        layer = Image.new("RGBA", (bw, bh), HOLE)
+        layer.alpha_composite(cat, ((bw - cat.width) // 2, (bh - cat.height) // 2))
+        catf = layer.resize((w, h), Image.LANCZOS)
+        distf = lambda x, y: _dist_rect(x, y, w / 2.0, h / 2.0)
+        img.alpha_composite(_place_balanced(catf, w, h, distf))
+        return img
+
+    mark_box = int(bh * 0.62)
+    mark = draw_wordmark(mark_box, 0.92, style=style)
+    img.alpha_composite(mark, (int(bw * 0.075), int((bh - mark_box) / 2)))
 
     return img.resize((w, h), Image.LANCZOS)
 def render_notification(size, style="3d"):
     """通知栏小图标：纯白扁平轮廓（系统强制要求纯白透明，必须保持扁平）。"""
     if style == "cat":
-        return draw_cat_silhouette(size * SS).resize((size, size), Image.LANCZOS)
+        sil = draw_cat_silhouette(size * SS).resize((size, size), Image.LANCZOS)
+        return _exact_centered(sil, size, size)
     # 注意：draw_wordmark 在 fill=FILL_NOTIFY 时会强制输出纯白无阴影，style 参数不影响结果
     return draw_wordmark(size * SS, FILL_NOTIFY, style=style).resize((size, size),
                           Image.LANCZOS)
 def render_cat_foreground(size):
     """自适应图标前景：完整彩色猫（透明底），超采样后缩放至安全区内。
 
-    自适应图标 108dp 中系统只显示中心 72dp 圆（半径 = size/3）。
-    猫占画布 62%，确保耳尖/项圈/铃铛全部在 72dp 可见区内，圆形/水滴/方形 mask 都不裁切。
-    用 SS=5 倍超采样再 LANCZOS 缩小，所有密度下边缘锐利无锯齿。
+    自适应图标 108dp 中系统只保证中心约 72dp 可见（半径 ≈ size/3）。
+    基准画布 inner=0.62*size 再随 CAT_ZOOM 放大（=0.719*size）：实体猫直径约 0.436*size，
+    耳尖(实体 bbox 上角)到中心半径 ≈0.31*size < 0.333*size，圆形/水滴/方形 mask 都不裁切。
+    弱光晕已剔除，SS=5 超采样再 LANCZOS 缩小，所有密度下边缘锐利无锯齿。
     """
-    inner = int(size * 0.62)
+    inner = int(size * 0.62 * CAT_ZOOM)
     big = inner * SS
-    cat = draw_cat(big)
-    cat = cat.resize((inner, inner), Image.LANCZOS)
-    fg = Image.new("RGBA", (size, size), HOLE)
-    offset = (size - inner) // 2
-    fg.alpha_composite(cat, (offset, offset))
-    return fg
+    cat_big = _fit_cat(big, 1.0)
+    cw = max(1, int(round(cat_big.width / SS)))
+    ch = max(1, int(round(cat_big.height / SS)))
+    cat = cat_big.resize((cw, ch), Image.LANCZOS)
+    # 在 72dp 安全圆（R=size/3）内做上下等间隙平衡，耳尖/铃铛到安全圆边距离一致、不裁切
+    distf = lambda x, y: _dist_circle(x, y, size / 3.0)
+    return _place_balanced(cat, size, size, distf)
 def _remove_if_exists(rel):
     """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
     path = os.path.join(REPO, rel)

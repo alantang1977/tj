@@ -161,7 +161,9 @@ GRAD_B_HEX = "#F472B6"
 WHITE = (255, 255, 255, 255)
 HOLE = (0, 0, 0, 0)
 SS = 5          # 超采样倍率，先大图绘制再降采样得到干净边缘（5x 比 4x 边缘更锐利）
-CAT_ZOOM = 1.15  # 实体猫放大倍数：圆形耳尖不触边的上限约 1.17(贴边)，1.15 留约1%安全间隙
+CAT_ZOOM = 1.25  # 实体猫放大倍数：1.25 时圆形耳尖约留13px(2.5%)安全间隙，仍上下左右等距、不触边
+CAT_ZOOM_ROUNDED = 1.44  # 圆角专用：圆角边界斜上方更靠外，放大到与圆形相同的最小间隙(约2.7%)
+CAT_ZOOM_BANNER = 1.65   # TV 长方形 Banner 专用：放大到与圆形相同的最小间隙(按高度约2.7%)
 CAT_KEEP_ALPHA = 80  # 视为“实体猫”的 alpha 下限（腮红115/暗边130保留，弱光晕26/60剔除）
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
@@ -474,10 +476,10 @@ def _mask(size, shape, radius_ratio=0.0):
 
 # ===== 卡通蓝猫头风格（V7：圆角耳 + 球体头 + 项圈铃铛 + 光晕）=====
 import math as _math
-CAT_BLUE_TOP = (200, 232, 255, 255)
-CAT_BLUE_MID = (96, 168, 240, 255)
-CAT_BLUE_BOT = (40, 110, 200, 255)
-CAT_BLUE_SIDE = (24, 70, 150, 255)
+CAT_BLUE_TOP = (235, 245, 215, 255)
+CAT_BLUE_MID = (170, 205, 130, 255)
+CAT_BLUE_BOT = (100, 150, 80, 255)
+CAT_BLUE_SIDE = (60, 100, 50, 255)
 CAT_PINK = (255, 150, 180, 255)
 CAT_DARK = (15, 60, 60, 255)
 CAT_NOSE = (247, 122, 152, 255)
@@ -1159,7 +1161,9 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
             img.putalpha(_mask(big, shape, radius_ratio))
         img = img.resize((size, size), Image.LANCZOS)
         # 猫：big 超采样渲染→降到 size→按形状边界做上下等间隙平衡（耳尖/铃铛到边距离一致）
-        cat = _fit_cat(big, CAT_ZOOM)
+        # 圆角边界在斜上方比圆形更靠外，单独放大到与圆形相同的最小间隙（约2.7%）
+        use_zoom = CAT_ZOOM_ROUNDED if shape == "rounded" else CAT_ZOOM
+        cat = _fit_cat(big, use_zoom)
         layer = Image.new("RGBA", (big, big), HOLE)
         layer.alpha_composite(cat, ((big - cat.width) // 2, (big - cat.height) // 2))
         catf = layer.resize((size, size), Image.LANCZOS)
@@ -1192,7 +1196,7 @@ def render_banner(w, h, style="3d"):
     if style == "cat":
         # 背景降到最终尺寸；猫放大后在长方形 banner 内做上下等间隙平衡、水平居中（完整不裁切）
         img = img.resize((w, h), Image.LANCZOS)
-        cat = _fit_cat(int(bh * 0.95), CAT_ZOOM)
+        cat = _fit_cat(int(bh * 0.95), CAT_ZOOM_BANNER)
         layer = Image.new("RGBA", (bw, bh), HOLE)
         layer.alpha_composite(cat, ((bw - cat.width) // 2, (bh - cat.height) // 2))
         catf = layer.resize((w, h), Image.LANCZOS)
@@ -3492,4 +3496,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-#（注：内容由AI生成）
