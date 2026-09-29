@@ -62,7 +62,7 @@ import os
 import re
 import time
 try:
-    from PIL import Image, ImageDraw, ImageFilter  # 图标生成/缩放需要
+    from PIL import Image, ImageDraw, ImageFilter, ImageEnhance  # 图标生成/缩放需要
 except ImportError:
     pass
 try:
@@ -3140,6 +3140,41 @@ def modify_workflow_files(config):
                 else:
                     print("[WARN] android-release.yml: 未找到 publish_oci 输入项，跳过")
 
+            # 注入「从 custom 脚本重新生成图标」步骤（幂等）：保证每次打包前都用提交的脚本
+            # 重新生成全部图标（与 do_preview 同一个 render()），从结构上杜绝 APK 图标与预览不一致。
+            _ICON_STEP_MARKER = "Regenerate icons from custom script"
+            if _ICON_STEP_MARKER not in content:
+                _icon_step = (
+                    '\n'
+                    '      - name: Regenerate icons from custom script\n'
+                    '        run: |\n'
+                    '          python3 -m pip install --upgrade Pillow\n'
+                    '          python3 - <<\'PY\'\n'
+                    '          import importlib.util, sys\n'
+                    '          spec = importlib.util.spec_from_file_location("lc", "custom/local_customize.py")\n'
+                    '          m = importlib.util.module_from_spec(spec)\n'
+                    '          sys.modules["lc"] = m\n'
+                    '          spec.loader.exec_module(m)\n'
+                    '          m.do_write(m.CONFIG.get("ICON_STYLE", "cat"))\n'
+                    '          PY\n'
+                )
+                # 锚点：setup-python 步骤的 python-version 行（仅首个匹配）
+                _anchor_pat = re.compile(
+                    r'(^[ \t]*- name: Set up Python[^\n]*\n'
+                    r'(?:[ \t]+[^\n]*\n)*?'
+                    r'[ \t]+python-version:[^\n]*\n)',
+                    re.MULTILINE,
+                )
+                _new_content, _n_ins = _anchor_pat.subn(
+                    lambda mm: mm.group(1) + _icon_step, content, count=1)
+                if _n_ins:
+                    content = _new_content
+                    print("[OK] android-release.yml: 已注入「Regenerate icons from custom script」步骤（打包前重生成图标）")
+                else:
+                    print("[WARN] android-release.yml: 未定位到 setup-python 步骤，图标重生成步骤需人工添加")
+            else:
+                print("[SKIP] android-release.yml: 图标重生成步骤已存在")
+
         if content != original:
             # 写回前 YAML 解析校验：一旦破坏缩进，GitHub Actions 会直接 Invalid workflow file
             if not _yaml_looks_ok(rel_path, content):
@@ -3172,6 +3207,60 @@ def modify_workflow_files(config):
         else:
             print(f"[SKIP] {rel_path}: 已是目标值")
     return changed_any
+
+
+# ------------------------------------------------------------ 5c-1. 手机壁纸由TV壁纸转换
+def sync_mobile_wallpaper_from_tv(config,
+                                  tv_rel="app/src/leanback/res/drawable-nodpi/wallpaper_1.webp",
+                                  mob_rel="app/src/mobile/res/drawable-nodpi/wallpaper_1.webp",
+                                  tw=1080, th=1920,
+                                  bird_x=600, bird_y=292):
+    """把 TV(leanback) 横版 wallpaper_1（翠绿晨光，蜂鸟栖枝）100%原汁原味移植为手机竖版壁纸，
+    写入 mobile 同名文件，使其成为手机版首装第一张默认壁纸（与 TV 首装一致）。
+
+    纯裁剪移植（不增加任何元素、不合成、不模糊填充、不变形）：
+      · 以蜂鸟中心 (bird_x,bird_y) 为正中心，从横版原图中裁出一个 9:16 竖幅；
+      · 裁剪框取「以蜂鸟为中心且能完整放进源图」的最大尺寸，确保蜂鸟（含喙/尾/脚）完整；
+      · 等比 LANCZOS 放大到 1080x1920，蜂鸟精确落在画布正中心。
+    注：bird_x/bird_y 为该 leanback 壁纸中蜂鸟整体（含胸腹尾）的像素中心。
+    每次运行重新生成，幂等；源文件缺失时仅告警不报错（不阻断其它定制）。
+    """
+    tv_path = os.path.join(REPO_ROOT, tv_rel)
+    mob_path = os.path.join(REPO_ROOT, mob_rel)
+    if not os.path.exists(tv_path):
+        print(f"[WARN] 未找到 TV 壁纸源 {tv_rel}，跳过手机壁纸转换")
+        return False
+    try:
+        src = Image.open(tv_path).convert("RGB")
+        sw, sh = src.size
+        r = tw / th
+
+        # 以蜂鸟为中心、能完整放进源图的最大 9:16 裁剪框
+        h_max = min(2 * min(bird_y, sh - bird_y),
+                    2 * min(bird_x, sw - bird_x) / r,
+                    sh)
+        w_max = h_max * r
+        # 以蜂鸟整数中心对称取整（保证蜂鸟像素中心==裁剪框中心，且结果可精确复现）
+        half_w = int(round(w_max / 2))
+        half_h = int(round(h_max / 2))
+        x0i = int(bird_x) - half_w; x1i = int(bird_x) + half_w
+        y0i = int(bird_y) - half_h; y1i = int(bird_y) + half_h
+        crop = src.crop((x0i, y0i, x1i, y1i))
+        out = crop.resize((tw, th), Image.LANCZOS)
+
+        # 校验蜂鸟中心是否精确落在画布正中心
+        cx = (bird_x - x0i) / (x1i - x0i) * tw
+        cy = (bird_y - y0i) / (y1i - y0i) * th
+        centered = abs(cx - tw / 2) <= 1.5 and abs(cy - th / 2) <= 1.5
+
+        os.makedirs(os.path.dirname(mob_path), exist_ok=True)
+        out.save(mob_path, "WEBP", quality=95, method=6)
+        flag = "蜂鸟精确居中" if centered else "蜂鸟居中存在偏差"
+        print(f"[OK] 手机壁纸 {mob_rel} 已由 TV {tv_rel} 纯裁剪移植（{tw}x{th}，裁剪{x1i-x0i}x{y1i-y0i}，{flag}，首装第一张默认）")
+        return True
+    except Exception as e:
+        print(f"[WARN] 手机壁纸转换失败（不阻断）：{e}")
+        return False
 
 
 # ------------------------------------------------------------ 5c. 默认内置壁纸
@@ -3405,6 +3494,43 @@ def customize_default_wallpapers(config):
     return changed_any
 
 
+# ------------------------------------------------------------ 清理重复脚本
+def cleanup_duplicate_scripts():
+    """确保 custom/ 目录下只有【当前这一个】Python 脚本 local_customize.py。
+
+    自动删除：
+      · 历史遗留的备份脚本，如「local_customize - 副本.py」及其它多余的 *.py；
+      · custom/__pycache__ 缓存目录。
+    保留：当前正在运行的脚本本身、config.env（配置文件，非脚本）、diy.yml、图片素材。
+    """
+    try:
+        self_name = os.path.basename(os.path.abspath(__file__))
+    except Exception:
+        self_name = "local_customize.py"
+    keep = {self_name, "local_customize.py"}
+    removed = []
+    if os.path.isdir(CUSTOM_DIR):
+        for name in os.listdir(CUSTOM_DIR):
+            full = os.path.join(CUSTOM_DIR, name)
+            if name.endswith(".py") and os.path.isfile(full) and name not in keep:
+                try:
+                    os.remove(full); removed.append(name)
+                except Exception:
+                    pass
+        pycache = os.path.join(CUSTOM_DIR, "__pycache__")
+        if os.path.isdir(pycache):
+            import shutil
+            try:
+                shutil.rmtree(pycache, ignore_errors=True); removed.append("__pycache__")
+            except Exception:
+                pass
+    if removed:
+        print("[OK] 已删除多余脚本/缓存，custom/ 仅保留唯一脚本 local_customize.py：%s"
+              % "、".join(removed))
+    else:
+        print("[SKIP] custom/ 下无多余脚本（仅 local_customize.py 一个）")
+
+
 # ---------------------------------------------------------------- 主流程
 def main():
     global FORCE_MODE, AUTO_ROLLBACK
@@ -3430,6 +3556,8 @@ def main():
         os.makedirs(CUSTOM_DIR, exist_ok=True)
         print(f"[INFO] 已创建 custom/ 目录：{CUSTOM_DIR}")
 
+    cleanup_duplicate_scripts()
+
     results = []
 
     print("\n--- [1/11] app/build.gradle（applicationId + viewBinding）---")
@@ -3452,6 +3580,7 @@ def main():
 
     print("\n--- [5c/11] 默认内置壁纸（经典 wallpaper_1/2/3 置顶 + 中文名，TV:1-3-2 / 手机:1-2-3）---")
     results.append(customize_default_wallpapers(config))
+    results.append(sync_mobile_wallpaper_from_tv(config))
 
     print("\n--- [6/11] 设置页作者链接（URL_GITHUB / URL_CNB）---")
     results.append(modify_author_links(config))
