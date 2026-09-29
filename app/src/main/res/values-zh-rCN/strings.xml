@@ -1017,7 +1017,6 @@
     <string name="sync_item_webhome">WebHome 主页数据</string>
     <string name="sync_item_search">搜索记录</string>
     <string name="sync_item_history">观看记录</string>
-    <string name="history_watched_time">已看 %1$s</string>
     <string name="sync_item_keep">收藏数据</string>
     <string name="sync_item_settings">应用设置</string>
     <string name="sync_item_remote_relay">中转服务配置</string>

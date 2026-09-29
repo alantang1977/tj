@@ -161,9 +161,11 @@ GRAD_B_HEX = "#F472B6"
 WHITE = (255, 255, 255, 255)
 HOLE = (0, 0, 0, 0)
 SS = 5          # 超采样倍率，先大图绘制再降采样得到干净边缘（5x 比 4x 边缘更锐利）
-CAT_ZOOM = 1.25  # 实体猫放大倍数：1.25 时圆形耳尖约留13px(2.5%)安全间隙，仍上下左右等距、不触边
-CAT_ZOOM_ROUNDED = 1.44  # 圆角专用：圆角边界斜上方更靠外，放大到与圆形相同的最小间隙(约2.7%)
-CAT_ZOOM_BANNER = 1.65   # TV 长方形 Banner 专用：放大到与圆形相同的最小间隙(按高度约2.7%)
+CAT_ZOOM = 1.24  # 圆形用：配合下移使耳尖到圆弧=15px、绿项圈底到底边=15px（512尺寸）
+CAT_ZOOM_ROUNDED = 1.43  # 圆角(0.22)用：配合下移使耳尖到圆角弧=15px、绿项圈底到底边=15px
+CAT_ZOOM_SQUIRCLE = 1.357  # 自适应圆角(0.30)用：配合下移使耳尖到圆角弧≈15px、绿项圈底到底边≈15px
+CAT_ZOOM_SQUARE = 1.55  # 方形用：bbox居中后上下左右各留15px（直边无裁切，无需下移）
+CAT_ZOOM_BANNER = 1.68   # TV Banner 用：上下留约2px，猫高度几乎填满
 CAT_KEEP_ALPHA = 80  # 视为“实体猫”的 alpha 下限（腮红115/暗边130保留，弱光晕26/60剔除）
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
@@ -486,6 +488,14 @@ CAT_NOSE = (247, 122, 152, 255)
 CAT_COLLAR = (7, 193, 96, 255)
 CAT_COLLAR_HL = (120, 230, 190, 255)
 CAT_BELL = (252, 188, 48, 255)
+# 铃铛配色（默认金色，与原外观完全一致；可整体换色时一并替换以下常量）
+CAT_FACE = (247, 240, 228, 255)        # 脸盘底色（暖白）
+CAT_BELL_DARK = (180, 120, 0, 100)     # 铃铛底部暗弧
+CAT_BELL_HI1 = (255, 225, 150, 235)    # 主高光
+CAT_BELL_HI2 = (255, 245, 200, 160)    # 次高光
+CAT_BELL_ARC = (255, 240, 190, 190)    # 顶部受光弧
+CAT_BELL_WAVE = (255, 185, 70, 255)    # 声波（alpha 由代码按层递减）
+CAT_BELL_SLOT = (15, 60, 60, 255)      # 中缝与锤
 
 # 彩色虹膜配色：outer=虹膜外缘主色, inner=靠瞳孔亮色, ring=最外圈深色描边
 EYE_SCHEMES = {
@@ -708,7 +718,7 @@ def draw_cat(size):
                                      fill=(0, 40, 50, 40))
     face_sh = face_sh.filter(ImageFilter.GaussianBlur(radius=r * 0.04))
     layer.alpha_composite(face_sh)
-    d.ellipse(face_box, fill=(247, 240, 228, 255))
+    d.ellipse(face_box, fill=CAT_FACE)
     # 脸瓷面柔光（上半部分微妙高光，瓷面质感，与猫头光泽统一）
     face_gloss = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(face_gloss).ellipse([cx - r * 0.55, face_cy - r * 0.50,
@@ -852,14 +862,16 @@ def draw_cat(size):
                                  width=max(1, int(r * 0.03)))
     band_hl = band_hl.filter(ImageFilter.GaussianBlur(radius=r * 0.02))
     layer.alpha_composite(band_hl)
-    # 项圈两端金色铆钉
+    # 项圈两端金色铆钉（还原：深色描边 + 金底 + 高光，绿底上醒目）
     for side in (-1, 1):
         rx = cx + side * collar_rx * 0.95
-        ry = collar_cy + collar_ry * 0.3
-        d.ellipse([rx - r * 0.04, ry - r * 0.04,
-                   rx + r * 0.04, ry + r * 0.04], fill=(252, 198, 38, 255))
-        d.ellipse([rx - r * 0.02, ry - r * 0.02,
-                   rx + r * 0.02, ry + r * 0.02], fill=(255, 230, 120, 255))
+        ry = collar_cy + collar_ry * 0.30
+        d.ellipse([rx - r * 0.062, ry - r * 0.062,
+                   rx + r * 0.062, ry + r * 0.062], fill=(150, 95, 0, 255))
+        d.ellipse([rx - r * 0.055, ry - r * 0.055,
+                   rx + r * 0.055, ry + r * 0.055], fill=(252, 198, 38, 255))
+        d.ellipse([rx - r * 0.028, ry - r * 0.028,
+                   rx + r * 0.028, ry + r * 0.028], fill=(255, 230, 120, 255))
 
     # ===== 金铃铛（金属质感：尖锐高光点 + 底部暗弧）=====
     bell_cx, bell_cy = cx, head_cy + r * 0.99
@@ -882,27 +894,27 @@ def draw_cat(size):
     bell_dark = Image.new("RGBA", (size, size), HOLE)
     ImageDraw.Draw(bell_dark).arc([bell_cx - bell_r, bell_cy - bell_r,
                                    bell_cx + bell_r, bell_cy + bell_r],
-                                  start=20, end=160, fill=(180, 120, 0, 100),
+                                  start=20, end=160, fill=CAT_BELL_DARK,
                                   width=max(1, int(bell_r * 0.25)))
     bell_dark = bell_dark.filter(ImageFilter.GaussianBlur(radius=bell_r * 0.15))
     layer.alpha_composite(bell_dark)
     # 尖锐高光点（两点式金属感）
     d.ellipse([bell_cx - bell_r * 0.48, bell_cy - bell_r * 0.55,
                bell_cx - bell_r * 0.16, bell_cy - bell_r * 0.23],
-              fill=(255, 225, 150, 235))
+              fill=CAT_BELL_HI1)
     d.ellipse([bell_cx + bell_r * 0.08, bell_cy - bell_r * 0.45,
                bell_cx + bell_r * 0.28, bell_cy - bell_r * 0.27],
-              fill=(255, 245, 200, 160))
+              fill=CAT_BELL_HI2)
     # 铃铛金属光泽弧（顶部受光弧，增强金属质感）
     d.arc([bell_cx - bell_r * 0.75, bell_cy - bell_r * 0.95,
            bell_cx + bell_r * 0.75, bell_cy + bell_r * 0.55],
-          start=200, end=340, fill=(255, 240, 190, 190), width=max(1, int(bell_r * 0.09)))
+          start=200, end=340, fill=CAT_BELL_ARC, width=max(1, int(bell_r * 0.09)))
     # 中缝（随球体弧度微弯）和锤
     d.arc([bell_cx - bell_r * 0.7, bell_cy - bell_r * 0.35,
            bell_cx + bell_r * 0.7, bell_cy + bell_r * 0.35],
-          start=0, end=180, fill=CAT_DARK, width=max(1, int(size * 0.005)))
+          start=0, end=180, fill=CAT_BELL_SLOT, width=max(1, int(size * 0.005)))
     d.ellipse([bell_cx - bell_r * 0.15, bell_cy + bell_r * 0.05,
-               bell_cx + bell_r * 0.15, bell_cy + bell_r * 0.35], fill=CAT_DARK)
+               bell_cx + bell_r * 0.15, bell_cy + bell_r * 0.35], fill=CAT_BELL_SLOT)
 
     # === 铃铛声波（两侧红色短弧，暗示「叮当响」）===
     for side in (-1, 1):
@@ -913,7 +925,7 @@ def draw_cat(size):
                 [bell_cx - off, bell_cy - off, bell_cx + off, bell_cy + off],
                 start=(-60 if side > 0 else 240),
                 end=(-30 + k * 15 if side > 0 else 300 - k * 15),
-                fill=(255, 185, 70, 160 - k * 70),
+                fill=(CAT_BELL_WAVE[0], CAT_BELL_WAVE[1], CAT_BELL_WAVE[2], 160 - k * 70),
                 width=max(1, int(bell_r * 0.14)))
             layer.alpha_composite(arc)
 
@@ -1074,6 +1086,39 @@ def _exact_centered(tile, W, H, thr=CAT_KEEP_ALPHA):
     return out
 
 
+def _place_bottom_gap(tile, W, H, gap_frac=0.03, safe_r_frac=None, thr=CAT_KEEP_ALPHA):
+    """将已居中的猫整体下移，使绿项圈最下缘(整猫最低像素)到底部边界留 gap_frac*H 缝隙。
+    safe_r_frac: 自适应前景时底部边界是安全圆(半径=safe_r_frac*H)，否则是画布底边(y=H)。
+    只下移不上升；若猫已比目标更靠近底边则保持原样。返回新 RGBA。"""
+    b = tile.split()[3].point(lambda v: v if v >= thr else 0).getbbox()
+    if b is None:
+        return tile
+    current_bottom = b[3]
+    boundary_bottom = (H / 2 + safe_r_frac * H) if safe_r_frac else H
+    target_bottom = boundary_bottom - gap_frac * H
+    shift = int(round(target_bottom - current_bottom))
+    if shift <= 0:
+        return tile
+    out = Image.new("RGBA", (W, H), HOLE)
+    out.alpha_composite(tile, (0, shift))
+    return out
+
+
+_FU_FONT_CACHE = {}
+def _get_fu_font(size):
+    """返回指定字号的中文粗体字体（用于项圈「福」字），按字号缓存；不可用时返回 None。"""
+    size = max(8, int(size))
+    if size in _FU_FONT_CACHE:
+        return _FU_FONT_CACHE[size]
+    try:
+        from PIL import ImageFont
+        f = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", size)
+    except Exception:
+        f = None
+    _FU_FONT_CACHE[size] = f
+    return f
+
+
 def _cat_square_tile(size, zoom):
     """方图标用：超采样渲染实体猫并下采样到 size（透明底，尚未严格居中）。"""
     big = size * SS
@@ -1160,21 +1205,23 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
         if shape != "square":
             img.putalpha(_mask(big, shape, radius_ratio))
         img = img.resize((size, size), Image.LANCZOS)
-        # 猫：big 超采样渲染→降到 size→按形状边界做上下等间隙平衡（耳尖/铃铛到边距离一致）
-        # 圆角边界在斜上方比圆形更靠外，单独放大到与圆形相同的最小间隙（约2.7%）
-        use_zoom = CAT_ZOOM_ROUNDED if shape == "rounded" else CAT_ZOOM
+        # 猫：big 超采样渲染→降到 size→在最终画布上严格居中（实体 bbox 中心偏移为 0，
+        # 耳尖到画布顶边 = 领圈底到画布底边，左右同理；各形状用安全 zoom 保证不触边不裁切）
+        if shape == "rounded":
+            # 自适应 squircle 圆角更大(0.30)，耳尖更易触边，用专用较小倍率；普通圆角(0.22)用饱满倍率
+            use_zoom = CAT_ZOOM_SQUIRCLE if radius_ratio >= 0.28 else CAT_ZOOM_ROUNDED
+        elif shape == "square":
+            use_zoom = CAT_ZOOM_SQUARE
+        else:
+            use_zoom = CAT_ZOOM
         cat = _fit_cat(big, use_zoom)
         layer = Image.new("RGBA", (big, big), HOLE)
         layer.alpha_composite(cat, ((big - cat.width) // 2, (big - cat.height) // 2))
         catf = layer.resize((size, size), Image.LANCZOS)
-        if shape == "circle":
-            distf = lambda x, y: _dist_circle(x, y, size / 2.0)
-        elif shape == "rounded":
-            distf = lambda x, y: _dist_rounded(x, y, size / 2.0, size / 2.0,
-                                               radius_ratio * size)
-        else:
-            distf = lambda x, y: _dist_rect(x, y, size / 2.0, size / 2.0)
-        img.alpha_composite(_place_balanced(catf, size, size, distf))
+        # 先严格居中，再整体下移使绿项圈最下缘到底边留 15px(512尺寸) 缝隙；zoom 已调好使耳尖到形状弧也≈15px
+        catf = _exact_centered(catf, size, size)
+        catf = _place_bottom_gap(catf, size, size, gap_frac=15 / 512)
+        img.alpha_composite(catf)
         return img
 
     # 非 cat 风格：沿用原 big 合成→裁切→降采样路径
@@ -1194,14 +1241,15 @@ def render_banner(w, h, style="3d"):
     img = add_iphone17_background_flare(img)
 
     if style == "cat":
-        # 背景降到最终尺寸；猫放大后在长方形 banner 内做上下等间隙平衡、水平居中（完整不裁切）
+        # 背景降到最终尺寸；猫放大后在长方形 banner 内严格居中（上下左右对称、完整不裁切）
         img = img.resize((w, h), Image.LANCZOS)
         cat = _fit_cat(int(bh * 0.95), CAT_ZOOM_BANNER)
         layer = Image.new("RGBA", (bw, bh), HOLE)
         layer.alpha_composite(cat, ((bw - cat.width) // 2, (bh - cat.height) // 2))
         catf = layer.resize((w, h), Image.LANCZOS)
-        distf = lambda x, y: _dist_rect(x, y, w / 2.0, h / 2.0)
-        img.alpha_composite(_place_balanced(catf, w, h, distf))
+        catf = _exact_centered(catf, w, h)
+        catf = _place_bottom_gap(catf, w, h, gap_frac=0.025)
+        img.alpha_composite(catf)
         return img
 
     mark_box = int(bh * 0.62)
@@ -1218,22 +1266,22 @@ def render_notification(size, style="3d"):
     return draw_wordmark(size * SS, FILL_NOTIFY, style=style).resize((size, size),
                           Image.LANCZOS)
 def render_cat_foreground(size):
-    """自适应图标前景：完整彩色猫（透明底），超采样后缩放至安全区内。
+    """自适应图标前景：完整彩色猫（透明底），超采样后缩放至安全区内并严格居中。
 
     自适应图标 108dp 中系统只保证中心约 72dp 可见（半径 ≈ size/3）。
-    基准画布 inner=0.62*size 再随 CAT_ZOOM 放大（=0.719*size）：实体猫直径约 0.436*size，
-    耳尖(实体 bbox 上角)到中心半径 ≈0.31*size < 0.333*size，圆形/水滴/方形 mask 都不裁切。
-    弱光晕已剔除，SS=5 超采样再 LANCZOS 缩小，所有密度下边缘锐利无锯齿。
+    基准画布 inner=0.79*size：配合下移使耳尖到安全圆≈15px、绿项圈底到安全圆底≈15px（432尺寸）。
+    弱光晕已剔除，SS=5 超采样再 LANCZOS 缩小，所有密度下边缘锐利无锯齿、不变形。
     """
-    inner = int(size * 0.62 * CAT_ZOOM)
+    inner = int(size * 0.785)
     big = inner * SS
     cat_big = _fit_cat(big, 1.0)
     cw = max(1, int(round(cat_big.width / SS)))
     ch = max(1, int(round(cat_big.height / SS)))
     cat = cat_big.resize((cw, ch), Image.LANCZOS)
-    # 在 72dp 安全圆（R=size/3）内做上下等间隙平衡，耳尖/铃铛到安全圆边距离一致、不裁切
-    distf = lambda x, y: _dist_circle(x, y, size / 3.0)
-    return _place_balanced(cat, size, size, distf)
+    cat = _exact_centered(cat, size, size)
+    # 下移使绿项圈最下缘到安全圆底边留 15px(432尺寸) 缝隙；zoom 已调好使耳尖到安全圆也≈15px
+    cat = _place_bottom_gap(cat, size, size, gap_frac=15 / 432, safe_r_frac=1 / 3)
+    return cat
 def _remove_if_exists(rel):
     """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
     path = os.path.join(REPO, rel)
@@ -3496,3 +3544,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+#（注：内容由AI生成）

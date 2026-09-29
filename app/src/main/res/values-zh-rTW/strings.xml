@@ -972,7 +972,6 @@
     <string name="sync_item_webhome">WebHome 主頁資料</string>
     <string name="sync_item_search">搜尋記錄</string>
     <string name="sync_item_history">觀看記錄</string>
-    <string name="history_watched_time">已看 %1$s</string>
     <string name="sync_item_keep">收藏資料</string>
     <string name="sync_item_settings">應用設定</string>
     <string name="sync_item_remote_relay">中轉服務配置</string>

@@ -1020,7 +1020,6 @@
     <string name="sync_item_webhome">WebHome saved data</string>
     <string name="sync_item_search">Search records</string>
     <string name="sync_item_history">Watch history</string>
-    <string name="history_watched_time">Watched %1$s</string>
     <string name="sync_item_keep">Favorites</string>
     <string name="sync_item_settings">App settings</string>
     <string name="sync_item_remote_relay">Relay server config</string>

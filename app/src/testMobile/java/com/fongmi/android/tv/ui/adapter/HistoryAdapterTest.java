@@ -39,6 +39,7 @@ public class HistoryAdapterTest {
         assertMobileDeleteOverlayIsCentered(mobileLayout, mobileAdapter);
         assertBindsPlaybackProgress("TV history page", adapter);
         assertBindsPlaybackProgress("mobile history page", mobileAdapter);
+        assertMobileHistoryDoesNotRenderBelowPosterTime(mobileLayout, mobileAdapter);
         assertBindsPlaybackProgress("TV home recent row", presenter);
         assertHidesHistoryOnlyViews("TV keep page", keepAdapter);
         assertHidesHistoryOnlyViews("mobile keep page", mobileKeepAdapter);
@@ -136,6 +137,75 @@ public class HistoryAdapterTest {
         assertTrue(owner + " must keep the second metadata line aligned when no distinct episode exists",
                 source.contains("binding.remark.setVisibility(delete || same ? View.INVISIBLE : View.VISIBLE);")
                         || source.contains("binding.remark.setVisibility(same ? View.INVISIBLE : View.VISIBLE);"));
+    }
+
+    private static void assertMobileHistoryDoesNotRenderBelowPosterTime(String layout, String adapter) throws Exception {
+        Element root = parseLayout(layout);
+        assertTrue("mobile history card must not declare a below-poster watched-time line",
+                !layout.contains("historyProgress")
+                        && !adapter.contains("historyProgress")
+                        && !adapter.contains("HistoryProgressFormatter")
+                        && !adapter.contains("R.string.history_watched_time"));
+        Element info = findById(root, "@+id/history_info");
+        Element playback = findById(root, "@+id/playback");
+        assertTrue("mobile history card info area must keep exactly the title and episode lines",
+                elementChildCount(info) == 2
+                        && "@+id/name".equals(androidAttribute((Element) info.getChildNodes().item(firstElementIndex(info)), "id"))
+                        && "@+id/remark".equals(androidAttribute((Element) info.getChildNodes().item(lastElementIndex(info)), "id")));
+        assertTrue("mobile history card must keep the poster playback tag as the only watched-time display",
+                "@+id/image".equals(androidAttribute(playback, "layout_alignBottom"))
+                        && playback.getParentNode() == root
+                        && childElementIndex(root, playback) < childElementIndex(root, info));
+    }
+
+    private static int elementChildCount(Element parent) {
+        int count = 0;
+        NodeList nodes = parent.getChildNodes();
+        for (int i = 0; i < nodes.getLength(); i++) {
+            if (nodes.item(i).getNodeType() == Node.ELEMENT_NODE) count++;
+        }
+        return count;
+    }
+
+    private static int firstElementIndex(Element parent) {
+        NodeList nodes = parent.getChildNodes();
+        for (int i = 0; i < nodes.getLength(); i++) {
+            if (nodes.item(i).getNodeType() == Node.ELEMENT_NODE) return i;
+        }
+        return -1;
+    }
+
+    private static int lastElementIndex(Element parent) {
+        NodeList nodes = parent.getChildNodes();
+        int last = -1;
+        for (int i = 0; i < nodes.getLength(); i++) {
+            if (nodes.item(i).getNodeType() == Node.ELEMENT_NODE) last = i;
+        }
+        return last;
+    }
+
+    @Test
+    public void mobileHistoryCardDoesNotRepeatWatchedTimeBelowThePoster() throws Exception {
+        assertMobileHistoryDoesNotRenderBelowPosterTime(
+                read(findMobileResPath().resolve(Path.of("layout", "adapter_vod.xml"))),
+                read(findMobileJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "adapter", "HistoryAdapter.java"))));
+    }
+
+    @Test
+    public void removedBelowPosterTimeHasNoLeftoverProductionReferences() throws Exception {
+        Path mainJava = findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "utils", "HistoryProgressFormatter.java"));
+        assertFalse("mobile-only below-poster time formatter must be gone once its last caller is removed",
+                Files.exists(mainJava));
+        String source = read(findMobileJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "adapter", "HistoryAdapter.java")))
+                + read(findLeanbackJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "adapter", "HistoryAdapter.java")))
+                + read(findLeanbackJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "presenter", "HistoryPresenter.java")));
+        assertFalse("no history view may keep the removed below-poster time label",
+                source.contains("historyProgress") || source.contains("history_watched_time"));
+        String strings = read(findMainResPath().resolve(Path.of("values", "strings.xml")))
+                + read(findMainResPath().resolve(Path.of("values-zh-rCN", "strings.xml")))
+                + read(findMainResPath().resolve(Path.of("values-zh-rTW", "strings.xml")));
+        assertFalse("removed below-poster time must not leave an unused localized string",
+                strings.contains("history_watched_time"));
     }
 
     private static Element parseLayout(String layout) throws Exception {
@@ -252,6 +322,12 @@ public class HistoryAdapterTest {
         Path moduleRelative = Path.of("src", "mobile", "res");
         if (Files.exists(moduleRelative)) return moduleRelative;
         return Path.of("app", "src", "mobile", "res");
+    }
+
+    private static Path findMainResPath() {
+        Path moduleRelative = Path.of("src", "main", "res");
+        if (Files.exists(moduleRelative)) return moduleRelative;
+        return Path.of("app", "src", "main", "res");
     }
 
     private static Path findMainJavaPath() {
