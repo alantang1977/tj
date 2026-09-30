@@ -348,6 +348,10 @@ private boolean runtimeSourceOnly;
     private static final int TMDB_OVERVIEW_ROW_GAP_DP = 12;
     private static final int TMDB_OVERVIEW_BOTTOM_GUARD_DP = 6;
     private static final int OMDB_FULL_RATING_TEXT_MAX_LENGTH = 20;
+    // 原生增强播放页统一焦点规范，取值与 app/src/main/res/drawable/selector_video_item.xml 一致：
+    // 焦点 3dp @color/tv_item_focus_ring，当前播放 2dp @color/tv_item_current_ring，常态 1dp @color/tv_item_normal_stroke。
+    private static final int TV_ITEM_FOCUS_WIDTH_DP = 3;
+    private static final int TV_ITEM_NORMAL_WIDTH_DP = 1;
     private static final String EXTRA_TMDB_PLAY_FLAG = "tmdb_play_flag";
     private static final String EXTRA_TMDB_PLAY_FLAG_KEY = "tmdb_play_flag_key";
     private static final String EXTRA_TMDB_PLAY_EPISODE_NAME = "tmdb_play_episode_name";
@@ -1746,6 +1750,11 @@ private boolean runtimeSourceOnly;
         mBinding.tmdbCast.setRowHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
         mBinding.tmdbPhotos.setHorizontalSpacing(ResUtil.dp2px(12));
         mBinding.tmdbPhotos.setRowHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
+        // 海报行此前漏配 rowHeight（拆分剧照/海报时新增，只加了布局没加这里的配置）：
+        // Leanback 的 HorizontalGridView 不设 rowHeight 时行高塌陷为 0，
+        // 于是“海报”标签正常显示但一张卡片都看不到。
+        mBinding.tmdbPosters.setHorizontalSpacing(ResUtil.dp2px(12));
+        mBinding.tmdbPosters.setRowHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
         mBinding.tmdbCrew.setHorizontalSpacing(ResUtil.dp2px(12));
         mBinding.tmdbCrew.setRowHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
         mBinding.tmdbRecommendations.setHorizontalSpacing(ResUtil.dp2px(12));
@@ -1761,6 +1770,76 @@ private boolean runtimeSourceOnly;
         attachRecommendationLazyLoader(mBinding.tmdbRecommendations, RecommendationRow.RECOMMENDATIONS);
         attachRecommendationLazyLoader(mBinding.tmdbPersonalTmdbRecommendations, RecommendationRow.PERSONAL_TMDB);
         attachRecommendationLazyLoader(mBinding.tmdbPersonalDoubanRecommendations, RecommendationRow.PERSONAL_DOUBAN);
+        for (HorizontalGridView row : tmdbMediaRows()) installRowCardFocusLinks(row);
+    }
+
+    /** TMDB 详情区块的横向行，顺序与 getEpisodeFocusOrders() 的纵向焦点链保持一致。 */
+    private List<HorizontalGridView> tmdbMediaRows() {
+        return Arrays.asList(
+                mBinding.tmdbCast,
+                mBinding.tmdbPhotos,
+                mBinding.tmdbPosters,
+                mBinding.tmdbRelatedVideos,
+                mBinding.tmdbCrew,
+                mBinding.tmdbRecommendations,
+                mBinding.tmdbPersonalTmdbRecommendations,
+                mBinding.tmdbPersonalDoubanRecommendations,
+                mBinding.tmdbPersonalAiRecommendations);
+    }
+
+    /**
+     * 卡片被 RecyclerView 回收后重新接入时，补写它自己的上下焦点目标。
+     * 只靠容器的 nextFocusDown 不生效：焦点此刻在卡片上，Android 优先读卡片自身的声明。
+     */
+    private void installRowCardFocusLinks(HorizontalGridView grid) {
+        grid.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+            @Override
+            public void onChildViewAttachedToWindow(@NonNull View child) {
+                applyCardFocusLinks(grid, child);
+            }
+
+            @Override
+            public void onChildViewDetachedFromWindow(@NonNull View child) {
+            }
+        });
+    }
+
+    private void applyCardFocusLinks(HorizontalGridView grid, View card) {
+        card.setNextFocusUpId(grid.getNextFocusUpId());
+        card.setNextFocusDownId(grid.getNextFocusDownId());
+    }
+
+    /**
+     * 按当前可见行重排纵向焦点链：每行只指向上下相邻的可见行，跳过已隐藏的区块。
+     * 之前只给容器设 nextFocusDown，遥控在行内卡片上按向下会退回几何搜索，
+     * 于是出现“第一张剧照下不去、第二张可以”这类与横向位置相关的不确定行为。
+     */
+    private void applyTmdbRowFocusChain() {
+        List<HorizontalGridView> candidates = tmdbMediaRows();
+        boolean[] present = new boolean[candidates.size()];
+        for (int i = 0; i < candidates.size(); i++) {
+            HorizontalGridView row = candidates.get(i);
+            present[i] = row != null && row.getVisibility() == View.VISIBLE && row.getAdapter() != null && row.getAdapter().getItemCount() > 0;
+        }
+        // 空行（没数据或标签与行一起隐藏）被直接跳过：剧照下面没有海报就落到相关视频，
+        // 相关视频也没有就落到主创团队——焦点永远交给一个真实存在的行。
+        int[][] links = com.fongmi.android.tv.ui.helper.TmdbRowFocusChain.link(present);
+        int ratingsId = 0;
+        ViewGroup ratings = mBinding.getRoot().findViewById(R.id.tmdbOmdbRatings);
+        if (ratings != null && isVisible(ratings)) ratingsId = R.id.tmdbOmdbRatings;
+        for (int i = 0; i < candidates.size(); i++) {
+            HorizontalGridView row = candidates.get(i);
+            if (row == null || !present[i]) continue;
+            int upIndex = links[i][0];
+            int downIndex = links[i][1];
+            int upId = upIndex < 0 ? ratingsId : candidates.get(upIndex).getId();
+            int downId = downIndex < 0 ? R.id.flag : candidates.get(downIndex).getId();
+            row.setNextFocusUpId(upId == 0 ? View.NO_ID : upId);
+            row.setNextFocusDownId(downId);
+            for (int child = 0; child < row.getChildCount(); child++) {
+                applyCardFocusLinks(row, row.getChildAt(child));
+            }
+        }
     }
 
     private void setVideoView() {
@@ -3922,6 +4001,7 @@ private boolean runtimeSourceOnly;
                 R.id.episodeFileName,
                 R.id.episode,
                 R.id.episodeGrid,
+                R.id.tmdbOmdbRatings,
                 R.id.tmdbCast,
                 R.id.tmdbPhotos,
                 R.id.tmdbPosters,
@@ -3952,7 +4032,26 @@ private boolean runtimeSourceOnly;
         updateEpisodeHeaderFocus();
         mPartAdapter.setNextFocus(findFocusUp(part), findFocusDown(part));
         mQuickAdapter.setNextFocus(findFocusUp(quick), findFocusDown(quick));
+        updateRatingChipFocus();
         setDetailButtonsNextFocus(findFocusDown(-1));
+    }
+
+    /**
+     * “评分与数据”卡片纳入纵向焦点链：上接选集网格/列表，下接演员行。
+     * 卡片此前不是 focusable，遥控上下键会整行跳过，视觉上凭空少了一段。
+     */
+    private void updateRatingChipFocus() {
+        ViewGroup container = mBinding.getRoot().findViewById(R.id.tmdbOmdbRatings);
+        if (container == null || !isVisible(container)) return;
+        int ratings = episodeFocusIndex(R.id.tmdbOmdbRatings);
+        int up = findFocusUp(ratings);
+        int down = findFocusDown(ratings);
+        for (int i = 0; i < container.getChildCount(); i++) {
+            View child = container.getChildAt(i);
+            if (!child.isFocusable()) continue;
+            child.setNextFocusUpId(up == 0 ? View.NO_ID : up);
+            child.setNextFocusDownId(down == 0 ? View.NO_ID : down);
+        }
     }
 
     private void updateEpisodeHeaderFocus() {
@@ -4051,8 +4150,37 @@ private boolean runtimeSourceOnly;
         if (!KeyUtil.isActionDown(event) || !KeyUtil.isDownKey(event)) return false;
         int position = mBinding.array.getSelectedPosition();
         if (position <= 1) return false;
-        selectEpisodeSegment(position, true);
+        // 只装载分段，不直接抢焦点：声明式的 nextFocusDown 目标是集数表头（“选集 · 第 N 季”），
+        // 之前这里直接 scrollToEpisode(..., true) 把焦点推进选集网格，遥控在分段行按向下
+        // 会跳过整行集数表头，用户报告“往下到不了选季度的按钮”。
+        selectEpisodeSegment(position, false);
+        if (focusEpisodeHeaderTool(View.FOCUS_DOWN)) return true;
+        scrollToEpisode(getSelectedEpisodePosition(mEpisodeAdapter.getItems()), true);
         return true;
+    }
+
+    /** 集数表头（选集 · 第 N 季 / 倒序 / 列表 / 原文件名）是分段行的声明式下方目标。 */
+    private boolean focusEpisodeHeaderTool(int direction) {
+        if (!isEpisodeFocusTarget(mBinding.episodeTitle)) return false;
+        mBinding.episodeTitle.requestFocus(direction);
+        return true;
+    }
+
+    /**
+     * “评分与数据”行是选集列表声明式的下方邻居（见 getEpisodeFocusOrders）。
+     * 集数卡片由 adapter 动态构建，不会把 nextFocusDown 写回卡片项，所以末行向下需要显式接管。
+     */
+    private boolean focusRatingRow() {
+        ViewGroup container = mBinding.getRoot().findViewById(R.id.tmdbOmdbRatings);
+        if (container == null || !isVisible(container)) return false;
+        for (int i = 0; i < container.getChildCount(); i++) {
+            View child = container.getChildAt(i);
+            if (child.isFocusable() && child.getVisibility() == View.VISIBLE) {
+                child.requestFocus(View.FOCUS_DOWN);
+                return true;
+            }
+        }
+        return false;
     }
 
 
@@ -4070,7 +4198,10 @@ private boolean runtimeSourceOnly;
             int spanCount = layoutManager instanceof GridLayoutManager gridLayoutManager ? gridLayoutManager.getSpanCount() : getEpisodeGridSpanCount();
             if (KeyUtil.isDownKey(event)) {
                 int target = TmdbEpisodeGridPolicy.verticalFocusTarget(position, spanCount, mEpisodeGridAdapter.getItemCount(), true);
-                return target != TmdbEpisodeGridPolicy.NO_FOCUS_TARGET && focusEpisodeGridPosition(target);
+                if (target != TmdbEpisodeGridPolicy.NO_FOCUS_TARGET) return focusEpisodeGridPosition(target);
+                // 已到网格最后一行：继续往下必须落到“评分与数据”，否则焦点链在选集底部断掉，
+                // 用户报告“评分与数据下的卡片无法选中容易遥控跳过”。
+                return focusRatingRow();
             }
             if (KeyUtil.isUpKey(event)) {
                 int target = TmdbEpisodeGridPolicy.verticalFocusTarget(position, spanCount, mEpisodeGridAdapter.getItemCount(), false);
@@ -6159,6 +6290,7 @@ private boolean runtimeSourceOnly;
         mBinding.tmdbPersonalTmdbRecommendations.setNextFocusDownId(hasDouban ? R.id.tmdbPersonalDoubanRecommendations : hasAi ? R.id.tmdbPersonalAiRecommendations : R.id.flag);
         mBinding.tmdbPersonalDoubanRecommendations.setNextFocusDownId(hasAi ? R.id.tmdbPersonalAiRecommendations : R.id.flag);
         mBinding.tmdbPersonalAiRecommendations.setNextFocusDownId(R.id.flag);
+        applyTmdbRowFocusChain();
     }
 
     private void attachRecommendationLazyLoader(HorizontalGridView grid, RecommendationRow row) {
@@ -6263,6 +6395,7 @@ private boolean runtimeSourceOnly;
                 if (!changed) return;
                 bindRecommendationGrid(mBinding.tmdbPersonalTmdbRecommendations, mBinding.tmdbPersonalTmdbRecommendationsLabel, mTmdbUIAdapter.getPersonalTmdbRecommendations(), RecommendationRow.PERSONAL_TMDB);
                 bindRecommendationGrid(mBinding.tmdbPersonalDoubanRecommendations, mBinding.tmdbPersonalDoubanRecommendationsLabel, mTmdbUIAdapter.getPersonalDoubanRecommendations(), RecommendationRow.PERSONAL_DOUBAN);
+                applyTmdbRowFocusChain();
             });
         } else {
             loadNativePersonalRecommendations(mVod);
@@ -6278,6 +6411,7 @@ private boolean runtimeSourceOnly;
             mBinding.tmdbPersonalTmdbRecommendations.setNextFocusDownId(hasAi ? R.id.tmdbPersonalAiRecommendations : R.id.flag);
         }
         mBinding.tmdbPersonalAiRecommendations.setNextFocusDownId(R.id.flag);
+        applyTmdbRowFocusChain();
     }
 
     // 细粒度刷新：相关推荐（“猜你喜欢”）异步到达时只重绑该列表，不触碰详情头部与集数，
@@ -6285,12 +6419,14 @@ private boolean runtimeSourceOnly;
     private void refreshTmdbRecommendations() {
         if (mTmdbUIAdapter == null || !mTmdbUIAdapter.isLoaded() || mTmdbDetailLoading) return;
         bindRecommendationGrid(mBinding.tmdbRecommendations, mBinding.tmdbRecommendationsLabel, mTmdbUIAdapter.getRecommendations(), RecommendationRow.RECOMMENDATIONS);
+        applyTmdbRowFocusChain();
     }
 
     // 细粒度刷新：个性化推荐（TMDB / 豆瓣）异步到达时只重绑这两个列表。
     private void refreshTmdbRelatedVideos() {
         if (mTmdbUIAdapter == null || !mTmdbUIAdapter.isLoaded() || mTmdbDetailLoading) return;
         bindTmdbVideoGrid(mBinding.tmdbRelatedVideos, mBinding.tmdbRelatedVideosLabel, mTmdbUIAdapter.getRelatedVideos());
+        applyTmdbRowFocusChain();
         updateFocus();
     }
 
@@ -6310,6 +6446,7 @@ private boolean runtimeSourceOnly;
         if (mTmdbUIAdapter == null || !mTmdbUIAdapter.isLoaded() || mTmdbDetailLoading) return;
         bindRecommendationGrid(mBinding.tmdbPersonalTmdbRecommendations, mBinding.tmdbPersonalTmdbRecommendationsLabel, mTmdbUIAdapter.getPersonalTmdbRecommendations(), RecommendationRow.PERSONAL_TMDB);
         bindRecommendationGrid(mBinding.tmdbPersonalDoubanRecommendations, mBinding.tmdbPersonalDoubanRecommendationsLabel, mTmdbUIAdapter.getPersonalDoubanRecommendations(), RecommendationRow.PERSONAL_DOUBAN);
+        applyTmdbRowFocusChain();
     }
 
     // 细粒度刷新：集数标题异步补全。useTmdbCard 由 shouldUseTmdbEpisodeCards(hasTmdbEpisodeData)
@@ -6543,6 +6680,7 @@ private boolean runtimeSourceOnly;
         }
 
         SpiderDebug.log("tmdb-tv", "绑定完成: 演员=%d 剧照=%d 海报=%d 主创=%d 推荐=%d 个性TMDB=%d 个性豆瓣=%d 个性智能=%d", cast.size(), photos.size(), posters.size(), creators.size(), recommendations.size(), personalTmdbRecommendations.size(), personalDoubanRecommendations.size(), personalAiRecommendations.size());
+        applyTmdbRowFocusChain();
         updateFocus();
 
         // TMDB / OMDB 多来源评分（TMDB / IMDb / 烂番茄 / Metacritic 等）
@@ -6985,6 +7123,10 @@ private boolean runtimeSourceOnly;
         container.setVisibility(View.GONE);
         container.setTag(null);
         container.removeAllViews();
+        updateRatingChipFocus();
+        // 评分行是本行的邻居，它的显隐变化必须重算行链：
+        // 否则第一行 TMDB 区块的 up 目标会停留在已隐藏的评分行上。
+        applyTmdbRowFocusChain();
     }
 
     private String omdbRatingCacheKey(String imdbId, String omdbApiKey) {
@@ -6997,6 +7139,8 @@ private boolean runtimeSourceOnly;
         if (chips == null || chips.isEmpty()) {
             if (label != null) label.setVisibility(View.GONE);
             container.setVisibility(View.GONE);
+            updateRatingChipFocus();
+            applyTmdbRowFocusChain();
             return;
         }
         for (String[] chip : chips) {
@@ -7004,6 +7148,10 @@ private boolean runtimeSourceOnly;
         }
         if (label != null) label.setVisibility(View.VISIBLE);
         container.setVisibility(View.VISIBLE);
+        // 卡片是异步到达的（OMDB 回包），到达后必须重算焦点链，
+        // 否则选集下方仍然指向旧的下一行。
+        updateRatingChipFocus();
+        applyTmdbRowFocusChain();
     }
 
     private java.util.List<String[]> buildTmdbRatingChips() {
@@ -7204,12 +7352,12 @@ private boolean runtimeSourceOnly;
         chip.setGravity(android.view.Gravity.CENTER);
         chip.setMinimumWidth(ResUtil.dp2px(120));
         chip.setPadding(ResUtil.dp2px(16), ResUtil.dp2px(10), ResUtil.dp2px(16), ResUtil.dp2px(10));
-
-        android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
-        background.setColor(0x6610141A);
-        background.setCornerRadius(ResUtil.dp2px(8));
-        background.setStroke(ResUtil.dp2px(1), 0x33FFFFFF);
-        chip.setBackground(background);
+        // 评分卡片必须可被遥控选中：此前是纯装饰 LinearLayout，上下键会直接跳过整行
+        // “评分与数据”，视觉上像凭空跳了一段。
+        chip.setFocusable(true);
+        chip.setFocusableInTouchMode(false);
+        chip.setClickable(true);
+        chip.setTag(R.id.tmdbOmdbRatings, platform);
 
         TextView platformView = new TextView(this);
         platformView.setText(platform);
@@ -7241,7 +7389,31 @@ private boolean runtimeSourceOnly;
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.setMarginEnd(ResUtil.dp2px(12));
         chip.setLayoutParams(params);
+        styleRatingChipBackground(chip, false);
+        chip.setOnFocusChangeListener((view, focused) -> styleRatingChipBackground(view, focused));
         return chip;
+    }
+
+    /**
+     * 评分卡片背景。常态保留原有深色玻璃底（0x6610141A）+ 1dp 半透明描边，
+     * 让白/黄文字在明亮剧照上依旧可读；只在获得焦点时换成统一的
+     * 3dp @color/tv_item_focus_ring 圆环，与选集/线路/推荐卡保持同一种“停下”视觉。
+     */
+    private void styleRatingChipBackground(View view, boolean focused) {
+        if (view == null) return;
+        android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
+        background.setColor(0x6610141A);
+        background.setCornerRadius(ResUtil.dp2px(8));
+        if (focused) {
+            background.setStroke(ResUtil.dp2px(TV_ITEM_FOCUS_WIDTH_DP), getColor(R.color.tv_item_focus_ring));
+        } else {
+            background.setStroke(ResUtil.dp2px(1), 0x33FFFFFF);
+        }
+        view.setBackground(background);
+        View label = mBinding.getRoot().findViewById(R.id.tmdbOmdbRatingsLabel);
+        if (label instanceof TextView text) {
+            text.setTextColor(focused ? getColor(R.color.tv_item_focus_ring) : getColor(android.R.color.white));
+        }
     }
 
     private void setupBackdropSlideshow(java.util.List<String> photos) {
@@ -7789,8 +7961,14 @@ private boolean runtimeSourceOnly;
         return mFocus1 == null || mFocus1.getVisibility() != View.VISIBLE ? mBinding.video : mFocus1;
     }
 
+    private boolean hasRememberedFocus() {
+        return mFocus2 != null && mFocus2.getVisibility() == View.VISIBLE
+                && PlayerControlFocusHelper.isDescendant(mBinding.control.getRoot(), mFocus2)
+                && mFocus2 != mBinding.control.action.opening && mFocus2 != mBinding.control.action.ending;
+    }
+
     private View getFocus2() {
-        return mFocus2 == null || mFocus2.getVisibility() != View.VISIBLE || !PlayerControlFocusHelper.isDescendant(mBinding.control.getRoot(), mFocus2) || mFocus2 == mBinding.control.action.opening || mFocus2 == mBinding.control.action.ending ? mBinding.control.action.next : mFocus2;
+        return hasRememberedFocus() ? mFocus2 : mBinding.control.action.next;
     }
 
     private boolean dispatchOpeningEndingAdjust(KeyEvent event) {
@@ -8022,15 +8200,19 @@ private boolean runtimeSourceOnly;
 
     @Override
     public void onKeyUp() {
-        long position = player().getPosition();
-        long duration = player().getDuration();
-        if (player().canSetOpening(position, duration)) {
-            showControl(mBinding.control.action.opening);
-        } else if (player().canSetEnding(position, duration)) {
-            showControl(mBinding.control.action.ending);
-        } else {
-            showControl(getFocus2());
+        if (!hasRememberedFocus()) {
+            long position = player().getPosition();
+            long duration = player().getDuration();
+            if (player().canSetOpening(position, duration)) {
+                showControl(mBinding.control.action.opening);
+                return;
+            }
+            if (player().canSetEnding(position, duration)) {
+                showControl(mBinding.control.action.ending);
+                return;
+            }
         }
+        showControl(getFocus2());
     }
 
     @Override

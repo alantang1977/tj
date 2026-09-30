@@ -9,13 +9,19 @@ public final class PlayerControlFocusHelper {
     private PlayerControlFocusHelper() {
     }
 
+    /**
+     * 明确传入的目标优先；只有当调用方没有给出可用目标时，才保留 root 内已有的焦点。
+     * 若「root 里已经有焦点」就提前返回，唤出控制栏时想恢复「上次选择的那个地方」
+     * 会被 root 中恰好持有的其它焦点静默覆盖，焦点看起来“自己跑到别的按钮上”。
+     */
     public static boolean ensureFocus(View root, View preferred) {
         if (!isVisible(root)) return false;
+        View target = firstFocusable(preferred);
+        if (target != null && isDescendant(root, target)) return target.requestFocus();
         View current = root.findFocus();
         if (isFocusable(current) && isDescendant(root, current)) return true;
-        View target = firstFocusable(preferred);
-        if (target == null || !isDescendant(root, target)) target = firstFocusable(root);
-        return target != null && target.requestFocus();
+        View fallback = firstFocusable(root);
+        return fallback != null && fallback.requestFocus();
     }
 
     public static boolean handleKey(View root, View preferred, KeyEvent event) {

@@ -1663,6 +1663,15 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             if (focused) inlineControlFocus = control;
             updatePlayerPanelFocus();
         });
+        // 遥控以外的输入（鼠标/触摸点击）不会移动焦点：只靠上面的焦点监听时，
+        // 用户点过的按钮不会被记住，再唤出控制栏就只能落到默认候选按钮上。
+        // 返回 false 保证不吞事件，原有点击链路不受影响。
+        if (!Util.isMobile()) {
+            view.setOnTouchListener((control, event) -> {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) inlineControlFocus = control;
+                return false;
+            });
+        }
     }
 
     private boolean hasFocusedChild(View view) {
@@ -7871,13 +7880,28 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         });
     }
 
+    /**
+     * 遥控端唤出控制栏时，只有「用户真实选中过的普通控件」才算有效记忆焦点。
+     * 片头/片尾是区间快捷入口，一旦被记成「上次焦点」，每次唤出控制栏都会被还原
+     * 到片头/片尾，覆盖用户真正选中的那个按钮。与影视原生模式 hasRememberedFocus()
+     * 保持同一判定。
+     */
+    private boolean hasRememberedInlineControlFocus() {
+        return inlineControlFocus != null
+                && isVisibleInHierarchy(inlineControlFocus)
+                && inlineControlFocus.isEnabled()
+                && inlineControlFocus != binding.playerOpening
+                && inlineControlFocus != binding.playerEnding;
+    }
+
     private View getInlineControlFocus() {
         if (Util.isMobile()) {
+            // 手机端以触控导航为主，保持原有「记住上次控件」语义，不套用遥控端的片头/片尾排除。
             if (inlineControlFocus != null && isVisibleInHierarchy(inlineControlFocus) && inlineControlFocus.isEnabled()) return inlineControlFocus;
             return detailControlView(R.id.play, View.class);
         }
         // TV模式：按顺序查找第一个可见且启用的按钮
-        if (inlineControlFocus != null && isVisibleInHierarchy(inlineControlFocus) && inlineControlFocus.isEnabled()) return inlineControlFocus;
+        if (hasRememberedInlineControlFocus()) return inlineControlFocus;
         View[] candidates = {
             binding.playerNext, binding.playerPrev, binding.playerEpisodes,
             binding.playerRefresh, binding.playerChangeSource, binding.playerFullscreenAction

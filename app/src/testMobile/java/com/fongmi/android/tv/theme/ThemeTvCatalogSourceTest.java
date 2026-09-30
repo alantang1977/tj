@@ -39,7 +39,9 @@ public class ThemeTvCatalogSourceTest {
         assertTrue(read("app/src/leanback/res/drawable/shape_item_focused.xml").contains("?attr/colorPrimary"));
         assertTrue(read("app/src/leanback/res/drawable/shape_site_item_normal.xml").contains("?attr/colorSurfaceVariant"));
         assertTrue(read("app/src/leanback/res/drawable/shape_group_button_focused.xml").contains("?attr/colorOnPrimary"));
-        assertTrue(read("app/src/leanback/res/drawable/selector_video_item.xml").contains("?attr/colorPrimary"));
+        // 播放页芯片的焦点/选中已从全局 colorPrimary（本 flavor 固定白色）收敛到专用语义属性，
+        // 属性仍在 Theme.Base 里绑定，自定义主题可覆写。
+        assertTrue(read("app/src/leanback/res/drawable/selector_video_item.xml").contains("?attr/tvFocusRing"));
     }
 
     private String read(String path) throws Exception {

@@ -35,6 +35,17 @@
     <color name="display_option_stroke_selected">#FFFFFFFF</color>
     <color name="display_option_stroke_default">#33FFFFFF</color>
     <color name="display_dialog_panel_bg">#E61F2A31</color>
+    <!--
+        原生增强播放页统一焦点/选中语义色。详情页(TmdbDetailActivity)、TV 播放页(leanback
+        VideoActivity) 和集数卡片此前各自用白、黄、无描边三套规则；这三项是唯一的取值来源，
+        新增可选控件必须引用它们，不要再写死十六进制。
+        - focus   获得焦点：3dp 圆环
+        - current 当前播放/当前生效：2dp 圆环
+        - stroke  常态描边：1dp
+    -->
+    <color name="tv_item_focus_ring">#FFD166</color>
+    <color name="tv_item_current_ring">#2CC56F</color>
+    <color name="tv_item_normal_stroke">#33FFFFFF</color>
     <color name="site_health_good">#0B8043</color>
     <color name="site_health_warn">#B7791F</color>
     <color name="site_health_bad">#C53030</color>

@@ -202,6 +202,101 @@ public class PlayerControlFocusIntegrationTest {
     }
 
     @Test
+    public void leanbackControlWakeKeepsUserChosenFocusOutsideTheIntroRange() throws Exception {
+        Path leanbackPath = findLeanbackJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java"));
+        String leanback = new String(Files.readAllBytes(leanbackPath), StandardCharsets.UTF_8);
+
+        int remembered = leanback.indexOf("private boolean hasRememberedFocus()");
+        int getFocus2 = leanback.indexOf("private View getFocus2()", remembered);
+        int onKeyUp = leanback.indexOf("public void onKeyUp()", getFocus2);
+
+        assertTrue("leanback must keep one shared predicate for a usable remembered control focus", remembered >= 0);
+        assertTrue("the remembered-focus predicate must precede the default focus resolver", getFocus2 > remembered);
+        assertTrue("the DPAD-UP wake path must be discoverable after the focus resolver", onKeyUp > getFocus2);
+
+        String predicate = enclosingMethodBody(leanback, remembered);
+        assertTrue("a remembered focus must be visible and still inside the control bar",
+                predicate.contains("mFocus2.getVisibility() == View.VISIBLE")
+                        && predicate.contains("PlayerControlFocusHelper.isDescendant(mBinding.control.getRoot(), mFocus2)"));
+        assertTrue("the intro/outro buttons must never count as a remembered user focus",
+                predicate.contains("mFocus2 != mBinding.control.action.opening")
+                        && predicate.contains("mFocus2 != mBinding.control.action.ending"));
+
+        String resolver = enclosingMethodBody(leanback, getFocus2);
+        assertTrue("the default focus resolver must reuse the shared predicate",
+                resolver.contains("hasRememberedFocus()") && resolver.contains("mBinding.control.action.next"));
+
+        String wake = enclosingMethodBody(leanback, onKeyUp);
+        assertTrue("waking the control bar must not move focus away from the user's last control",
+                wake.contains("if (!hasRememberedFocus())")
+                        && wake.contains("showControl(getFocus2())"));
+        assertTrue("the intro/outro shortcut may only run when no user focus is remembered",
+                wake.indexOf("if (!hasRememberedFocus())") < wake.indexOf("canSetOpening"));
+    }
+
+    @Test
+    public void fusionControlWakeKeepsUserChosenFocusOutsideTheIntroRange() throws Exception {
+        Path activityPath = findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java"));
+        String activity = new String(Files.readAllBytes(activityPath), StandardCharsets.UTF_8);
+
+        int predicate = activity.indexOf("private boolean hasRememberedInlineControlFocus()");
+        int resolver = activity.indexOf("private View getInlineControlFocus()", predicate);
+        int show = activity.indexOf("private void showInlineControls(boolean show, boolean focus)");
+        int focusDefault = activity.indexOf("focusInlineDefaultControl();", show);
+
+        assertTrue("fusion must keep one shared predicate for a usable remembered control focus", predicate >= 0);
+        assertTrue("the remembered-focus predicate must precede the default focus resolver", resolver > predicate);
+        assertTrue("the control wake path must resolve focus after the overlay becomes visible",
+                show >= 0 && focusDefault > show);
+
+        String predicateBody = enclosingMethodBody(activity, predicate);
+        assertTrue("a remembered focus must stay visible and enabled inside the inline control bar",
+                predicateBody.contains("isVisibleInHierarchy(inlineControlFocus)")
+                        && predicateBody.contains("inlineControlFocus.isEnabled()"));
+        assertTrue("the intro/outro buttons must never count as a remembered user focus",
+                predicateBody.contains("inlineControlFocus != binding.playerOpening")
+                        && predicateBody.contains("inlineControlFocus != binding.playerEnding"));
+
+        String resolverBody = enclosingMethodBody(activity, resolver);
+        assertTrue("the fusion default focus resolver must reuse the shared predicate",
+                resolverBody.contains("hasRememberedInlineControlFocus()"));
+        assertTrue("the fusion default focus resolver must keep a non-intro fallback",
+                resolverBody.contains("binding.playerNext"));
+
+        int focusDefaultMethod = activity.indexOf("private void focusInlineDefaultControl()");
+        String wakeBody = enclosingMethodBody(activity, focusDefaultMethod);
+        assertTrue("waking the fusion control bar must go through the shared resolver",
+                wakeBody.contains("PlayerControlFocusHelper.ensureFocus(")
+                        && wakeBody.contains("getInlineControlFocus()"));
+    }
+
+    @Test
+    public void tvControlClickIsRememberedAndPreferredFocusWinsOnWake() throws Exception {
+        Path activityPath = findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java"));
+        String activity = new String(Files.readAllBytes(activityPath), StandardCharsets.UTF_8);
+        Path helperPath = findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "helper", "PlayerControlFocusHelper.java"));
+        String helper = new String(Files.readAllBytes(helperPath), StandardCharsets.UTF_8);
+
+        int setup = activity.indexOf("private void setupInlineControl(View view)");
+        assertTrue("inline controls must keep a single setup entry point", setup >= 0);
+        String setupBody = enclosingMethodBody(activity, setup);
+        assertTrue("touch recording must stay remote-only so mobile focus behaviour is untouched",
+                setupBody.contains("!Util.isMobile()"));
+        assertTrue("a mouse/touch click must also become the remembered control, not only focus navigation",
+                setupBody.contains("MotionEvent.ACTION_DOWN") && setupBody.contains("inlineControlFocus = control"));
+        assertTrue("recorded touches must never consume the event, otherwise the existing click path breaks",
+                setupBody.contains("return false;"));
+
+        int ensure = helper.indexOf("public static boolean ensureFocus");
+        assertTrue(helperPath + " is missing ensureFocus", ensure >= 0);
+        String ensureBody = enclosingMethodBody(helper, ensure);
+        assertTrue("an explicitly preferred target must be resolved before whatever already holds focus inside the root",
+                ensureBody.indexOf("firstFocusable(preferred)") < ensureBody.indexOf("root.findFocus()"));
+        assertTrue("focus restoration must still fall back to the first focusable when no preference is usable",
+                ensureBody.contains("firstFocusable(root)"));
+    }
+
+    @Test
     public void leanbackPlaybackControlButtonsKeepConfirmActionsWired() throws Exception {
         Path sourcePath = findLeanbackJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java"));
         String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);

@@ -3147,8 +3147,8 @@ public class TmdbDetailActivityLayoutTest {
                         && adapter.indexOf("scaleX(", method) < 0
                         && adapter.indexOf("scaleY(", method) < 0);
         assertTrue("legacy episode foreground selector must also keep focus yellow and playing green",
-                selector.contains("android:color=\"#FFD166\"")
-                        && selector.contains("android:color=\"#2CC56F\""));
+                selector.contains("android:color=\"?attr/tvFocusRing\"")
+                        && selector.contains("android:color=\"?attr/tvCurrentRing\""));
     }
 
     @Test

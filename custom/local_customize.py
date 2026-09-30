@@ -73,6 +73,19 @@ except Exception:
     _YAML_OK = False
 import shutil
 import sys
+import subprocess
+try:
+    import numpy as np
+except ImportError:
+    # numpy 缺失时自动安装（图标填满适配需要），避免用户手动 pip 报错
+    print("[INFO] 首次运行需要 numpy，正在自动安装 ...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "numpy"])
+        import numpy as np
+    except Exception:
+        print("[ERROR] numpy 自动安装失败，请手动运行后重试:")
+        print('        python -m pip install --upgrade numpy pillow')
+        sys.exit(1)
 import xml.etree.ElementTree as ET
 
 # Windows 控制台即时刷新输出，避免日志"卡住不动"的假象（每行 print 立即显示）
@@ -1181,6 +1194,169 @@ def _place_balanced(tile, W, H, distf, thr=CAT_KEEP_ALPHA):
     return out
 
 
+# ===== 图标猫"填满适配"：最大化填满画布 + 统一缝隙（不要求几何居中）=====
+# 思路：高清猫紧裁并预乘（透明区RGB清零，防缩放外溢）；取外轮廓像素精确评估；
+# 对每个形状二分求最大缩放，再在可行纵向偏移内取"耳侧缝隙≈项圈侧缝隙"的均衡点。
+_CAT_FILL_TILE = None
+_CAT_FILL_CONTOUR = None
+
+
+def _cat_fill_tile():
+    """返回 (实体猫紧裁tile RGBA, (ux,uy) 归一化外轮廓点)。全局缓存。"""
+    global _CAT_FILL_TILE, _CAT_FILL_CONTOUR
+    if _CAT_FILL_TILE is not None:
+        return _CAT_FILL_TILE, _CAT_FILL_CONTOUR
+    base = 2048
+    big = draw_cat(base)
+    fa = np.asarray(big.split()[3])
+    solid = fa >= CAT_KEEP_ALPHA
+    yy, xx = np.where(solid)
+    x0, x1 = int(xx.min()), int(xx.max()) + 1
+    y0, y1 = int(yy.min()), int(yy.max()) + 1
+    tile = big.crop((x0, y0, x1, y1))
+    # 预乘：低 alpha 区 RGB 清零，避免 LANCZOS 缩放时耳尖色外溢成假边
+    arr = np.asarray(tile).astype(float)
+    a = (arr[..., 3] >= CAT_KEEP_ALPHA).astype(float)
+    arr[..., 0] *= a; arr[..., 1] *= a; arr[..., 2] *= a; arr[..., 3] *= a
+    tile = Image.fromarray(arr.astype("uint8"), "RGBA")
+    TW, TH = tile.size
+    ts = np.asarray(tile.split()[3]) >= CAT_KEEP_ALPHA
+    from PIL import ImageFilter as _IF
+    er = np.asarray(Image.fromarray((ts * 255).astype("uint8")).filter(_IF.MinFilter(5))) > 0
+    cont = ts & (~er)
+    top_x = np.where(ts[0, :])[0]; bot_x = np.where(ts[-1, :])[0]
+    lef_y = np.where(ts[:, 0])[0]; rig_y = np.where(ts[:, -1])[0]
+    EX = np.concatenate([np.where(cont)[1], top_x, bot_x,
+                         np.full_like(lef_y, 0), np.full_like(rig_y, TW - 1)])
+    EY = np.concatenate([np.where(cont)[0], np.full_like(top_x, 0),
+                         np.full_like(bot_x, TH - 1), lef_y, rig_y])
+    ux = (EX + 0.5) / TW
+    uy = (EY + 0.5) / TH
+    _CAT_FILL_TILE = tile
+    _CAT_FILL_CONTOUR = (ux, uy)
+    return tile, (ux, uy)
+
+
+def _fill_y_span(kind, W, H, X, G, radius_ratio=0.22):
+    """画布 X 处，形状内缩 G 后允许的 Y 区间 (Ylo,Yhi)；不可行返回 None。"""
+    if kind == "circle":
+        R = W / 2.0; cx = W / 2.0; dx = X - cx; rr = R - G
+        if abs(dx) > rr:
+            return None
+        d = _math.sqrt(max(0.0, rr * rr - dx * dx))
+        return (cx - d, cx + d)
+    if kind == "safe_circle":
+        R = W / 3.0; cx = W / 2.0; cy = H / 2.0; dx = X - cx; rr = R - G
+        if abs(dx) > rr:
+            return None
+        d = _math.sqrt(max(0.0, rr * rr - dx * dx))
+        return (cy - d, cy + d)
+    if kind == "rect":
+        if not (G <= X <= W - G):
+            return None
+        return (G, H - G)
+    if kind == "rounded":
+        r0 = radius_ratio * W; ri = max(0.0, r0 - G)
+        L, T, Rt, B = G, G, W - G, H - G
+        if X < L + ri:
+            qx = L + ri
+        elif X > Rt - ri:
+            qx = Rt - ri
+        else:
+            return (T, B)
+        dx = abs(X - qx)
+        if dx > ri:
+            return None
+        dy = _math.sqrt(max(0.0, ri * ri - dx * dx))
+        return (T + ri - dy, B - ri + dy)
+    raise ValueError(kind)
+
+
+def _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH):
+    """给定缩放 s，返回可行纵向偏移 oy 区间；不可行返回 None。"""
+    lo, hi = -1e9, 1e9
+    for i in range(len(ux)):
+        X = W / 2.0 + (ux[i] - 0.5) * TW * s
+        Ydev = (uy[i] - 0.5) * TH * s
+        span = _fill_y_span(kind, W, H, X, G, radius_ratio)
+        if span is None:
+            return None
+        Ylo, Yhi = span
+        lo = max(lo, Ylo - H / 2.0 - Ydev)
+        hi = min(hi, Yhi - H / 2.0 - Ydev)
+        if lo > hi + 1e-6:
+            return None
+    return (lo, hi)
+
+
+def _fill_clear_side(kind, W, H, s, oy, G, radius_ratio, ux, uy, TW, TH, top):
+    """上半(耳)/下半(项圈)轮廓点到形状边界的最小间隙。"""
+    worst = 1e9
+    for i in range(len(ux)):
+        is_top = uy[i] < 0.5
+        if is_top != top:
+            continue
+        X = W / 2.0 + (ux[i] - 0.5) * TW * s
+        Y = H / 2.0 + (uy[i] - 0.5) * TH * s + oy
+        if kind == "circle":
+            c = W / 2.0 - _math.hypot(X - W / 2.0, Y - H / 2.0)
+        elif kind == "safe_circle":
+            c = W / 3.0 - _math.hypot(X - W / 2.0, Y - H / 2.0)
+        elif kind == "rect":
+            c = min(X, W - X, Y, H - Y)
+        elif kind == "rounded":
+            r = radius_ratio * W
+            dx = max(abs(X - W / 2.0) - (W / 2.0 - r), 0.0)
+            dy = max(abs(Y - H / 2.0) - (H / 2.0 - r), 0.0)
+            c = r - _math.hypot(dx, dy)
+        else:
+            c = 0.0
+        worst = min(worst, c)
+    return worst
+
+
+def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=15 / 512):
+    """把猫以"最大化填满 + 统一缝隙"放入 W×H 画布，返回透明底 RGBA。
+    kind: circle / rounded / rect(方形或横幅) / safe_circle(自适应安全圆)。
+    gap_frac: 缝隙占短边的比例（随画布尺寸等比缩放，避免小图标缝隙过大）。"""
+    tile, (ux, uy) = _cat_fill_tile()
+    TW, TH = tile.size
+    gap = gap_frac * min(W, H)
+    G = gap + 2.0  # 2px 重采样安全余量（小尺寸下也至少留一点）
+    # 1) 二分求最大可行缩放
+    lo, hi = 0.0, max(W / TW, H / TH) * 2.5
+    for _ in range(60):
+        mid = (lo + hi) / 2.0
+        if _fill_oy_interval(kind, W, H, mid, G, radius_ratio, ux, uy, TW, TH) is not None:
+            lo = mid
+        else:
+            hi = mid
+    s = lo
+    rng = _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH)
+    if rng is None:  # 兜底
+        s = lo * 0.95
+        rng = _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH) or (0.0, 0.0)
+    # 2) 在可行区间内取 oy 使耳侧与项圈侧缝隙均衡
+    a, b = rng
+    for _ in range(40):
+        mid_oy = (a + b) / 2.0
+        if _fill_clear_side(kind, W, H, s, mid_oy, G, radius_ratio, ux, uy, TW, TH, top=True) > \
+           _fill_clear_side(kind, W, H, s, mid_oy, G, radius_ratio, ux, uy, TW, TH, top=False):
+            a = mid_oy
+        else:
+            b = mid_oy
+    oy = (a + b) / 2.0
+    # 3) SS 超采样渲染、居中、降采样
+    nw = max(1, int(round(TW * s * SS)))
+    nh = max(1, int(round(TH * s * SS)))
+    ch = tile.resize((nw, nh), Image.LANCZOS)
+    layer = Image.new("RGBA", (W * SS, H * SS), HOLE)
+    px = int(round((W * SS - nw) / 2.0))
+    py = int(round(H * SS / 2.0 + oy * SS - nh / 2.0))
+    layer.alpha_composite(ch, (px, py))
+    return layer.resize((W, H), Image.LANCZOS)
+
+
 def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
            inset=None, badge=None, style="3d"):
     """渲染完整图标。
@@ -1205,22 +1381,9 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
         if shape != "square":
             img.putalpha(_mask(big, shape, radius_ratio))
         img = img.resize((size, size), Image.LANCZOS)
-        # 猫：big 超采样渲染→降到 size→在最终画布上严格居中（实体 bbox 中心偏移为 0，
-        # 耳尖到画布顶边 = 领圈底到画布底边，左右同理；各形状用安全 zoom 保证不触边不裁切）
-        if shape == "rounded":
-            # 自适应 squircle 圆角更大(0.30)，耳尖更易触边，用专用较小倍率；普通圆角(0.22)用饱满倍率
-            use_zoom = CAT_ZOOM_SQUIRCLE if radius_ratio >= 0.28 else CAT_ZOOM_ROUNDED
-        elif shape == "square":
-            use_zoom = CAT_ZOOM_SQUARE
-        else:
-            use_zoom = CAT_ZOOM
-        cat = _fit_cat(big, use_zoom)
-        layer = Image.new("RGBA", (big, big), HOLE)
-        layer.alpha_composite(cat, ((big - cat.width) // 2, (big - cat.height) // 2))
-        catf = layer.resize((size, size), Image.LANCZOS)
-        # 先严格居中，再整体下移使绿项圈最下缘到底边留 15px(512尺寸) 缝隙；zoom 已调好使耳尖到形状弧也≈15px
-        catf = _exact_centered(catf, size, size)
-        catf = _place_bottom_gap(catf, size, size, gap_frac=15 / 512)
+        # 猫：填满适配——最大化但留统一缝隙，耳尖/项圈/两侧均不触边不裁切
+        kind = {"circle": "circle", "rounded": "rounded", "square": "rect"}.get(shape, "rect")
+        catf = place_cat_fill(size, size, kind=kind, radius_ratio=radius_ratio)
         img.alpha_composite(catf)
         return img
 
@@ -1241,14 +1404,9 @@ def render_banner(w, h, style="3d"):
     img = add_iphone17_background_flare(img)
 
     if style == "cat":
-        # 背景降到最终尺寸；猫放大后在长方形 banner 内严格居中（上下左右对称、完整不裁切）
+        # 背景降到最终尺寸；猫填满适配（上下留缝、两侧自然留白、完整不裁切）
         img = img.resize((w, h), Image.LANCZOS)
-        cat = _fit_cat(int(bh * 0.95), CAT_ZOOM_BANNER)
-        layer = Image.new("RGBA", (bw, bh), HOLE)
-        layer.alpha_composite(cat, ((bw - cat.width) // 2, (bh - cat.height) // 2))
-        catf = layer.resize((w, h), Image.LANCZOS)
-        catf = _exact_centered(catf, w, h)
-        catf = _place_bottom_gap(catf, w, h, gap_frac=0.025)
+        catf = place_cat_fill(w, h, kind="rect", gap_frac=6 / 180)
         img.alpha_composite(catf)
         return img
 
@@ -1266,22 +1424,12 @@ def render_notification(size, style="3d"):
     return draw_wordmark(size * SS, FILL_NOTIFY, style=style).resize((size, size),
                           Image.LANCZOS)
 def render_cat_foreground(size):
-    """自适应图标前景：完整彩色猫（透明底），超采样后缩放至安全区内并严格居中。
+    """自适应图标前景：完整彩色猫（透明底），填满适配放入安全圆(半径≈size/3)内。
 
     自适应图标 108dp 中系统只保证中心约 72dp 可见（半径 ≈ size/3）。
-    基准画布 inner=0.79*size：配合下移使耳尖到安全圆≈15px、绿项圈底到安全圆底≈15px（432尺寸）。
-    弱光晕已剔除，SS=5 超采样再 LANCZOS 缩小，所有密度下边缘锐利无锯齿、不变形。
-    """
-    inner = int(size * 0.785)
-    big = inner * SS
-    cat_big = _fit_cat(big, 1.0)
-    cw = max(1, int(round(cat_big.width / SS)))
-    ch = max(1, int(round(cat_big.height / SS)))
-    cat = cat_big.resize((cw, ch), Image.LANCZOS)
-    cat = _exact_centered(cat, size, size)
-    # 下移使绿项圈最下缘到安全圆底边留 15px(432尺寸) 缝隙；zoom 已调好使耳尖到安全圆也≈15px
-    cat = _place_bottom_gap(cat, size, size, gap_frac=15 / 432, safe_r_frac=1 / 3)
-    return cat
+    填满适配使猫在安全圆内最大化并留统一缝隙，SS=5 超采样再 LANCZOS 缩小，
+    所有密度下边缘锐利无锯齿、不变形。"""
+    return place_cat_fill(size, size, kind="safe_circle", gap_frac=15 / 432)
 def _remove_if_exists(rel):
     """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
     path = os.path.join(REPO, rel)
@@ -1746,8 +1894,9 @@ def generate_app_icons(config):
         style = "cat"
     try:
         import PIL  # noqa: F401
+        import numpy  # noqa: F401
     except Exception:
-        print("[ERROR] 未安装 Pillow，无法生成图标。请先运行: pip install pillow")
+        print("[ERROR] 未安装 Pillow/numpy，无法生成图标。请先运行: pip install pillow numpy")
         return False
     print(f"[INFO] 正在生成图标（风格: {style}）...")
     try:
@@ -3148,7 +3297,7 @@ def modify_workflow_files(config):
                     '\n'
                     '      - name: Regenerate icons from custom script\n'
                     '        run: |\n'
-                    '          python3 -m pip install --upgrade Pillow\n'
+                    '          python3 -m pip install --upgrade Pillow numpy\n'
                     '          python3 - <<\'PY\'\n'
                     '          import importlib.util, sys\n'
                     '          spec = importlib.util.spec_from_file_location("lc", "custom/local_customize.py")\n'
@@ -3173,7 +3322,14 @@ def modify_workflow_files(config):
                 else:
                     print("[WARN] android-release.yml: 未定位到 setup-python 步骤，图标重生成步骤需人工添加")
             else:
-                print("[SKIP] android-release.yml: 图标重生成步骤已存在")
+                # 步骤已存在：幂等升级 pip 依赖（旧版只装 Pillow，填满适配需 numpy）
+                _old_pip = 'python3 -m pip install --upgrade Pillow\n'
+                _new_pip = 'python3 -m pip install --upgrade Pillow numpy\n'
+                if _old_pip in content and 'Pillow numpy' not in content:
+                    content = content.replace(_old_pip, _new_pip, 1)
+                    print("[OK] android-release.yml: 图标重生成步骤 pip 依赖升级为 Pillow numpy")
+                else:
+                    print("[SKIP] android-release.yml: 图标重生成步骤已存在且依赖完整")
 
         if content != original:
             # 写回前 YAML 解析校验：一旦破坏缩进，GitHub Actions 会直接 Invalid workflow file

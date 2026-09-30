@@ -7,13 +7,20 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.leanback.widget.Presenter;
 
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.TmdbItem;
 import com.fongmi.android.tv.databinding.AdapterTmdbRecommendationBinding;
 import com.fongmi.android.tv.ui.helper.TmdbRatingFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.TmdbImageSelector;
+import com.google.android.material.card.MaterialCardView;
 
 public class TmdbRecommendationPresenter extends Presenter {
+
+    // 原生增强播放页统一焦点环（见 app/src/main/res/values/colors.xml）：
+    // 之前推荐卡没有任何焦点描边，遥控移过来看不出停在哪；这里与选集/线路/评分卡统一为 3dp 环。
+    private static final int FOCUS_WIDTH_DP = 3;
 
     private final OnClickListener mListener;
     private final OnLongClickListener mLongClickListener;
@@ -68,8 +75,10 @@ public class TmdbRecommendationPresenter extends Presenter {
         });
         holder.view.setOnLongClickListener(view -> mLongClickListener != null && mLongClickListener.onItemLongClick(tmdbItem));
         holder.view.setOnFocusChangeListener((view, focused) -> {
+            applyUnifiedFocus((MaterialCardView) view, focused);
             if (mFocusListener != null) mFocusListener.onItemFocus(tmdbItem, focused);
         });
+        applyUnifiedFocus((MaterialCardView) holder.view, holder.view.hasFocus());
         if (holder.view.hasFocus() && mFocusListener != null) mFocusListener.onItemFocus(tmdbItem, true);
     }
 
@@ -82,6 +91,17 @@ public class TmdbRecommendationPresenter extends Presenter {
         holder.item = null;
         viewHolder.view.setOnLongClickListener(null);
         viewHolder.view.setOnFocusChangeListener(null);
+    }
+
+    /**
+     * 统一焦点外观：焦点用 3dp tv_item_focus_ring 圆环，失焦恢复常态 1dp 描边。
+     * 只作用于 leanback 播放页的推荐卡，不改变共享布局和独立详情页的焦点契约。
+     */
+    private static void applyUnifiedFocus(MaterialCardView card, boolean focused) {
+        card.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_WIDTH_DP : 1));
+        card.setStrokeColor(focused
+                ? card.getContext().getColor(R.color.tv_item_focus_ring)
+                : card.getContext().getColor(R.color.tv_item_normal_stroke));
     }
 
     public static class ViewHolder extends Presenter.ViewHolder {

@@ -77,7 +77,7 @@ jobs:
 
       - name: Regenerate icons from custom script
         run: |
-          python3 -m pip install --upgrade Pillow
+          python3 -m pip install --upgrade Pillow numpy
           python3 - <<'PY'
           import importlib.util, sys
           spec = importlib.util.spec_from_file_location("lc", "custom/local_customize.py")
