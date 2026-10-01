@@ -1315,15 +1315,19 @@ def _fill_clear_side(kind, W, H, s, oy, G, radius_ratio, ux, uy, TW, TH, top):
     return worst
 
 
-def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=15 / 512):
-    """把猫以"最大化填满 + 统一缝隙"放入 W×H 画布，返回透明底 RGBA。
+def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512):
+    """把猫以"最大化填满 + 耳/领缝隙均衡"放入 W×H 画布，返回透明底 RGBA。
     kind: circle / rounded / rect(方形或横幅) / safe_circle(自适应安全圆)。
-    gap_frac: 缝隙占短边的比例（随画布尺寸等比缩放，避免小图标缝隙过大）。"""
+    gap_frac: 缝隙占短边的比例（随画布尺寸等比缩放；越小猫越满）。
+
+    不要求几何严格居中：先二分求最大缩放（任意纵向偏移可行），再在可行偏移区间内
+    取"耳侧最小缝隙≈项圈侧最小缝隙"的均衡点，使整只猫从耳尖到绿项圈尽量占满画布，
+    同时四周留缝不触边。圆角/方形/横幅平顶下猫可达到很大占比。"""
     tile, (ux, uy) = _cat_fill_tile()
     TW, TH = tile.size
     gap = gap_frac * min(W, H)
-    G = gap + 2.0  # 2px 重采样安全余量（小尺寸下也至少留一点）
-    # 1) 二分求最大可行缩放
+    G = gap + 2.0  # 2px 重采样安全余量
+    # 1) 二分求最大可行缩放（任意 oy）
     lo, hi = 0.0, max(W / TW, H / TH) * 2.5
     for _ in range(60):
         mid = (lo + hi) / 2.0
@@ -1333,10 +1337,10 @@ def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=15 / 512):
             hi = mid
     s = lo
     rng = _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH)
-    if rng is None:  # 兜底
+    if rng is None:
         s = lo * 0.95
         rng = _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH) or (0.0, 0.0)
-    # 2) 在可行区间内取 oy 使耳侧与项圈侧缝隙均衡
+    # 2) 在可行区间内取 oy 使耳侧与项圈侧到形状边界的最小缝隙均衡
     a, b = rng
     for _ in range(40):
         mid_oy = (a + b) / 2.0
@@ -1406,7 +1410,7 @@ def render_banner(w, h, style="3d"):
     if style == "cat":
         # 背景降到最终尺寸；猫填满适配（上下留缝、两侧自然留白、完整不裁切）
         img = img.resize((w, h), Image.LANCZOS)
-        catf = place_cat_fill(w, h, kind="rect", gap_frac=6 / 180)
+        catf = place_cat_fill(w, h, kind="rect", gap_frac=4 / 180)
         img.alpha_composite(catf)
         return img
 
@@ -1429,7 +1433,7 @@ def render_cat_foreground(size):
     自适应图标 108dp 中系统只保证中心约 72dp 可见（半径 ≈ size/3）。
     填满适配使猫在安全圆内最大化并留统一缝隙，SS=5 超采样再 LANCZOS 缩小，
     所有密度下边缘锐利无锯齿、不变形。"""
-    return place_cat_fill(size, size, kind="safe_circle", gap_frac=15 / 432)
+    return place_cat_fill(size, size, kind="safe_circle", gap_frac=8 / 432)
 def _remove_if_exists(rel):
     """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
     path = os.path.join(REPO, rel)
@@ -1458,6 +1462,34 @@ def _purge_residual_foreground():
                 print(f"  [clean] removed residual: {f}")
             except OSError:
                 pass
+
+
+def _purge_all_launcher_icons():
+    """彻底清理所有 flavor 下残留的旧版启动器图标（确保更新后无旧图标残留）。
+
+    清理范围：main/mobile/leanback 的所有 mipmap* 目录中的 ic_launcher* 与
+    ic_banner* 文件（含 png/webp/xml 任意格式）。脚本随后会重新生成全部最新图标，
+    因此先清空再写入是安全的，可杜绝：
+      · 旧格式残留（如 ic_launcher_round.png 与新 .webp 并存导致资源解析歧义）
+      · 旧密度目录残留
+      · mobile/leanback flavor 私有 mipmap 覆盖 main 导致图标不更新
+      · 旧自适应图标 XML 与新前景不匹配
+    """
+    import glob as _glob
+    cleaned = 0
+    for flavor in ("main", "mobile", "leanback"):
+        for pat in (
+            f"app/src/{flavor}/res/mipmap*/ic_launcher*",
+            f"app/src/{flavor}/res/mipmap*/ic_banner*",
+        ):
+            for f in _glob.glob(os.path.join(REPO, pat)):
+                try:
+                    os.remove(f)
+                    cleaned += 1
+                except OSError:
+                    pass
+    if cleaned:
+        print(f"  [clean] 已清理 {cleaned} 个旧版启动器图标残留文件")
 # --- VectorDrawable 生成 ---
 def _p(v):
     return f"{v:.2f}".rstrip("0").rstrip(".")
@@ -1658,6 +1690,9 @@ def do_write(style="3d"):
     if style == "cat":
         # cat 风格改用 PNG 前景，先彻底清理旧版白色剪影 XML（杜绝空白猫）
         _purge_residual_foreground()
+    # 清空所有 flavor 的旧版启动器图标（png/webp/xml 任意格式残留），再重新生成最新版，
+    # 确保打包进 APK 的图标全部是脚本最新输出，无旧版本残留
+    _purge_all_launcher_icons()
     print("[vector drawables]")
     save_text(vector_background(), f"{MAIN_RES}/drawable/ic_launcher_background.xml")
     if style == "cat":
