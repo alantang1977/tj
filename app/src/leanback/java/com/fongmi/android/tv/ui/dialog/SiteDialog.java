@@ -16,7 +16,6 @@ import android.view.WindowManager;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.LinearLayoutCompat;
-import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -32,8 +31,10 @@ import com.fongmi.android.tv.databinding.DialogSiteBinding;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.impl.SiteListener;
 import com.fongmi.android.tv.setting.SiteGroupOrderStore;
+import com.fongmi.android.tv.theme.ThemeController;
 import com.fongmi.android.tv.ui.adapter.SiteAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
+import com.fongmi.android.tv.ui.helper.SiteDialogTheme;
 import com.fongmi.android.tv.ui.helper.TouchOptimizationHelper;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -115,6 +116,9 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         initView();
         initEvent();
         dialog.setOnKeyListener((d, keyCode, event) -> onDialogKey(keyCode, event));
+        ThemeController.bindDialog(dialog);
+        SiteDialogTheme.applyShell(binding.getRoot(), binding.keyword, binding.config, binding.search,
+                binding.change, binding.select, binding.cancel, binding.mode);
         return dialog;
     }
 
@@ -145,6 +149,9 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         directDialog.show();
         log("show call end cost=%sms total=%sms", cost(showDialogStart), cost());
         applyWindow(directDialog.getWindow());
+        ThemeController.bindDialog(directDialog);
+        SiteDialogTheme.applyShell(binding.getRoot(), binding.keyword, binding.config, binding.search,
+                binding.change, binding.select, binding.cancel, binding.mode);
         TouchOptimizationHelper.sync(directDialog);
         log("window applied total=%sms", cost());
     }
@@ -168,6 +175,8 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         binding.select.setVisibility(action ? View.VISIBLE : View.GONE);
         binding.cancel.setVisibility(action ? View.VISIBLE : View.GONE);
         binding.mode.setVisibility(View.GONE);
+        SiteDialogTheme.applyShell(binding.getRoot(), binding.keyword, binding.config, binding.search,
+                binding.change, binding.select, binding.cancel, binding.mode);
         setActionEnabled(false);
         binding.recycler.setAdapter(null);
         binding.recycler.setItemAnimator(null);
@@ -289,8 +298,10 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
     private void setActionEnabled(boolean enabled) {
         binding.search.setEnabled(enabled);
         binding.change.setEnabled(enabled);
-        binding.select.setEnabled(enabled && type > 0);
-        binding.cancel.setEnabled(enabled && type > 0);
+        // Keep bulk actions in the D-pad focus chain even in plain switch mode.
+        // setType() controls whether they are clickable; enabled only reflects loading state.
+        binding.select.setEnabled(enabled);
+        binding.cancel.setEnabled(enabled);
     }
 
     @Override
@@ -488,8 +499,7 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
         button.setAllCaps(false);
         button.setGravity(android.view.Gravity.CENTER);
         button.setPadding(ResUtil.dp2px(16), ResUtil.dp2px(8), ResUtil.dp2px(16), ResUtil.dp2px(8));
-        button.setTextColor(ContextCompat.getColorStateList(getDialogActivity(), R.color.selector_group_text));
-        button.setBackgroundResource(R.drawable.selector_group_button);
+        SiteDialogTheme.applyGroup(button);
         button.setFocusable(true);
         button.setClickable(true);
         button.setNextFocusDownId(binding.recycler.getId());
@@ -635,6 +645,7 @@ public class SiteDialog extends BaseAlertDialog implements SiteAdapter.OnClickLi
             button.setContentDescription(TextUtils.isEmpty(group) ? text : getDialogActivity().getString(description, text));
             view.setAlpha(groupReordering && !reordering ? 0.55f : 1.0f);
             view.setSelected(selected);
+            SiteDialogTheme.applyGroup(button);
         }
     }
 

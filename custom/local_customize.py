@@ -654,6 +654,15 @@ def draw_cat(size):
         d.polygon(inner_half, fill=(250, 150, 120, 255))
         # 耳根即头圆圆弧，不再画直线弦 / 深色缝线
 
+    # ===== 头部/脸部整体放大 k=1.12（下巴锚定；耳朵与项圈保持原尺寸、原位）=====
+    # 耳朵已按 (r, head_cy) 画完。头部球体与脸部五官改用放大后的 (r, head_cy)：
+    # 半径 ×1.12、圆心上移 0.12r，使头圆最底点（下巴）位置不变、向上长；
+    # 白楔形内耳与项圈/铃铛绘制前会把 (r, head_cy) 还原，故二者不受影响。
+    _r0, _cy0 = r, head_cy
+    r = _r0 * 1.12
+    head_cy = _cy0 - _r0 * 0.12
+    hx, hy = cx - r, head_cy - r
+
     # ===== 球体头：径向渐变（主光左上）=====
     head_mask = Image.new("L", (size, size), 0)
     ImageDraw.Draw(head_mask).ellipse([hx, hy, hx + 2 * r, hy + 2 * r], fill=255)
@@ -680,6 +689,9 @@ def draw_cat(size):
             hgd.point((xx, yy), fill=c + (255,))
     layer.paste(hgrad, (0, 0), head_mask)
 
+    # 白楔形内耳属于原版耳朵几何，临时还原 (r, head_cy)
+    r, head_cy = _r0, _cy0
+
     # 纯白亮光耳内（内嵌小楔子：白尖朝耳尖，底边沿头圆弧、与外耳根对齐）
     for side in (-1, 1):
         tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da = ear_geom(side)
@@ -705,6 +717,11 @@ def draw_cat(size):
             b_c = int(255 * (1 - k) + 252 * k)
             egd.line([(0, yy), (size, yy)], fill=(r_c, g_c, b_c, 255))
         layer.paste(ear_grad, (0, 0), ear_mask)
+
+    # 白楔形内耳画完，恢复头部放大参数用于脸部五官
+    r = _r0 * 1.12
+    head_cy = _cy0 - _r0 * 0.12
+    hx, hy = cx - r, head_cy - r
 
     # 主光高光（左上大面积柔光）
     spec = Image.new("RGBA", (size, size), HOLE)
@@ -847,6 +864,9 @@ def draw_cat(size):
                    fill=(255, 255, 255, 255), width=max(1, root_w - 1))
             d.line([(x_mid, y_mid - 1), (x_end, y_end - 1)],
                    fill=(255, 255, 255, 255), width=hl_w)
+
+    # 项圈/铃铛保持原版尺寸与原位，还原 (r, head_cy)
+    r, head_cy = _r0, _cy0
 
     # ===== 项圈（绿茶色渐变，明亮清新，与冰川蓝猫头形成冷暖对比）=====
     collar_cy = head_cy + r * 0.82
@@ -1685,6 +1705,127 @@ def do_preview(style="3d"):
         bar.alpha_composite(render_notification(px, style=style))
         save_img(bar.resize((px * 8, px * 8), Image.NEAREST),
                   f"{out}/notification_{px}.png")
+
+
+def do_export(style="cat"):
+    """导出全部图标到 build/icon-export/，按 flavor 分文件夹（手机版/电视版）。
+
+    目录结构镜像仓库实际资源布局，同名图标分别放入 mobile/ 与 tv/ 两个独立文件夹：
+      build/icon-export/
+        mobile/  手机版（launcher 圆角/圆形 + 自适应前景 + 通知 + logo + favicon）
+        tv/      电视版（launcher 同上 + TV Banner + 通知 + logo）
+        README.txt
+    所有图标均由 render()/render_banner()/render_cat_foreground() 现生成，
+    与 do_write 写入仓库、CI 打包用的图标完全一致。"""
+    root = "build/icon-export"
+    mob = os.path.join(root, "mobile")
+    tv = os.path.join(root, "tv")
+    for d in (mob, tv):
+        os.makedirs(d, exist_ok=True)
+    print(f"[export] -> {root}/ (Style: {style})")
+
+    # launcher 圆角尺寸映射（ic_launcher.png 用）
+    launcher_px = {"mdpi": 128, "hdpi": 192, "xhdpi": 256,
+                   "xxhdpi": 384, "xxxhdpi": 512}
+
+    def write_launcher(base_dir):
+        """写入一套完整 launcher 图标（圆角 png + 圆形 webp + 自适应 XML）。"""
+        for name, base in DENSITIES:
+            px = launcher_px[name]
+            mdir = os.path.join(base_dir, f"mipmap-{name}")
+            os.makedirs(mdir, exist_ok=True)
+            save_img(render(px, "rounded", style=style),
+                     os.path.join(mdir, "ic_launcher.png"), format="PNG")
+            save_img(render(base, "circle", fill=FILL_CIRCLE, style=style),
+                     os.path.join(mdir, "ic_launcher_round.webp"),
+                     format="WEBP", lossless=True, quality=100)
+        # 自适应图标 XML（mipmap-anydpi-v26）
+        adir = os.path.join(base_dir, "mipmap-anydpi-v26")
+        os.makedirs(adir, exist_ok=True)
+        save_text(ADAPTIVE_XML, os.path.join(adir, "ic_launcher.xml"))
+        save_text(ADAPTIVE_XML, os.path.join(adir, "ic_launcher_round.xml"))
+
+    def write_common(base_dir, with_banner=False):
+        """写入自适应背景/前景、monochrome、通知、logo、favicon、playstore。"""
+        # drawable：背景矢量 + monochrome
+        dd = os.path.join(base_dir, "drawable")
+        os.makedirs(dd, exist_ok=True)
+        save_text(vector_background(), os.path.join(dd, "ic_launcher_background.xml"))
+        if style == "cat":
+            save_text(vector_cat(), os.path.join(dd, "ic_launcher_monochrome.xml"))
+        else:
+            save_text(vector_wordmark(FILL_SAFE),
+                      os.path.join(dd, "ic_launcher_monochrome.xml"))
+        # drawable-nodpi：自适应前景 PNG + app 内 logo
+        dnd = os.path.join(base_dir, "drawable-nodpi")
+        os.makedirs(dnd, exist_ok=True)
+        save_img(render_cat_foreground(432),
+                 os.path.join(dnd, "ic_launcher_foreground.png"), format="PNG")
+        save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style),
+                 os.path.join(dnd, "ic_logo.png"), format="PNG")
+        # 通知栏图标（各密度）
+        for dname, px in NOTIFY_DENSITIES:
+            dn = os.path.join(base_dir, f"drawable-{dname}")
+            os.makedirs(dn, exist_ok=True)
+            save_img(render_notification(px, style=style),
+                     os.path.join(dn, "ic_notification.png"), format="PNG")
+        # Play Store 512 方形
+        save_img(render(512, "square", style=style),
+                 os.path.join(base_dir, "ic_launcher-playstore.png"), format="PNG")
+        # favicon.ico
+        frames = [render(px, "circle", fill=FILL_CIRCLE, style=style)
+                  for px in FAVICON_SIZES]
+        save_img(frames[-1], os.path.join(base_dir, "favicon.ico"), format="ICO",
+                 sizes=[(px, px) for px in FAVICON_SIZES], append_images=frames[:-1])
+
+    # ===== 手机版 =====
+    print("  [mobile] 生成手机版图标 ...")
+    write_launcher(mob)
+    write_common(mob)
+
+    # ===== 电视版 =====
+    print("  [tv] 生成电视版图标 ...")
+    write_launcher(tv)
+    write_common(tv)
+    # TV 专属 Banner
+    bdd = os.path.join(tv, "drawable")
+    os.makedirs(bdd, exist_ok=True)
+    save_img(render_banner(320, 180, style),
+             os.path.join(bdd, "ic_banner.png"), format="PNG")
+    bnd = os.path.join(tv, "drawable-nodpi")
+    os.makedirs(bnd, exist_ok=True)
+    save_img(render_cat_foreground(432),
+             os.path.join(bnd, "ic_banner_foreground.png"), format="PNG")
+    badir = os.path.join(tv, "mipmap-anydpi-v26")
+    os.makedirs(badir, exist_ok=True)
+    save_text(BANNER_XML, os.path.join(badir, "ic_banner.xml"))
+
+    # ===== README =====
+    readme = (
+        "图标导出目录（由 local_customize.py do_export 生成）\n"
+        "=" * 60 + "\n\n"
+        "mobile/   手机版图标\n"
+        "  mipmap-mdpi~xxxhdpi/ic_launcher.png        圆角启动器（128~512px）\n"
+        "  mipmap-mdpi~xxxhdpi/ic_launcher_round.webp  圆形启动器（48~192px）\n"
+        "  mipmap-anydpi-v26/ic_launcher*.xml          自适应图标配置（API26+）\n"
+        "  drawable/ic_launcher_background.xml         自适应背景矢量\n"
+        "  drawable/ic_launcher_monochrome.xml         主题图标单色矢量（Android13）\n"
+        "  drawable-nodpi/ic_launcher_foreground.png   自适应前景彩色猫（432px）\n"
+        "  drawable-nodpi/ic_logo.png                  App 内 Logo（600px）\n"
+        "  drawable-mdpi~xxhdpi/ic_notification.png    通知栏图标（24~72px）\n"
+        "  ic_launcher-playstore.png                   Play Store 商店图（512方形）\n"
+        "  favicon.ico                                 网页图标\n\n"
+        "tv/       电视版图标（launcher 同手机版，另含）\n"
+        "  drawable/ic_banner.png                      Android TV Banner（320x180）\n"
+        "  drawable-nodpi/ic_banner_foreground.png     Banner 前景（432px）\n"
+        "  mipmap-anydpi-v26/ic_banner.xml             Banner 自适应配置\n\n"
+        "所有图标 SS=5 超采样 + LANCZOS 降采样，高清不变形。\n"
+    )
+    save_text(readme, os.path.join(root, "README.txt"))
+    print(f"  README.txt")
+    print("[export] 完成。")
+
+
 def do_write(style="3d"):
     print(f"[writing resources] (Style: {style})")
     if style == "cat":
@@ -3863,5 +4004,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # --export：仅导出全部图标到 build/icon-export/（手机版/电视版分文件夹），不修改项目
+    if "--export" in sys.argv:
+        load_config_env()
+        do_export(CONFIG.get("ICON_STYLE", "cat"))
+    else:
+        main()
 #（注：内容由AI生成）

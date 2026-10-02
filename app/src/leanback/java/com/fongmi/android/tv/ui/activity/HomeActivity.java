@@ -60,6 +60,7 @@ import com.fongmi.android.tv.setting.AutoBackupPolicy;
 import com.fongmi.android.tv.setting.AppBranding;
 import com.fongmi.android.tv.setting.CustomCspSetting;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
 import com.fongmi.android.tv.ui.adapter.BaseDiffCallback;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
@@ -843,7 +844,7 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
             performClearHistory();
             return;
         }
-        new androidx.appcompat.app.AlertDialog.Builder(this)
+        new WebHtvAlertDialogBuilder(this)
                 .setTitle(R.string.dialog_delete_record)
                 .setMessage(R.string.dialog_delete_global_history)
                 .setNegativeButton(R.string.dialog_negative, null)
@@ -1105,7 +1106,7 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
     }
 
     /**
-     * 执行 select_home_menu_key 中某一项对应的动作，下标 1..9（0 是「选项弹窗」自身，不会走到这里）。
+     * 执行 select_home_menu_key 中某一项对应的动作，下标 1..11（0 是「选项弹窗」自身，不会走到这里）。
      */
     @Override
     public void onHomeMenuItem(int index) {
@@ -1119,6 +1120,8 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
             case 7 -> PushActivity.start(this, 3);
             case 8 -> KeepActivity.start(this);
             case 9 -> SettingActivity.start(this);
+            case 10 -> FollowingActivity.start(this, null);
+            case 11 -> openCustomCsp();
         }
     }
 

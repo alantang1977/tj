@@ -16,6 +16,7 @@ import com.github.catvod.crawler.SpiderDebug;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -35,7 +36,18 @@ public final class NodeRuntime {
     /** 首选端口，被占用时往后找；bundle 本身不做 EADDRINUSE 重试，所以由这边探。 */
     private static final int PREFERRED_PORT = 9988;
     private static final int PORT_SCAN = 20;
-    private static final long START_TIMEOUT_MS = 55_000L;
+
+    /**
+     * 猫源首次加载包含运行时检查、bundle 下载、Node 启动和 /config 探测，不能沿用普通接口的短预算。
+     * 这些预算集中在运行时类中，保证主进程等待、子进程就绪和文件传输不会各自使用互相矛盾的时长。
+     */
+    public static final long START_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(12);
+    static final long TRANSFER_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(3);
+    static final long LIB_TRANSFER_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5);
+    static final long METADATA_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(8);
+    static final long READY_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(3);
+    static final long READY_PROBE_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(2);
+    static final long READY_POLL_MS = 200L;
 
     private static volatile int port;
     private static final AtomicBoolean STARTING = new AtomicBoolean(false);
@@ -61,7 +73,40 @@ public final class NodeRuntime {
     }
 
     public static boolean isRunning() {
-        return running;
+        return running && serviceAlive();
+    }
+
+    /**
+     * 如果 :node 子进程已死（崩溃/被系统杀掉）但还在 serving，立刻用原 bundle 重启它。
+     *
+     * <p>崩溃时 {@link #running} 没有回调可置假，只能靠进程探活发现。调用方（如爬虫发现
+     * 本机 bundle 连不上）检测到后调这里，把运行时恢复到可用状态，后续请求会走新端口。
+     * 返回 true 表示本次调用发起了重启（或本来就健康无需动作）。
+     */
+    public static boolean restartIfDead(Context context) {
+        if (running && serviceAlive()) return true;
+        if (TextUtils.isEmpty(servingUrl)) return false;
+        SpiderDebug.log("node", "restartIfDead: node process dead while serving %s, restarting", servingUrl);
+        // 直接复用 start：崩溃分支会清 running/port 并重新拉起同一个 bundle。
+        start(context, servingUrl, null);
+        return true;
+    }
+
+    /**
+     * {@code :node} 子进程是否还活着。
+     *
+     * <p>{@link #running} 只在收到 READY 时置真、收到 ERROR/超时才置假：<b>子进程被系统或
+     * 自身 OOM 杀掉时没有任何回调</b>，这个标志会一直停在「已就绪」。此后 {@link #start} 的
+     * 复用捷径会一直把那个已经没人监听的死端口当成就绪服务返回，表现为「配置页加载不出来」
+     * 且搜不出任何结果——用户只能杀掉应用重开。所以复用前必须实际核对进程是否还在。
+     */
+    private static boolean serviceAlive() {
+        try {
+            return isProcessRunning(App.get(), App.get().getPackageName() + ":node");
+        } catch (Throwable e) {
+            // 探测本身不可用时不能把功能一起判死：宁可退回旧行为（信任标志位）。
+            return true;
+        }
     }
 
     public static int port() {
@@ -88,9 +133,17 @@ public final class NodeRuntime {
         }
         // 复用要求「同一地址」且「来源身份仍与运行中的一致」：只比地址的话，服务端原地更新
         // bundle、或本地包被改写后都会继续跑旧 JS。本地包按内容指纹判定，内容没变就无需重启。
-        if (running && same(url) && NodeBundle.servesCurrentSource(url, servingSourceKey)) {
+        // 还必须确认子进程仍在：它被杀掉时没有任何回调会把 running 置假。
+        boolean alive = running && serviceAlive();
+        if (alive && same(url) && NodeBundle.servesCurrentSource(url, servingSourceKey)) {
             if (callback != null) callback.onReady(baseUrl());
             return;
+        }
+        if (running && !alive) {
+            SpiderDebug.log("node", "node process is gone while runtime still marked running, restarting");
+            running = false;
+            servingSourceKey = "";
+            port = 0;
         }
         if (!STARTING.compareAndSet(false, true)) {
             if (callback != null) callback.onError("正在启动中");

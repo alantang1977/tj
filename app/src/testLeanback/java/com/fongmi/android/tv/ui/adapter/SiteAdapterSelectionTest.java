@@ -28,11 +28,15 @@ public class SiteAdapterSelectionTest {
         String focused = read(root.resolve("app/src/leanback/res/drawable/shape_site_item_focused.xml"));
         String selected = read(root.resolve("app/src/leanback/res/drawable/shape_site_item_selected.xml"));
 
-        assertFalse("focused site card must not be filled with theme colorPrimary, which is white on TV",
+        assertTrue("focused site card must use the active primary role",
                 focused.contains("<solid android:color=\"?attr/colorPrimary\" />"));
-        assertTrue("focused site card must use an explicit dark surface fill for white text",
-                focused.contains("<solid android:color=\"#381E72\" />"));
-        assertTrue("selected site card must remain visually distinct but readable",
-                selected.contains("<solid android:color=\"#381E72\" />"));
+        assertTrue("focused site card must pair its border with onPrimary",
+                focused.contains("?attr/colorOnPrimary"));
+        assertTrue("selected site card must use the active primary container role",
+                selected.contains("<solid android:color=\"?attr/colorPrimaryContainer\" />"));
+        assertTrue("selected site card must use the active primary outline",
+                selected.contains("?attr/colorPrimary"));
+        assertFalse("fixed purple must not survive in the TV site card",
+                focused.contains("#381E72") || selected.contains("#381E72"));
     }
 }

@@ -73,6 +73,7 @@ import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.EpisodePositionCache;
 import com.fongmi.android.tv.bean.Flag;
+import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
 import com.fongmi.android.tv.ui.helper.EpisodeSeasonSnapshot;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
@@ -1495,11 +1496,6 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
     }
 
     @Override
-    protected boolean applyGlobalTheme() {
-        return false;
-    }
-
-    @Override
     protected void initView(Bundle savedInstanceState) {
         initializeRuntimeDetailMode();
         mTmdbDetailTimeout = this::showTmdbDetailFallback;
@@ -1643,6 +1639,8 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         mBinding.control.action.next.setOnClickListener(view -> checkNext());
         mBinding.control.action.decode.setOnClickListener(guarded(this::onDecode));
         mBinding.control.action.playParams.setOnClickListener(guarded(this::onPlayParams));
+        mBinding.control.action.multiThreadProxy.setOnClickListener(guarded(this::onMultiThreadProxy));
+        mBinding.control.action.codecCapability.setOnClickListener(guarded(this::onCodecCapabilityPanel));
         mBinding.control.action.ending.setOnClickListener(guarded(this::onEnding));
         mBinding.control.action.repeat.setOnClickListener(guarded(this::onRepeat));
         mBinding.control.action.opening.setOnClickListener(guarded(this::onOpening));
@@ -4813,7 +4811,7 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         if (result == null || isFinishing() || isDestroyed()) return;
         if (mKaraokeResultDialog != null && mKaraokeResultDialog.isShowing()) return;
         KaraokeResultView view = new KaraokeResultView(this).setResult(result);
-        AlertDialog dialog = new MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_WebHTV_LightDialog).setView(view).create();
+        AlertDialog dialog = new WebHtvAlertDialogBuilder(this, R.style.ThemeOverlay_WebHTV_Dialog).setView(view).create();
         view.setAction(() -> {
             dialog.dismiss();
             completeKaraokeResult(action);

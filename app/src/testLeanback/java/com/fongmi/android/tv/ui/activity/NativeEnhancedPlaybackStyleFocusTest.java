@@ -68,15 +68,16 @@ public class NativeEnhancedPlaybackStyleFocusTest {
                     body.contains("#FFD166") || body.contains("#FFE16A") || body.contains("#0077FF"));
         }
 
-        // 演员卡是 14dp 圆角卡片，焦点环必须同半径，否则描边会内缩或外溢。
+        // 演员卡是圆角卡片，焦点环必须同半径，否则描边会内缩或外溢。
+        // 卡片圆角走 dev3 的共享尺寸 token，焦点环必须与卡片使用同一个 token 才能保证永远一致。
         String cast = values(read(CAST_FOCUS_SELECTOR));
         assertTrue("演员卡焦点态必须是 3dp 焦点语义属性",
                 cast.contains("android:width=\"3dp\" android:color=\"?attr/tvFocusRing\""));
         assertTrue("演员卡当前态必须是 2dp 当前语义属性",
                 cast.contains("android:width=\"2dp\" android:color=\"?attr/tvCurrentRing\""));
-        assertTrue("演员卡焦点环半径必须与其卡片圆角一致（14dp）",
-                cast.contains("<corners android:radius=\"14dp\" />")
-                        && read("app/src/main/res/layout/adapter_tmdb_cast.xml").contains("app:cardCornerRadius=\"14dp\""));
+        assertTrue("演员卡焦点环半径必须与其卡片圆角使用同一个尺寸 token",
+                cast.contains("<corners android:radius=\"@dimen/webhtv_card_radius_large\" />")
+                        && read("app/src/main/res/layout/adapter_tmdb_cast.xml").contains("app:cardCornerRadius=\"@dimen/webhtv_card_radius_large\""));
         assertFalse("演员卡不允许再出现白色焦点环", cast.contains("android:color=\"@color/white\""));
     }
 

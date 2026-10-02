@@ -9,6 +9,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Authenticator;
@@ -19,7 +20,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
-/** Boundary helpers shared by import/export UI and tests. */
+/** Bounded, no-cookie transport used by the theme draft importer. */
 public final class ThemeTransfer {
 
     public static final int MAX_BYTES = ThemeProfileValidator.MAX_JSON_BYTES;
@@ -39,19 +40,28 @@ public final class ThemeTransfer {
     }
 
     public static boolean isHttps(String value) {
-        return ThemeProfileValidator.isSafeHttps(value);
+        try {
+            URI uri = new URI(value == null ? "" : value.trim());
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && uri.getHost() != null
+                    && uri.getUserInfo() == null
+                    && uri.getPort() != 0
+                    && uri.getPort() <= 65535
+                    && !isBlockedHost(uri.getHost());
+        } catch (URISyntaxException | RuntimeException error) {
+            return false;
+        }
     }
 
     public static String host(String value) {
         try {
             URI uri = new URI(value);
             return uri.getHost() == null ? "" : uri.getHost();
-        } catch (URISyntaxException e) {
+        } catch (URISyntaxException | RuntimeException error) {
             return "";
         }
     }
 
-    /** Reads a user-selected or downloaded JSON stream without trusting Content-Length. */
     public static String read(InputStream input) throws IOException {
         if (input == null) throw new IOException("theme source is unavailable");
         ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(MAX_BYTES, 16 * 1024));
@@ -66,9 +76,8 @@ public final class ThemeTransfer {
         return new String(output.toByteArray(), StandardCharsets.UTF_8);
     }
 
-    /** Fetches exactly one public HTTPS response; redirects and private destinations are rejected. */
     public static String fetch(String value) throws IOException {
-        if (!isHttps(value)) throw new IOException("theme URL must be HTTPS");
+        if (!isHttps(value)) throw new IOException("theme URL must be HTTPS and public");
         String requestedHost = host(value);
         List<InetAddress> addresses = lookupPublic(requestedHost);
         OkHttpClient client = CLIENT.newBuilder().dns(host -> {
@@ -88,51 +97,62 @@ public final class ThemeTransfer {
         }
     }
 
-    static boolean isPublicAddress(InetAddress address) {
-        if (address == null || address.isAnyLocalAddress() || address.isLoopbackAddress()
-                || address.isLinkLocalAddress() || address.isSiteLocalAddress()
-                || address.isMulticastAddress()) return false;
-        byte[] bytes = address.getAddress();
-        if (bytes.length == 4) return isPublicIpv4(bytes, 0);
-        if (bytes.length != 16) return false;
-        // RFC 4193 ULA is not covered by InetAddress.isSiteLocalAddress().
-        if ((bytes[0] & 0xFE) == 0xFC) return false;
-        // RFC 3849 documentation space is not a routable public destination.
-        if ((bytes[0] & 0xFF) == 0x20 && (bytes[1] & 0xFF) == 0x01
-                && (bytes[2] & 0xFF) == 0x0D && (bytes[3] & 0xFF) == 0xB8) return false;
-        // Prevent IPv4-mapped IPv6 answers from bypassing the IPv4 policy.
-        boolean mapped = true;
-        for (int i = 0; i < 10; i++) mapped &= bytes[i] == 0;
-        mapped &= (bytes[10] & 0xFF) == 0xFF && (bytes[11] & 0xFF) == 0xFF;
-        return !mapped || isPublicIpv4(bytes, 12);
-    }
-
-    private static boolean isPublicIpv4(byte[] bytes, int offset) {
-        int first = bytes[offset] & 0xFF;
-        int second = bytes[offset + 1] & 0xFF;
-        int third = bytes[offset + 2] & 0xFF;
-        if (first == 0 || first == 10 || first == 127 || first >= 224) return false;
-        if (first == 100 && second >= 64 && second <= 127) return false; // RFC 6598 CGNAT
-        if (first == 169 && second == 254) return false;
-        if (first == 172 && second >= 16 && second <= 31) return false;
-        if (first == 192 && (second == 168 || (second == 0 && third <= 2))) return false;
-        if (first == 198 && (second == 18 || second == 19
-                || (second == 51 && third == 100))) return false;
-        return !(first == 203 && second == 0 && third == 113);
-    }
-
     private static List<InetAddress> lookupPublic(String hostname) throws IOException {
         if (hostname == null || hostname.isBlank()) throw new IOException("theme URL host is missing");
         List<InetAddress> addresses;
         try {
             addresses = Dns.SYSTEM.lookup(hostname);
-        } catch (RuntimeException e) {
-            throw new IOException("theme URL host cannot be resolved", e);
+        } catch (RuntimeException error) {
+            throw new IOException("theme URL host cannot be resolved", error);
         }
         if (addresses.isEmpty()) throw new IOException("theme URL host cannot be resolved");
         for (InetAddress address : addresses) {
-            if (!isPublicAddress(address)) throw new IOException("private or special theme host is not allowed");
+            if (isBlockedAddress(address)) throw new IOException("private or special theme host is not allowed");
         }
         return addresses;
+    }
+
+    private static boolean isBlockedHost(String host) {
+        String normalized = host == null ? "" : host.toLowerCase(Locale.ROOT);
+        if (normalized.isBlank() || "localhost".equals(normalized)
+                || normalized.endsWith(".localhost") || normalized.endsWith(".local")) return true;
+        if (!isIpLiteral(normalized)) return false;
+        try {
+            return isBlockedAddress(InetAddress.getByName(normalized));
+        } catch (java.net.UnknownHostException | RuntimeException error) {
+            return true;
+        }
+    }
+
+    private static boolean isIpLiteral(String host) {
+        if (host.indexOf(':') >= 0) return true;
+        String[] parts = host.split("\\.", -1);
+        if (parts.length != 4) return false;
+        for (String part : parts) {
+            if (part.isEmpty() || part.length() > 3) return false;
+            int value = 0;
+            for (int index = 0; index < part.length(); index++) {
+                char current = part.charAt(index);
+                if (current < '0' || current > '9') return false;
+                value = value * 10 + current - '0';
+            }
+            if (value > 255) return false;
+        }
+        return true;
+    }
+
+    private static boolean isBlockedAddress(InetAddress address) {
+        if (address == null || address.isAnyLocalAddress() || address.isLoopbackAddress()
+                || address.isLinkLocalAddress() || address.isSiteLocalAddress() || address.isMulticastAddress()) return true;
+        byte[] bytes = address.getAddress();
+        if (bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc) return true;
+        if (bytes.length != 4) return false;
+        int first = bytes[0] & 0xff;
+        int second = bytes[1] & 0xff;
+        return first == 0 || (first == 100 && second >= 64 && second <= 127)
+                || (first == 192 && second == 0) || (first == 192 && second == 2)
+                || (first == 198 && (second == 18 || second == 19))
+                || (first == 198 && second == 51) || (first == 203 && second == 0)
+                || first >= 224;
     }
 }

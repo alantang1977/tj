@@ -59,7 +59,7 @@ public class CatSource {
                 latch.countDown();
             }
         });
-        if (!latch.await(60, TimeUnit.SECONDS)) {
+        if (!latch.await(NodeRuntime.START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
             throw new Exception("猫源启动超时");
         }
         if (error.get() != null) throw new Exception("猫源启动失败: " + error.get());

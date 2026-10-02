@@ -912,6 +912,15 @@ public class Setting {
         Prefers.put("zhuyin", zhuyin);
     }
 
+    /** Appearance mode: -1 follows system, 0 forces light, 1 forces dark. */
+    public static int getThemeMode() {
+        return Prefers.getInt("theme_mode", -1);
+    }
+
+    public static void putThemeMode(int mode) {
+        Prefers.put("theme_mode", mode < 0 ? -1 : Math.min(mode, 1));
+    }
+
     public static int getThemeColor() {
         return Prefers.getInt("theme_color", -1);
     }
@@ -1445,7 +1454,7 @@ public class Setting {
 
     public static int getHomeMenuKey() {
         int menuKey = Prefers.getInt("home_menu_key", 0);
-        return menuKey < 0 || menuKey > 9 ? 0 : menuKey;
+        return menuKey < 0 || menuKey > 11 ? 0 : menuKey;
     }
 
     public static void putHomeMenuKey(int menuKey) {
