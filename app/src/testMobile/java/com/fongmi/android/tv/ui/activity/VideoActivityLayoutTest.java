@@ -3339,13 +3339,15 @@ public class VideoActivityLayoutTest {
             assertTrue(sourcePath + " must share canonical episode progress when TMDB history aggregation is enabled",
                     selection.replaceAll("\\s+", " ").contains("boolean shareEpisodeProgress = crossSource || isResumeFromHistory() || Setting.isHistoryAggregationEffective();"));
             assertTrue(sourcePath + " must keep the original episode identity when aggregation and history resume are disabled",
-                    selection.replaceAll("\\s+", " ").contains("shareEpisodeProgress ? historyEpisode.matchesPlayback(mHistory.getEpisode()) : episode.matches(mHistory.getEpisode())"));
+                    selection.replaceAll("\\s+", " ").contains("shareEpisodeProgress ? historyEpisode.matchesPlayback(mHistory.getEpisode(), versionAware) : episode.matches(mHistory.getEpisode())"));
             assertTrue(sourcePath + " must ignore source-line differences when shared progress is enabled",
                     selection.contains("boolean compatibleFlag = shareEpisodeProgress || TextUtils.equals(mHistory.getVodFlag(), flag.getFlag());"));
             assertTrue(sourcePath + " must preserve progress when a history source refresh changes only the episode URL",
-                    selection.contains("historyEpisode.matchesPlayback(mHistory.getEpisode())"));
+                    selection.contains("boolean versionAware = flag.containsEpisodeUrl(mHistory.getEpisode());")
+                            && selection.contains("historyEpisode.matchesPlayback(mHistory.getEpisode(), versionAware)"));
             assertTrue(sourcePath + " must use the same tolerant episode identity when playback updates history",
-                    update.contains("historyEpisode.matchesPlayback(mHistory.getEpisode())"));
+                    update.contains("boolean versionAware = getFlag().containsEpisodeUrl(mHistory.getEpisode());")
+                            && update.contains("historyEpisode.matchesPlayback(mHistory.getEpisode(), versionAware)"));
             if (source.contains("private void updateFastTmdbPlaybackHistory(Flag flag, Episode episode)")) {
                 String fast = methodBody(source, "private void updateFastTmdbPlaybackHistory(Flag flag, Episode episode)", "private void resetDetailForNewIntent()");
                 assertTrue(sourcePath + " fast TMDB playback must honor the aggregation progress-sharing switch",

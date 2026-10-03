@@ -82,7 +82,15 @@ check_staged_whitespace() {
     [[ "$path" == *.patch ]] && continue
     paths+=("$path")
   done < <(list_staged)
-  ((${#paths[@]} == 0)) || git diff --cached --check -- "${paths[@]}"
+  ((${#paths[@]} == 0)) && return 0
+  # Windows CreateProcess 32KB argv 上限：大合并时一次性传全部 staged 路径会 E2BIG。
+  # 分批校验保持语义不变（.patch 排除已在上方完成）。
+  local -a chunk=()
+  local i
+  for ((i = 0; i < ${#paths[@]}; i += 100)); do
+    chunk=("${paths[@]:i:100}")
+    git diff --cached --check -- "${chunk[@]}"
+  done
 }
 
 fingerprint_path() {

@@ -123,6 +123,22 @@
                         android:singleLine="true" />
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/apiCustomInput"
+                    style="@style/Widget.WebHTV.Input"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:hint="@string/dialog_tmdb_api_custom_hint"
+                    android:imeOptions="actionDone"
+                    android:inputType="textUri"
+                    android:maxLines="1"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:selectAllOnFocus="false"
+                    android:visibility="gone" />
+
                 <com.google.android.material.textview.MaterialTextView
                     style="@style/Widget.WebHTV.Label"
                     android:layout_width="match_parent"
@@ -152,6 +168,22 @@
                         android:paddingEnd="12dp"
                         android:singleLine="true" />
                 </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/imageCustomInput"
+                    style="@style/Widget.WebHTV.Input"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:hint="@string/dialog_tmdb_image_custom_hint"
+                    android:imeOptions="actionDone"
+                    android:inputType="textUri"
+                    android:maxLines="1"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:selectAllOnFocus="false"
+                    android:visibility="gone" />
 
                 <com.google.android.material.textview.MaterialTextView
                     style="@style/Widget.WebHTV.Helper"

@@ -130,9 +130,46 @@ public class HistoryPlaybackTest {
 
     @Test
     public void playbackEpisodeMatchAllowsUnknownSeasonWhenTmdbEpisodeNumberMatches() {
+        // 季号任一侧未知（-1）时，无法断定这是同集的不同版本，必须保留集号容错：
+        // URL 与源站集名都不同也仍视为同一集，否则跨源续播会失效。
         Episode unknownSeason = Episode.create("源站第2集", "old-url");
         unknownSeason.setTmdbEpisode(new TmdbEpisode(2, "", "", "", "", 0, 0, 0, -1));
         Episode knownSeason = Episode.create("第2集", "new-url");
+        knownSeason.setTmdbEpisode(new TmdbEpisode(2, "", "", "", "", 0, 0, 202, 2));
+
+        assertTrue(knownSeason.matchesPlayback(unknownSeason));
+    }
+
+    @Test
+    public void playbackEpisodeMatchRejectsDifferentVariantOnlyWhenSeasonIsConfirmed() {
+        // 季号两侧都已知且相等、且调用方确认同线路（历史 URL 仍能定位到本线路条目）：
+        // 才允许按 URL/源站条目文本区分同集多版本。
+        Episode firstVersion = tmdbVersion("url-v1");
+        Episode secondVersion = tmdbVersion("url-v2");
+        Episode secondVersionAgain = tmdbVersion("url-v2");
+
+        assertFalse(secondVersion.matchesPlayback(firstVersion, true));
+        assertFalse(secondVersion.matches(firstVersion));
+        assertTrue(secondVersionAgain.matchesPlayback(secondVersion));
+        assertTrue(secondVersionAgain.matchesPlayback(secondVersion, true));
+    }
+
+    @Test
+    public void playbackEpisodeMatchKeepsCrossLineToleranceForDifferentUrls() {
+        // 换线路/换源或源站刷新后 URL 必然变化：单参容错必须保留，否则跨线路续播会丢失进度。
+        Episode lineA = tmdbVersion("url-line-a");
+        Episode lineB = tmdbVersion("url-line-b");
+
+        assertTrue(lineB.matchesPlayback(lineA));
+        assertTrue(lineA.matchesPlayback(lineB));
+    }
+
+    @Test
+    public void playbackEpisodeMatchAllowsUnknownSeasonWhenNoVersionInfoCanSeparateThem() {
+        // 双方都带 TMDB 集号但没有任何版本信息（URL 与源站名均为空）时，只能视为同一集。
+        Episode unknownSeason = Episode.create("", "");
+        unknownSeason.setTmdbEpisode(new TmdbEpisode(2, "", "", "", "", 0, 0, 0, -1));
+        Episode knownSeason = Episode.create("", "");
         knownSeason.setTmdbEpisode(new TmdbEpisode(2, "", "", "", "", 0, 0, 202, 2));
 
         assertTrue(knownSeason.matchesPlayback(unknownSeason));
@@ -740,6 +777,13 @@ public class HistoryPlaybackTest {
         History unset = new History();
         // 用户没设过片尾，永不触发。
         assertFalse(unset.isEndingReached(2_580_000, 2_700_000));
+    }
+
+    /** 同一季同一集（S2E2）下、仅 URL 不同的同集版本。 */
+    private static Episode tmdbVersion(String url) {
+        Episode episode = Episode.create("源站第2集", url);
+        episode.setTmdbEpisode(new TmdbEpisode(2, "", "", "", "", 0, 0, 202, 2));
+        return episode;
     }
 
     private static History history(String key, String name, String remarks, String episodeUrl, long position, long duration) {

@@ -1936,6 +1936,9 @@ TVData</string>
     <string name="dialog_tmdb_api_auto">自動（低延遲優先，失敗切換）</string>
     <string name="dialog_tmdb_image_auto">自動（低延遲優先，失敗切換）</string>
     <string name="dialog_tmdb_image_wsrv">wsrv.nl 圖片代理</string>
+    <string name="dialog_tmdb_route_custom">自訂</string>
+    <string name="dialog_tmdb_api_custom_hint">自訂 API 位址，例如 https://api.tmdb.org</string>
+    <string name="dialog_tmdb_image_custom_hint">自訂圖片位址，例如 https://images.tmdb.org</string>
     <string name="dialog_tmdb_api_host_hint">預設 https://api.tmdb.org，可選擇內建代理或輸入自訂位址</string>
     <string name="dialog_tmdb_proxy_host_help">API 和圖片線路可以分別選擇。自動模式會按已驗證線路的延遲排序，失敗時切換；已加入 itv666 和 wsrv.nl，也支援輸入自訂位址。</string>
     <string name="dialog_tmdb_image_host_label">TMDB 圖片線路</string>

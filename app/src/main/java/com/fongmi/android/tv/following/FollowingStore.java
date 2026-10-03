@@ -30,7 +30,7 @@ public final class FollowingStore {
     }
 
     public static List<Following> list() {
-        return database().getFollowingDao().findAll();
+        return database().getFollowingDao().findActive();
     }
 
     public static List<FollowingSource> sources(String identityKey) {
@@ -42,6 +42,11 @@ public final class FollowingStore {
     }
 
     public static Following find(String identityKey) {
+        return TextUtils.isEmpty(identityKey) ? null : database().getFollowingDao().findActive(identityKey);
+    }
+
+    /** 含墓碑行的原始查找：仅同步/合并代码使用。 */
+    public static Following findAny(String identityKey) {
         return TextUtils.isEmpty(identityKey) ? null : database().getFollowingDao().find(identityKey);
     }
 
@@ -60,7 +65,9 @@ public final class FollowingStore {
         String identityKey = FollowingIdentity.identityKey(tmdb, season);
         synchronized (MIGRATION_LOCK) {
             return runInTransaction(() -> {
+                // 目标已是墓碑：身份迁移不得复活已取消的追更。
                 Following target = database().getFollowingDao().find(identityKey);
+                if (target != null && target.deletedAt > 0) return target;
                 List<Following> sources = database().getFollowingDao().findUnmatchedBySource(
                         cid, FollowingIdentity.normalize(siteKey), FollowingIdentity.normalize(vodId));
                 Following source = selectMigrationSource(sources, season);
@@ -123,6 +130,18 @@ public final class FollowingStore {
     public static void saveNew(Following item, FollowingSource source) {
         if (item == null || TextUtils.isEmpty(item.identityKey)) throw new IllegalArgumentException("following identity is empty");
         runInTransaction(() -> {
+            // 复活墓碑：取消后重新追更，清除墓碑并保留进度水线（与现有 updatedAt 进度合并语义一致）。
+            Following existing = database().getFollowingDao().find(item.identityKey);
+            if (existing != null && existing.deletedAt > 0) {
+                long now = System.currentTimeMillis();
+                Following revived = mergeRevived(existing, item);
+                database().getFollowingDao().insertOrUpdate(revived);
+                if (source != null) {
+                    source.followingKey = item.identityKey;
+                    database().getFollowingSourceDao().insertOrUpdate(source);
+                }
+                return null;
+            }
             database().getFollowingDao().insertOrUpdate(item);
             if (source != null) {
                 source.followingKey = item.identityKey;
@@ -130,6 +149,14 @@ public final class FollowingStore {
             }
             return null;
         });
+    }
+
+    private static Following mergeRevived(Following tombstone, Following fresh) {
+        Following result = FollowingMergePolicy.mergeOne(tombstone, fresh);
+        result.deletedAt = 0;
+        result.enabled = true;
+        result.createdAt = fresh.createdAt > 0 ? fresh.createdAt : System.currentTimeMillis();
+        return result;
     }
 
     public static void update(Following item) {
@@ -172,6 +199,14 @@ public final class FollowingStore {
     }
 
     public static void delete(String identityKey) {
+        runInTransaction(() -> {
+            database().getFollowingDao().markDeleted(identityKey, System.currentTimeMillis(), System.currentTimeMillis());
+            return null;
+        });
+    }
+
+    /** 物理删除墓碑行（仅保留窗口后清理或全量恢复使用）。 */
+    public static void purge(String identityKey) {
         runInTransaction(() -> {
             database().getFollowingSourceDao().deleteForFollowing(identityKey);
             database().getFollowingDao().delete(identityKey);
@@ -245,7 +280,9 @@ public final class FollowingStore {
 
     public static void mergeAll(List<Following> remoteFollowing, List<FollowingSource> remoteSources) {
         runInTransaction(() -> {
-            List<Following> merged = FollowingMergePolicy.mergeFollowing(list(), remoteFollowing);
+            // 本地墓碑必须参与合并（否则收到不含该行的旧快照会复活它）；同时保留对端墓碑。
+            List<Following> merged = FollowingMergePolicy.mergeFollowing(
+                    database().getFollowingDao().findAll(), remoteFollowing);
             List<FollowingSource> sources = FollowingMergePolicy.mergeSources(
                     database().getFollowingSourceDao().findAll(), remoteSources);
             database().getFollowingSourceDao().deleteAll();
@@ -273,6 +310,7 @@ public final class FollowingStore {
                     FollowingIdentity.normalize(history.getVodId()), Math.max(0, history.getTmdbSeasonNumber()));
         }
         if (item == null) return;
+        if (item.isDeleted()) return;
         boolean changed = episodeNumber > item.watchedEpisode;
         if (episodeNumber == item.watchedEpisode) {
             changed = history.getPosition() != item.position || history.getDuration() != item.duration;

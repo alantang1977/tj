@@ -99,18 +99,38 @@ public class Config {
         AppDatabase.get().getConfigDao().delete(url, type);
     }
 
+    /**
+     * 启动时取"上次实际使用"的配置，而不是数据库里 time 最新的一行。
+     *
+     * <p>{@link #update()} 每次加载成功都会同时写 time 和 {@code config_<type>} 偏好。旧行为只按
+     * {@code ORDER BY time DESC} 取最新行：一旦某行（典型是猫源）成功加载过一次，它的 time 就是最新的；
+     * 之后每次冷启动都会优先再拉它——猫源要重启 :node 子进程，慢机器上就绪探测超时，启动就显示
+     * "配置取得失败"，而用户实际在用的 http 接口根本没被加载。切换一次接口（bump 另一行）或重装
+     * （清空表）才能逃出来，与用户反馈完全一致。
+     *
+     * <p>这里先按持久化的 {@code config_<type>} 偏好精确找行；偏好缺失或对应行已被删掉时，回退旧行为。
+     */
+    private static Config lastActive(int type) {
+        String url = Prefers.getString("config_" + type);
+        if (!TextUtils.isEmpty(url)) {
+            Config item = AppDatabase.get().getConfigDao().find(url, type);
+            if (item != null) return item;
+        }
+        return AppDatabase.get().getConfigDao().findOne(type);
+    }
+
     public static Config vod() {
-        Config item = AppDatabase.get().getConfigDao().findOne(0);
+        Config item = lastActive(0);
         return item == null ? create(0) : item;
     }
 
     public static Config live() {
-        Config item = AppDatabase.get().getConfigDao().findOne(1);
+        Config item = lastActive(1);
         return item == null ? create(1) : item;
     }
 
     public static Config wall() {
-        Config item = AppDatabase.get().getConfigDao().findOne(2);
+        Config item = lastActive(2);
         return item == null ? create(2) : item;
     }
 

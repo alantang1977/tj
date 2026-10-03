@@ -7353,8 +7353,12 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private boolean isHistoryEpisode(Episode episode, History item) {
         if (episode == null || item == null) return false;
         Episode saved = item.getEpisode();
+        // 历史集 URL 仍能定位到当前线路条目（同集多版本并存）时启用版本消歧，
+        // 避免“点第二版本却被当作第一版本”；换线路/换源/源站刷新后 URL 必然失配，
+        // 保留集号容错，保住跨线路续播与刷新后的“继续播放”。
+        boolean versionAware = selectedFlag != null && selectedFlag.containsEpisodeUrl(saved);
         if (item.getTmdbEpisodeNumber() > 0 && episode.getTmdbEpisode() != null && episode.getTmdbEpisode().getNumber() > 0) {
-            return episode.matchesPlayback(saved);
+            return episode.matchesPlayback(saved, versionAware);
         }
         if (!TextUtils.isEmpty(item.getEpisodeUrl()) && item.getEpisodeUrl().equals(episode.getUrl())) return true;
         return episode.matchesName(saved) || episode.getDisplayName().equals(item.getVodRemarks()) || historyEpisodeTitle(episode).equals(item.getVodRemarks());

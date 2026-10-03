@@ -2111,6 +2111,9 @@ TVData</string>
     <string name="dialog_tmdb_api_auto">Auto (latency priority, failover)</string>
     <string name="dialog_tmdb_image_auto">Auto (latency priority, failover)</string>
     <string name="dialog_tmdb_image_wsrv">wsrv.nl image proxy</string>
+    <string name="dialog_tmdb_route_custom">Custom</string>
+    <string name="dialog_tmdb_api_custom_hint">Custom API base URL, e.g. https://api.tmdb.org</string>
+    <string name="dialog_tmdb_image_custom_hint">Custom image base URL, e.g. https://images.tmdb.org</string>
     <string name="dialog_tmdb_api_host_hint">https://api.tmdb.org or choose a built-in mirror</string>
     <string name="dialog_tmdb_proxy_host_help">API and image routes can be selected independently. Auto ranks the verified routes by latency and switches after failure; itv666 and wsrv.nl are included, and custom endpoints are supported.</string>
     <string name="dialog_tmdb_image_host_label">TMDB image route</string>

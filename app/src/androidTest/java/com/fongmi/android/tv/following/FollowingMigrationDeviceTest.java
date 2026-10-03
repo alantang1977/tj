@@ -20,14 +20,15 @@ public class FollowingMigrationDeviceTest {
 
     @After
     public void tearDown() {
-        FollowingStore.delete(SOURCE_KEY);
-        FollowingStore.delete(TARGET_KEY);
+        // 测试清理用物理删除：墓碑会永久阻止同 identityKey 的迁移断言（resolveTmdb 墓碑防护）。
+        FollowingStore.purge(SOURCE_KEY);
+        FollowingStore.purge(TARGET_KEY);
     }
 
     @Test
     public void sourceFallbackMigratesToMatchedTmdbIdentity() {
-        FollowingStore.delete(SOURCE_KEY);
-        FollowingStore.delete(TARGET_KEY);
+        FollowingStore.purge(SOURCE_KEY);
+        FollowingStore.purge(TARGET_KEY);
         Following source = new Following();
         source.identityKey = SOURCE_KEY;
         source.seriesKey = "source:9:migrate:930001";

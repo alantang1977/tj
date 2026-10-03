@@ -13,7 +13,8 @@ import androidx.room.PrimaryKey;
                 @Index(value = {"enabled", "next_check_at"}),
                 @Index(value = {"has_update", "updated_at"}),
                 @Index(value = {"cid", "site_key", "vod_id"}),
-                @Index(value = {"tmdb_id", "media_type", "tracked_season"})
+                @Index(value = {"tmdb_id", "media_type", "tracked_season"}),
+                @Index(value = {"deleted_at"})
         })
 public class Following {
 
@@ -120,6 +121,10 @@ public class Following {
 
     public boolean enabled = true;
 
+    /** 墓碑时间戳：>0 表示已被“取消追更”，删除意图随备份同步传播；0 表示活跃行。 */
+    @ColumnInfo(name = "deleted_at")
+    public long deletedAt;
+
     @ColumnInfo(name = "metadata_updated_at")
     public long metadataUpdatedAt;
 
@@ -141,6 +146,10 @@ public class Following {
 
     @ColumnInfo(name = "updated_at")
     public long updatedAt;
+
+    public boolean isDeleted() {
+        return deletedAt > 0;
+    }
 
     public Following copy() {
         Following item = new Following();
@@ -177,6 +186,7 @@ public class Following {
         item.unwatchedCount = unwatchedCount;
         item.notifyEnabled = notifyEnabled;
         item.enabled = enabled;
+        item.deletedAt = deletedAt;
         item.metadataUpdatedAt = metadataUpdatedAt;
         item.lastCheckedAt = lastCheckedAt;
         item.nextCheckAt = nextCheckAt;
