@@ -106,6 +106,18 @@ public class DetailModeControllerTest {
     }
 
     @Test
+    public void playerDetailController_followsSelectedCinemaTheme() throws Exception {
+        Path controllerPath = findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "detail", "PlayerDetailController.java"));
+        String source = new String(Files.readAllBytes(controllerPath), StandardCharsets.UTF_8);
+
+        // 详情直放模式与炫彩详情一样，必须跟随设置选中的光影剧幕主题，而不是固定满透流彩
+        assertTrue("PlayerDetailController must delegate cinema presentation to the selected detail theme",
+                source.contains("public boolean isCinemaStyle()") && source.contains("return host.isCinemaStyle();"));
+        assertTrue("The mode refactor must not leave PlayerDetailController without cinema delegation",
+                !source.contains("public boolean isCinemaStyle()") || source.contains("return host.isCinemaStyle();"));
+    }
+
+    @Test
     public void tmdbDetailActivity_delegatesToModeController() throws Exception {
         Path activityPath = findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "TmdbDetailActivity.java"));
         String source = new String(Files.readAllBytes(activityPath), StandardCharsets.UTF_8);

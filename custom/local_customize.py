@@ -568,8 +568,38 @@ def _rounded_poly(draw, pts, radius, fill, steps=12):
     draw.polygon(out, fill=fill)
 
 
-def draw_cat(size):
+def _ray_circle_hit(P, Q, cc, R):
+    """射线 P→Q 与圆（圆心 cc、半径 R）在 P→Q 方向上的交点。
+
+    用于放大版白楔形内耳：白尖 P 保持原版位置，沿原版白楔侧边方向
+    求与放大头圆的交点，得到贴在放大头圆上的新基底（白楔自然缩短）。
+    无交点返回 None。
+    """
+    dx, dy = Q[0] - P[0], Q[1] - P[1]
+    ox, oy = P[0] - cc[0], P[1] - cc[1]
+    d2 = dx * dx + dy * dy
+    if d2 < 1e-12:
+        return None
+    b = 2.0 * (ox * dx + oy * dy)
+    c = ox * ox + oy * oy - R * R
+    disc = b * b - 4.0 * d2 * c
+    if disc < 0:
+        return None
+    sq = _math.sqrt(disc)
+    t1 = (-b - sq) / (2.0 * d2)
+    t2 = (-b + sq) / (2.0 * d2)
+    ts = [t for t in (t1, t2) if t >= -1e-9]
+    if not ts:
+        return None
+    t = min(ts)
+    return (P[0] + t * dx, P[1] + t * dy)
+
+
+def draw_cat(size, head_k=1.12):
     """绘制居中的卡通蓝猫头（广告级布光版，RGBA 透明底图层）。
+
+    head_k: 头部球体放大系数（默认 1.12，下巴锚定向上长；耳朵与项圈保持原尺寸原位）。
+            传 1.0 即为原版不放大猫头（TV Banner / 其他非手机版图标用）。
 
     三点布光：主光左上、补光右侧、轮廓光右缘。
     元素：圆角三角耳（渐变白耳）、径向渐变球头、腮红、闭眼+睫毛、
@@ -654,8 +684,13 @@ def draw_cat(size):
         d.polygon(inner_half, fill=(250, 150, 120, 255))
         # 耳根即头圆圆弧，不再画直线弦 / 深色缝线
 
-    # ===== 头部尺寸（与附件版本一致，不放大；耳朵保持原尺寸原位）=====
+    # ===== 头部/脸部整体放大（下巴锚定；耳朵与项圈保持原尺寸、原位）=====
+    # 耳朵已按 (r, head_cy) 画完。头部球体与脸部五官改用放大后的 (r, head_cy)：
+    # 半径 ×head_k、圆心上移 r*(head_k-1)，使头圆最底点（下巴）位置不变、向上长；
+    # 白楔形内耳与项圈/铃铛绘制前会把 (r, head_cy) 还原，故二者不受影响。
     _r0, _cy0 = r, head_cy
+    r = _r0 * head_k
+    head_cy = _cy0 - _r0 * (head_k - 1.0)
     hx, hy = cx - r, head_cy - r
 
     # ===== 球体头：径向渐变（主光左上）=====
@@ -684,23 +719,47 @@ def draw_cat(size):
             hgd.point((xx, yy), fill=c + (255,))
     layer.paste(hgrad, (0, 0), head_mask)
 
-    # 白楔形内耳属于原版耳朵几何，临时还原 (r, head_cy)
-    r, head_cy = _r0, _cy0
+    # ===== 白楔形内耳 =====
+    # 放大版（head_k>1）：白尖保持原版位置，基底沿白楔侧边方向求交贴到放大头圆，
+    # 白楔随头部放大自然缩短、与外耳耳根贴合不分离（耳朵设计元素一致，仅缩小调整）；
+    # 原版（head_k=1）：基底贴原版头圆。
+    rh_big, hh_big = r, head_cy          # 放大头圆参数（球体头刚画完）
+    r, head_cy = _r0, _cy0               # 切回原版参数计算耳朵几何 / 白尖
 
     # 纯白亮光耳内（内嵌小楔子：白尖朝耳尖，底边沿头圆弧、与外耳根对齐）
     for side in (-1, 1):
         tip, inner, outer, arc_pts, mid_idx, a_outer, a_inner, da = ear_geom(side)
-        r_white_base = r * 0.99            # 白底贴头圆，与外耳根对齐
+        r_white_base = r * 0.99            # 原版白底半径（贴原版头圆）
         a_ws = a_outer + da * 0.12         # 两侧各内收 12%，白耳整体小一号
         a_we = a_inner - da * 0.12
         n_w = 12
-        base_arc = [(cx + r_white_base * _math.cos(a_ws + (a_we - a_ws) * (i / n_w)),
-                     head_cy + r_white_base * _math.sin(a_ws + (a_we - a_ws) * (i / n_w)))
-                    for i in range(n_w + 1)]
+        orig_base = [(cx + r_white_base * _math.cos(a_ws + (a_we - a_ws) * (i / n_w)),
+                      head_cy + r_white_base * _math.sin(a_ws + (a_we - a_ws) * (i / n_w)))
+                     for i in range(n_w + 1)]
         a_mid = a_ws + (a_we - a_ws) * 0.5
         r_wtip = r * 1.45                  # 白尖半径，收尖朝耳尖
         wtip = (cx + r_wtip * _math.cos(a_mid), head_cy + r_wtip * _math.sin(a_mid))
-        pts = _round_tip([wtip] + base_arc, 0, r * 0.06)
+
+        if head_k > 1.0:
+            # 放大版：基底两端沿 白尖→原版基底 方向求交，贴到放大头圆 (cx,hh_big,rh_big)
+            p_s = _ray_circle_hit(wtip, orig_base[0], (cx, hh_big), rh_big)
+            p_e = _ray_circle_hit(wtip, orig_base[-1], (cx, hh_big), rh_big)
+            if p_s is not None and p_e is not None:
+                # 基底弧沿放大头圆：两端相对放大圆心的角度，沿耳根方向插值
+                a_sb = _math.atan2(p_s[1] - hh_big, p_s[0] - cx)
+                a_eb = _math.atan2(p_e[1] - hh_big, p_e[0] - cx)
+                d_b = a_eb - a_sb
+                while d_b > _math.pi: d_b -= 2 * _math.pi
+                while d_b < -_math.pi: d_b += 2 * _math.pi
+                base_arc = [(cx + rh_big * _math.cos(a_sb + d_b * (i / n_w)),
+                             hh_big + rh_big * _math.sin(a_sb + d_b * (i / n_w)))
+                            for i in range(n_w + 1)]
+            else:
+                base_arc = orig_base
+        else:
+            base_arc = orig_base
+
+        pts = _round_tip([wtip] + base_arc, 0, _r0 * 0.06)
         ear_mask = Image.new("L", (size, size), 0)
         ImageDraw.Draw(ear_mask).polygon(pts, fill=255)
         ear_grad = Image.new("RGBA", (size, size), HOLE)
@@ -713,6 +772,9 @@ def draw_cat(size):
             egd.line([(0, yy), (size, yy)], fill=(r_c, g_c, b_c, 255))
         layer.paste(ear_grad, (0, 0), ear_mask)
 
+    # 白楔形内耳画完，恢复头部放大参数用于脸部五官
+    r = _r0 * head_k
+    head_cy = _cy0 - _r0 * (head_k - 1.0)
     hx, hy = cx - r, head_cy - r
 
     # 主光高光（左上大面积柔光）
@@ -958,7 +1020,10 @@ def draw_cat(size):
 
 
 def draw_cat_silhouette(size):
-    """猫头纯白剪影（通知栏 / monochrome 用，系统要求纯白透明）。"""
+    """猫头纯白剪影（通知栏 / monochrome 用，系统要求纯白透明）。
+
+    原版不放大猫头（head_k=1.0）：耳朵原版、头圆原版半径、下巴原位。
+    """
     layer = Image.new("RGBA", (size, size), HOLE)
     d = ImageDraw.Draw(layer)
     cx = size * 0.5
@@ -1006,7 +1071,10 @@ def draw_cat_silhouette(size):
 
 
 def vector_cat(color="#FFFFFF", size_dp=108):
-    """猫头剪影的 VectorDrawable（圆头 + 两耳，耳根沿头圆弧），用于 adaptive 前景 / monochrome / 通知。"""
+    """猫头剪影的 VectorDrawable（圆头 + 两耳，耳根沿头圆弧），用于 adaptive 前景 / monochrome / 通知。
+
+    原版不放大猫头（head_k=1.0）：耳朵原版 rr/cy，头圆原版半径 rr。
+    """
     vp = VIEWPORT
     cx, cy = vp * 0.5, vp * 0.5 + vp * 0.0224
     rr = vp * 0.25
@@ -1209,17 +1277,16 @@ def _place_balanced(tile, W, H, distf, thr=CAT_KEEP_ALPHA):
 # ===== 图标猫"填满适配"：最大化填满画布 + 统一缝隙（不要求几何居中）=====
 # 思路：高清猫紧裁并预乘（透明区RGB清零，防缩放外溢）；取外轮廓像素精确评估；
 # 对每个形状二分求最大缩放，再在可行纵向偏移内取"耳侧缝隙≈项圈侧缝隙"的均衡点。
-_CAT_FILL_TILE = None
-_CAT_FILL_CONTOUR = None
+_CAT_FILL_CACHE = {}
 
 
-def _cat_fill_tile():
-    """返回 (实体猫紧裁tile RGBA, (ux,uy) 归一化外轮廓点)。全局缓存。"""
-    global _CAT_FILL_TILE, _CAT_FILL_CONTOUR
-    if _CAT_FILL_TILE is not None:
-        return _CAT_FILL_TILE, _CAT_FILL_CONTOUR
+def _cat_fill_tile(head_k=1.12):
+    """返回 (实体猫紧裁tile RGBA, (ux,uy) 归一化外轮廓点)。按 head_k 分别缓存。"""
+    cache_key = round(head_k, 4)
+    if cache_key in _CAT_FILL_CACHE:
+        return _CAT_FILL_CACHE[cache_key]
     base = 2048
-    big = draw_cat(base)
+    big = draw_cat(base, head_k=head_k)
     fa = np.asarray(big.split()[3])
     solid = fa >= CAT_KEEP_ALPHA
     yy, xx = np.where(solid)
@@ -1244,8 +1311,7 @@ def _cat_fill_tile():
                          np.full_like(bot_x, TH - 1), lef_y, rig_y])
     ux = (EX + 0.5) / TW
     uy = (EY + 0.5) / TH
-    _CAT_FILL_TILE = tile
-    _CAT_FILL_CONTOUR = (ux, uy)
+    _CAT_FILL_CACHE[cache_key] = (tile, (ux, uy))
     return tile, (ux, uy)
 
 
@@ -1327,15 +1393,16 @@ def _fill_clear_side(kind, W, H, s, oy, G, radius_ratio, ux, uy, TW, TH, top):
     return worst
 
 
-def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512):
+def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512, head_k=1.12):
     """把猫以"最大化填满 + 耳/领缝隙均衡"放入 W×H 画布，返回透明底 RGBA。
     kind: circle / rounded / rect(方形或横幅) / safe_circle(自适应安全圆)。
     gap_frac: 缝隙占短边的比例（随画布尺寸等比缩放；越小猫越满）。
+    head_k: 头部放大系数（1.12=手机版放大，1.0=TV版/其他原版不放大）。
 
     不要求几何严格居中：先二分求最大缩放（任意纵向偏移可行），再在可行偏移区间内
     取"耳侧最小缝隙≈项圈侧最小缝隙"的均衡点，使整只猫从耳尖到绿项圈尽量占满画布，
     同时四周留缝不触边。圆角/方形/横幅平顶下猫可达到很大占比。"""
-    tile, (ux, uy) = _cat_fill_tile()
+    tile, (ux, uy) = _cat_fill_tile(head_k=head_k)
     TW, TH = tile.size
     gap = gap_frac * min(W, H)
     G = gap + 2.0  # 2px 重采样安全余量
@@ -1374,10 +1441,11 @@ def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512):
 
 
 def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
-           inset=None, badge=None, style="3d"):
+           inset=None, badge=None, style="3d", head_k=1.12):
     """渲染完整图标。
 
     style: cat（卡通蓝猫头）/ 3d（高级立体浮雕字标）/ iphone17（带光影字标）。
+    head_k: 头部放大系数（1.12=手机版 launcher 放大，1.0=playstore/logo/favicon 等原版不放大）。
     """
     if inset is None:
         inset = {"circle": GRAD_INSET_CIRCLE,
@@ -1398,8 +1466,9 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
             img.putalpha(_mask(big, shape, radius_ratio))
         img = img.resize((size, size), Image.LANCZOS)
         # 猫：填满适配——最大化但留统一缝隙，耳尖/项圈/两侧均不触边不裁切
+        # head_k 由调用方控制：1.12=手机版 launcher 放大，1.0=其他原版不放大
         kind = {"circle": "circle", "rounded": "rounded", "square": "rect"}.get(shape, "rect")
-        catf = place_cat_fill(size, size, kind=kind, radius_ratio=radius_ratio)
+        catf = place_cat_fill(size, size, kind=kind, radius_ratio=radius_ratio, head_k=head_k)
         img.alpha_composite(catf)
         return img
 
@@ -1414,15 +1483,19 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
         img.putalpha(_mask(big, shape, radius_ratio))
     return img.resize((size, size), Image.LANCZOS)
 def render_banner(w, h, style="3d"):
-    """Android TV banner 320x180。"""
+    """Android TV banner 320x180。
+
+    cat 风格 TV Banner 使用原版不放大猫头（head_k=1.0），与手机版 launcher 区分。
+    """
     bw, bh = w * SS, h * SS
     img = make_gradient(max(bw, bh)).resize((bw, bh), Image.LANCZOS)
     img = add_iphone17_background_flare(img)
 
     if style == "cat":
         # 背景降到最终尺寸；猫填满适配（上下留缝、两侧自然留白、完整不裁切）
+        # TV Banner 使用原版不放大猫头 head_k=1.0
         img = img.resize((w, h), Image.LANCZOS)
-        catf = place_cat_fill(w, h, kind="rect", gap_frac=4 / 180)
+        catf = place_cat_fill(w, h, kind="rect", gap_frac=4 / 180, head_k=1.0)
         img.alpha_composite(catf)
         return img
 
@@ -1439,13 +1512,16 @@ def render_notification(size, style="3d"):
     # 注意：draw_wordmark 在 fill=FILL_NOTIFY 时会强制输出纯白无阴影，style 参数不影响结果
     return draw_wordmark(size * SS, FILL_NOTIFY, style=style).resize((size, size),
                           Image.LANCZOS)
-def render_cat_foreground(size):
+def render_cat_foreground(size, head_k=1.0):
     """自适应图标前景：完整彩色猫（透明底），填满适配放入安全圆(半径≈size/3)内。
 
     自适应图标 108dp 中系统只保证中心约 72dp 可见（半径 ≈ size/3）。
     填满适配使猫在安全圆内最大化并留统一缝隙，SS=5 超采样再 LANCZOS 缩小，
-    所有密度下边缘锐利无锯齿、不变形。"""
-    return place_cat_fill(size, size, kind="safe_circle", gap_frac=8 / 432)
+    所有密度下边缘锐利无锯齿、不变形。
+
+    head_k: 头部放大系数（默认 1.0 原版不放大；仅手机版 launcher 用 1.12）。
+    """
+    return place_cat_fill(size, size, kind="safe_circle", gap_frac=8 / 432, head_k=head_k)
 def _remove_if_exists(rel):
     """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
     path = os.path.join(REPO, rel)
@@ -1674,13 +1750,13 @@ def do_preview(style="3d"):
     print(f"[preview] -> {out}/ (Style: {style})")
     save_img(render(512, "rounded", style=style), f"{out}/rounded_512.png")
     save_img(render(512, "circle", fill=FILL_CIRCLE, style=style), f"{out}/circle_512.png")
-    save_img(render(512, "square", style=style), f"{out}/square_512.png")
+    save_img(render(512, "square", style=style, head_k=1.0), f"{out}/square_512.png")
     save_img(render(48, "rounded", style=style), f"{out}/rounded_48.png")
     save_img(render(72, "rounded", style=style), f"{out}/rounded_72.png")
     save_img(render(96, "rounded", style=style), f"{out}/rounded_96.png")
     save_img(render_banner(320, 180, style), f"{out}/banner.png")
-    save_img(render(432, "circle", fill=FILL_SAFE, style=style), f"{out}/adaptive_circle.png")
-    save_img(render(432, "rounded", fill=FILL_SAFE, radius_ratio=0.30, style=style),
+    save_img(render(432, "circle", fill=FILL_SAFE, style=style, head_k=1.0), f"{out}/adaptive_circle.png")
+    save_img(render(432, "rounded", fill=FILL_SAFE, radius_ratio=0.30, style=style, head_k=1.0),
               f"{out}/adaptive_squircle.png")
     mono = Image.new("RGBA", (432, 432), (0x1F, 0x1F, 0x1F, 255))
     if style == "cat":
@@ -1688,9 +1764,9 @@ def do_preview(style="3d"):
     else:
         mono.alpha_composite(draw_wordmark(432, FILL_SAFE, style="3d"))
     save_img(mono, f"{out}/monochrome.png")
-    save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style), f"{out}/logo.png")
+    save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0), f"{out}/logo.png")
     for px in FAVICON_SIZES:
-        save_img(render(px, "circle", fill=FILL_CIRCLE, style=style).resize(
+        save_img(render(px, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0).resize(
             (px * 8, px * 8), Image.NEAREST), f"{out}/favicon_{px}.png")
     for px in (24, 36, 48, 72):
         bar = Image.new("RGBA", (px, px), (0x20, 0x21, 0x24, 255))
@@ -1708,7 +1784,12 @@ def do_export(style="cat"):
         tv/      电视版（launcher 同上 + TV Banner + 通知 + logo）
         README.txt
     所有图标均由 render()/render_banner()/render_cat_foreground() 现生成，
-    与 do_write 写入仓库、CI 打包用的图标完全一致。"""
+    与 do_write 写入仓库、CI 打包用的图标完全一致。
+
+    设计区分：仅手机版 launcher（圆角/圆形）使用 head_k=1.12 头部放大；
+              其他所有类型（TV Banner、自适应前景、logo、favicon、playstore）
+              使用 head_k=1.0 原版不放大猫头。
+    """
     root = "build/icon-export"
     mob = os.path.join(root, "mobile")
     tv = os.path.join(root, "tv")
@@ -1751,9 +1832,10 @@ def do_export(style="cat"):
         # drawable-nodpi：自适应前景 PNG + app 内 logo
         dnd = os.path.join(base_dir, "drawable-nodpi")
         os.makedirs(dnd, exist_ok=True)
-        save_img(render_cat_foreground(432),
+        # 自适应前景使用原版不放大猫头（head_k=1.0），与手机版 launcher 区分
+        save_img(render_cat_foreground(432, head_k=1.0),
                  os.path.join(dnd, "ic_launcher_foreground.png"), format="PNG")
-        save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style),
+        save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0),
                  os.path.join(dnd, "ic_logo.png"), format="PNG")
         # 通知栏图标（各密度）
         for dname, px in NOTIFY_DENSITIES:
@@ -1761,11 +1843,11 @@ def do_export(style="cat"):
             os.makedirs(dn, exist_ok=True)
             save_img(render_notification(px, style=style),
                      os.path.join(dn, "ic_notification.png"), format="PNG")
-        # Play Store 512 方形
-        save_img(render(512, "square", style=style),
+        # Play Store 512 方形（原版不放大猫头）
+        save_img(render(512, "square", style=style, head_k=1.0),
                  os.path.join(base_dir, "ic_launcher-playstore.png"), format="PNG")
-        # favicon.ico
-        frames = [render(px, "circle", fill=FILL_CIRCLE, style=style)
+        # favicon.ico（原版不放大猫头）
+        frames = [render(px, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0)
                   for px in FAVICON_SIZES]
         save_img(frames[-1], os.path.join(base_dir, "favicon.ico"), format="ICO",
                  sizes=[(px, px) for px in FAVICON_SIZES], append_images=frames[:-1])
@@ -1779,14 +1861,15 @@ def do_export(style="cat"):
     print("  [tv] 生成电视版图标 ...")
     write_launcher(tv)
     write_common(tv)
-    # TV 专属 Banner
+    # TV 专属 Banner（head_k=1.0 原版不放大）
     bdd = os.path.join(tv, "drawable")
     os.makedirs(bdd, exist_ok=True)
     save_img(render_banner(320, 180, style),
              os.path.join(bdd, "ic_banner.png"), format="PNG")
     bnd = os.path.join(tv, "drawable-nodpi")
     os.makedirs(bnd, exist_ok=True)
-    save_img(render_cat_foreground(432),
+    # TV banner 前景使用 head_k=1.0 原版不放大
+    save_img(render_cat_foreground(432, head_k=1.0),
              os.path.join(bnd, "ic_banner_foreground.png"), format="PNG")
     badir = os.path.join(tv, "mipmap-anydpi-v26")
     os.makedirs(badir, exist_ok=True)
@@ -1796,20 +1879,24 @@ def do_export(style="cat"):
     readme = (
         "图标导出目录（由 local_customize.py do_export 生成）\n"
         "=" * 60 + "\n\n"
+        "设计区分：\n"
+        "  仅手机版 launcher（圆角/圆形）：头部 k=1.12 放大（原版耳朵 + 项圈固定）\n"
+        "  其他所有类型（TV Banner、自适应前景、logo、favicon、playstore）：头部原版不放大（head_k=1.0）\n"
+        "  通知栏剪影 + monochrome 矢量：原版不放大猫头\n\n"
         "mobile/   手机版图标\n"
         "  mipmap-mdpi~xxxhdpi/ic_launcher.png        圆角启动器（128~512px）\n"
         "  mipmap-mdpi~xxxhdpi/ic_launcher_round.webp  圆形启动器（48~192px）\n"
         "  mipmap-anydpi-v26/ic_launcher*.xml          自适应图标配置（API26+）\n"
         "  drawable/ic_launcher_background.xml         自适应背景矢量\n"
         "  drawable/ic_launcher_monochrome.xml         主题图标单色矢量（Android13）\n"
-        "  drawable-nodpi/ic_launcher_foreground.png   自适应前景彩色猫（432px）\n"
+        "  drawable-nodpi/ic_launcher_foreground.png   自适应前景彩色猫（432px，k=1.12）\n"
         "  drawable-nodpi/ic_logo.png                  App 内 Logo（600px）\n"
         "  drawable-mdpi~xxhdpi/ic_notification.png    通知栏图标（24~72px）\n"
         "  ic_launcher-playstore.png                   Play Store 商店图（512方形）\n"
         "  favicon.ico                                 网页图标\n\n"
         "tv/       电视版图标（launcher 同手机版，另含）\n"
-        "  drawable/ic_banner.png                      Android TV Banner（320x180）\n"
-        "  drawable-nodpi/ic_banner_foreground.png     Banner 前景（432px）\n"
+        "  drawable/ic_banner.png                      Android TV Banner（320x180，不放大）\n"
+        "  drawable-nodpi/ic_banner_foreground.png     Banner 前景（432px，不放大）\n"
         "  mipmap-anydpi-v26/ic_banner.xml             Banner 自适应配置\n\n"
         "所有图标 SS=5 超采样 + LANCZOS 降采样，高清不变形。\n"
     )
@@ -1830,10 +1917,11 @@ def do_write(style="3d"):
     save_text(vector_background(), f"{MAIN_RES}/drawable/ic_launcher_background.xml")
     if style == "cat":
         # 自适应图标前景用完整彩色猫 PNG（透明底），而非白色矢量剪影
+        # 自适应前景使用原版不放大猫头（head_k=1.0），与手机版 launcher 区分
         _remove_if_exists(f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
-        save_img(render_cat_foreground(432),
+        save_img(render_cat_foreground(432, head_k=1.0),
                  f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png", format="PNG")
-        # monochrome 保持纯白矢量（Android 13 主题图标系统要求）
+        # monochrome 保持纯白矢量（Android 13 主题图标系统要求），原版不放大猫头
         save_text(vector_cat(), f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
     else:
         _remove_if_exists(f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png")
@@ -1852,22 +1940,24 @@ def do_write(style="3d"):
                  f"{MAIN_RES}/mipmap-{name}/ic_launcher_round.webp",
                  format="WEBP", lossless=True, quality=100)
     print("[play store]")
-    save_img(render(512, "square", style=style), "app/src/main/ic_launcher-playstore.png",
+    save_img(render(512, "square", style=style, head_k=1.0), "app/src/main/ic_launcher-playstore.png",
               format="PNG")
     print("[tv banner]")
     if style == "cat":
         _remove_if_exists("app/src/leanback/res/drawable/ic_banner_foreground.xml")
-        save_img(render_cat_foreground(432),
+        # TV banner 前景使用 head_k=1.0 原版不放大猫头
+        save_img(render_cat_foreground(432, head_k=1.0),
                  "app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png", format="PNG")
     else:
         _remove_if_exists("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png")
         save_text(vector_wordmark(FILL_SAFE),
                   "app/src/leanback/res/drawable/ic_banner_foreground.xml")
     save_text(BANNER_XML, "app/src/leanback/res/mipmap-anydpi-v26/ic_banner.xml")
+    # TV Banner 使用 head_k=1.0 原版不放大猫头
     save_img(render_banner(320, 180, style), "app/src/leanback/res/drawable/ic_banner.png",
               format="PNG")
     print("[in-app logo]")
-    save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style),
+    save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0),
               f"{MAIN_RES}/drawable-nodpi/ic_logo.png", format="PNG")
     print("[notification]")
     if style == "cat":
@@ -1881,7 +1971,7 @@ def do_write(style="3d"):
                  f"{MAIN_RES}/drawable-{name}/ic_notification.png", format="PNG")
     print("[web favicon]")
     sizes = sorted(FAVICON_SIZES)
-    frames = [render(px, "circle", fill=FILL_CIRCLE, style=style) for px in sizes]
+    frames = [render(px, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0) for px in sizes]
     save_img(frames[-1], "app/src/main/assets/favicon.ico", format="ICO",
               sizes=[(px, px) for px in sizes],
               append_images=frames[:-1])
@@ -4002,4 +4092,3 @@ if __name__ == "__main__":
         do_export(CONFIG.get("ICON_STYLE", "cat"))
     else:
         main()
-#（注：内容由AI生成）
