@@ -146,6 +146,8 @@
                         android:textSize="12sp"
                         android:visibility="gone"
                         app:backgroundTint="?attr/colorSecondaryContainer"
+                        app:strokeColor="@color/focus_ring_secondary"
+                        app:strokeWidth="@dimen/webhtv_focus_ring_width"
                         android:textColor="?attr/colorOnSecondaryContainer"/>
 
                     <com.google.android.material.button.MaterialButton
@@ -160,6 +162,8 @@
                         android:text="@string/following_continue"
                         android:textSize="12sp"
                         app:backgroundTint="?attr/colorPrimary"
+                        app:strokeColor="@color/focus_ring_primary"
+                        app:strokeWidth="@dimen/webhtv_focus_ring_width"
                         android:textColor="?attr/colorOnPrimary"/>
 
                     <com.google.android.material.button.MaterialButton
@@ -174,6 +178,8 @@
                         android:text="@string/following_check"
                         android:textSize="12sp"
                         app:backgroundTint="?attr/colorSecondaryContainer"
+                        app:strokeColor="@color/focus_ring_secondary"
+                        app:strokeWidth="@dimen/webhtv_focus_ring_width"
                         android:textColor="?attr/colorOnSecondaryContainer"/>
 
                     <com.google.android.material.button.MaterialButton
@@ -189,7 +195,9 @@
                         android:text="@string/following_read"
                         android:textSize="12sp"
                         android:textColor="@color/following_button_secondary_text"
-                        app:backgroundTint="@color/following_button_secondary_bg"/>
+                        app:backgroundTint="@color/following_button_secondary_bg"
+                        app:strokeColor="@color/focus_ring_primary"
+                        app:strokeWidth="@dimen/webhtv_focus_ring_width"/>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/notify"
@@ -203,6 +211,8 @@
                         android:text="@string/following_notify_on"
                         android:textSize="12sp"
                         app:backgroundTint="?attr/colorSecondaryContainer"
+                        app:strokeColor="@color/focus_ring_secondary"
+                        app:strokeWidth="@dimen/webhtv_focus_ring_width"
                         android:textColor="?attr/colorOnSecondaryContainer"/>
 
                     <com.google.android.material.button.MaterialButton
@@ -217,6 +227,8 @@
                         android:text="@string/following_change_source"
                         android:textSize="12sp"
                         app:backgroundTint="?attr/colorSecondaryContainer"
+                        app:strokeColor="@color/focus_ring_secondary"
+                        app:strokeWidth="@dimen/webhtv_focus_ring_width"
                         android:textColor="?attr/colorOnSecondaryContainer"/>
 
                     <com.google.android.material.button.MaterialButton
@@ -231,6 +243,8 @@
                         android:text="@string/following_cancel"
                         android:textSize="12sp"
                         app:backgroundTint="?attr/colorErrorContainer"
+                        app:strokeColor="@color/focus_ring_error"
+                        app:strokeWidth="@dimen/webhtv_focus_ring_width"
                         android:textColor="?attr/colorOnErrorContainer"/>
                 </LinearLayout>
             </HorizontalScrollView>

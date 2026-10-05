@@ -5,17 +5,14 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 
+import com.fongmi.android.tv.theme.ThemeController;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.card.MaterialCardView;
 
 final class TmdbCardFocusHelper {
 
-    private static final int FOCUS_STROKE = 0xFFFFD166;
     private static final int FOCUS_ELEVATION_DP = 8;
     private static final int FOCUS_STROKE_DP = 3;
-
-    private TmdbCardFocusHelper() {
-    }
 
     interface FocusCallback {
         void onFocus(boolean focused);
@@ -50,12 +47,13 @@ final class TmdbCardFocusHelper {
     }
 
     private static void apply(MaterialCardView card, boolean focused, int backgroundColor, int strokeColor, int strokeWidthDp) {
+        int focus = ThemeController.focusRingColor(card.getContext());
         card.setCardBackgroundColor(backgroundColor);
-        card.setStrokeColor(focused ? FOCUS_STROKE : strokeColor);
+        card.setStrokeColor(focused ? focus : strokeColor);
         card.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : strokeWidthDp));
         card.setCardElevation(ResUtil.dp2px(focused ? FOCUS_ELEVATION_DP : 0));
         card.setTranslationZ(ResUtil.dp2px(focused ? FOCUS_ELEVATION_DP : 0));
-        card.setForeground(focused ? foregroundBorder(card, FOCUS_STROKE, FOCUS_STROKE_DP) : null);
+        card.setForeground(focused ? foregroundBorder(card, focus, FOCUS_STROKE_DP) : null);
         card.animate().cancel();
         card.setScaleX(1f);
         card.setScaleY(1f);

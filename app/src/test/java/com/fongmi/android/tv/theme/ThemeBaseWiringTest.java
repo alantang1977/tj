@@ -107,6 +107,81 @@ public class ThemeBaseWiringTest {
             "fragment_setting_subtitle.xml", "fragment_setting_tmdb.xml",
     };
 
+    /**
+     * Player bottom sheets whose own root background is a <em>dark</em> translucent
+     * indigo glass panel, never a light one.
+     *
+     * <p>{@code shape_player_child_sheet_panel}, {@code shape_dialog_glass_panel},
+     * {@code shape_dialog_control_glass_panel}, {@code shape_quick_search_panel},
+     * {@code shape_danmaku_sheet_panel} and {@code shape_danmaku_setting_panel} are all
+     * {@code #E62F315E -> #D6282955 -> #CC303463} (or {@code #E61F1F22}); composited over
+     * any frame they stay dark, so their foreground must not follow the palette.
+     *
+     * <p>These are the mobile peers of the leanback sheets, which use the identical
+     * drawables and {@code ?attr/colorOnSurface}. That works on TV only because the
+     * leanback table is dark in every profile ({@code webhtv_color_on_surface} =
+     * {@code #E2E2E9}). The mobile <em>day</em> table resolves the same role to
+     * {@code #1A1C1E} and {@code colorOnSurfaceVariant} to {@code #44474F}, so commit
+     * {@code 0af2340d4} silently turned these sheets dark-on-dark: measured 1.33:1 and
+     * 1.38:1 over a dark frame, versus 12.84:1 and 7.18:1 once restored.
+     *
+     * <p>{@code 0af2340d4} replaced the flat light values ({@code @color/white},
+     * {@code white_70}, {@code white_90}, {@code white_50/60}) in exactly these files, and
+     * this list is that change's inverse. The fill is constant in every state, so a flat
+     * light foreground is correct and no state list is needed.
+     */
+    private static final String[] DARK_GLASS_SHEETS = {
+            "dialog_danmaku.xml", "dialog_danmaku_search.xml", "dialog_danmaku_setting.xml",
+            "dialog_episode_list.xml", "dialog_live.xml", "dialog_live_epg.xml",
+            "dialog_offset.xml", "dialog_quick_search.xml", "dialog_timer.xml",
+            "dialog_title.xml", "dialog_track.xml", "dialog_video_content.xml",
+    };
+
+    /**
+     * Palette-independent foregrounds that are correct on a dark surface in every table.
+     *
+     * <p>{@code webhtv_on_wallpaper} and {@code webhtv_color_player_control_muted} are
+     * {@code #FFFFFF} / {@code #CCFFFFFF} in all three token tables (the light, night and
+     * leanback files), which is what makes them safe on a surface whose darkness does not
+     * depend on the palette. {@code webhtv_color_overlay_light} is the matching constant
+     * ripple fill. They are semantic roles, not raw values, so the sheets stay inside the
+     * token system and need no allowlist exemption of their own.
+     */
+    private static final String[] CONSTANT_LIGHT_FOREGROUNDS = {
+            "?attr/webhtvColorOnWallpaper",
+            "@color/webhtv_color_player_control_muted",
+            "@color/webhtv_color_overlay_light",
+            "@color/selector_control_sheet_text",
+    };
+
+    /**
+     * The sheet button state list must stay palette-independent too.
+     *
+     * <p>{@code dialog_danmaku_setting} and {@code dialog_timer} paint their option buttons
+     * with {@code @color/selector_control_sheet_text} over
+     * {@code selector_player_child_sheet_button}, a dark translucent fill. The list resolves
+     * to {@code @color/white} / {@code #B3FFFFFF} plus the black selected/activated pair
+     * that matches the light selected band, so it never follows the palette. Routing it
+     * through {@code ?attr/colorOnSurface} would put near-black text on the dark sheet in
+     * day mode, exactly like the layouts above.
+     */
+    @Test
+    public void controlSheetButtonTextStaysPaletteIndependent() throws Exception {
+        String selector = withoutComments(read("src/mobile/res/color/selector_control_sheet_text.xml"));
+        assertFalse("the sheet button text must not follow the palette",
+                selector.contains("?attr/"));
+        assertTrue(selector.contains("@color/white"));
+        assertTrue(selector.contains("#B3FFFFFF"));
+        assertTrue("the selected state must stay dark on the light selected band",
+                selector.contains("#FF000000"));
+    }
+
+    /** Attributes that paint a foreground onto the sheet's own dark panel. */
+    private static final String[] SHEET_FOREGROUND_ATTRS = {
+            "android:textColor", "android:textColorHint", "app:tint",
+            "app:strokeColor", "app:rippleColor", "app:boxStrokeColor",
+    };
+
     @Test
     public void flavourBaseThemesInheritTheWebhtvSemanticTheme() throws Exception {
         String mobile = read("src/mobile/res/values/styles.xml");
@@ -228,6 +303,98 @@ public class ThemeBaseWiringTest {
             assertTrue(name + " must use ?attr/webhtvColorOnWallpaper for its rows",
                     source.contains("android:textColor=\"?attr/webhtvColorOnWallpaper\""));
         }
+    }
+
+    /**
+     * A dark glass sheet must not use a palette-following role for its text or icons.
+     *
+     * <p>The inverse guard of {@link #wallpaperPagesUseTheWallpaperForegroundRole}: those
+     * pages sit on the wallpaper, these on a dark translucent panel. Both need a light
+     * foreground, and both are broken the same way - by routing through
+     * {@code ?attr/colorOnSurface}, which is near-black in the mobile day table.
+     *
+     * <p>{@code ?attr/colorOutline} and {@code ?attr/colorOnSurfaceVariant} were rewritten
+     * to those roles by the same commit on the sheet's ripple, stroke and secondary text;
+     * they are pinned here too because the stroke and ripple sit directly on the dark
+     * panel. The replacements are the palette-independent roles
+     * {@code webhtvColorOnWallpaper}, {@code webhtv_color_player_control_muted} and
+     * {@code webhtv_color_overlay_light}.
+     *
+     * <p>The check is per attribute, not per file: every foreground attribute in these
+     * layouts must resolve to one of those constants, so a future edit cannot reintroduce
+     * a palette-following role on one node while leaving another node correct.
+     */
+    @Test
+    public void darkGlassSheetsUseAConstantLightForeground() throws Exception {
+        for (String name : DARK_GLASS_SHEETS) {
+            String source = withoutComments(read("src/mobile/res/layout/" + name));
+            int checked = 0;
+            for (String attr : SHEET_FOREGROUND_ATTRS) {
+                java.util.regex.Matcher matcher = java.util.regex.Pattern
+                        .compile(java.util.regex.Pattern.quote(attr) + "=\"([^\"]+)\"")
+                        .matcher(source);
+                while (matcher.find()) {
+                    String value = matcher.group(1);
+                    checked++;
+                    boolean constant = false;
+                    for (String allowed : CONSTANT_LIGHT_FOREGROUNDS) {
+                        if (value.equals(allowed)) constant = true;
+                    }
+                    assertTrue(name + " paints " + attr + "=\"" + value
+                                    + "\" on its dark glass panel, which is not a palette-independent"
+                                    + " light foreground (allowed: "
+                                    + String.join(", ", CONSTANT_LIGHT_FOREGROUNDS) + ")",
+                            constant);
+                }
+            }
+            assertTrue(name + " must paint at least one foreground on its sheet", checked > 0);
+        }
+    }
+
+    /**
+     * The TMDB source chips must keep a constant translucent fill for the dark-page
+     * variant.
+     *
+     * <p>{@code FlagAdapter.applyTmdbTheme} swaps the chip between two variants:
+     * {@code selector_tmdb_flag_item} (light page, dark text) and
+     * {@code selector_tmdb_flag_item_dark} (dark page, light text
+     * {@code #F3F7FA} / {@code #8FE7B6}). Commit {@code e1ea7ab34} moved the dark variant
+     * onto the palette-following surfaces {@code webhtv_color_surface_container*} and
+     * {@code webhtv_color_success_container}. In the mobile day table those resolve to
+     * {@code #ECEEF4} / {@code #E7E8EF} / {@code #C4EED0}, so the dark variant became
+     * light-fill + near-white text: measured 1.08:1 and 1.16:1.
+     *
+     * <p>The chip that the player shows by default therefore lost its contrast, so the
+     * dark variant must stay on constant translucent white. Its light sibling keeps the
+     * semantic surfaces because there the text is dark.
+     *
+     * <p>Both files are stripped of XML comments before matching, so the prose in either
+     * file cannot satisfy or defeat an assertion.
+     */
+    @Test
+    public void tmdbDarkChipVariantKeepsAConstantTranslucentFill() throws Exception {
+        String dark = withoutComments(read("src/mobile/res/drawable/selector_tmdb_flag_item_dark.xml"));
+        for (String surface : new String[]{
+                "webhtv_color_surface_container", "webhtv_color_success_container",
+                "webhtv_color_primary_container", "webhtv_color_outline_variant"}) {
+            assertFalse("the dark-page chip must not follow the palette surface " + surface,
+                    dark.contains("@color/" + surface));
+        }
+        for (String fill : new String[]{"#26FFFFFF", "#33FFFFFF", "#664B8F72"}) {
+            assertTrue("the dark-page chip must keep the constant translucent fill " + fill,
+                    dark.contains(fill));
+        }
+        // Its paired text state list is the light-on-dark one; keep the two in step.
+        String text = withoutComments(read("src/mobile/res/color/selector_tmdb_flag_text_dark.xml"));
+        assertTrue(text.contains("#F3F7FA"));
+        String light = withoutComments(read("src/mobile/res/drawable/selector_tmdb_flag_item.xml"));
+        assertTrue("the light-page chip keeps its semantic light surface",
+                light.contains("@color/webhtv_color_surface_container"));
+    }
+
+    /** Drops XML comments so file prose cannot satisfy or defeat a source assertion. */
+    private static String withoutComments(String source) {
+        return source.replaceAll("(?s)<!--.*?-->", "");
     }
 
     /**

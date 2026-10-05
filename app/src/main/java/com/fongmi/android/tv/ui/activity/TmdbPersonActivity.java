@@ -46,6 +46,7 @@ import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityTmdbPersonBinding;
 import com.fongmi.android.tv.service.TmdbService;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.theme.ThemeController;
 import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
 import com.fongmi.android.tv.ui.adapter.TmdbPersonPhotoAdapter;
 import com.fongmi.android.tv.ui.adapter.TmdbWorkAdapter;
@@ -71,7 +72,6 @@ import java.util.Set;
 
 public class TmdbPersonActivity extends BaseActivity {
 
-    private static final int FOCUS_STROKE = 0xFFFFD166;
     private static final int FOCUS_STROKE_DP = 3;
     private static final int PHOTO_STROKE_DP = 1;
 
@@ -595,7 +595,7 @@ public class TmdbPersonActivity extends BaseActivity {
         boolean focused = button.hasFocus();
         int bg = selected ? (light ? 0xFFDBEAFE : 0xFF2F4F6F) : (light ? 0xFFF5F8FB : 0xFF1A2530);
         int fg = light ? 0xFF12202D : 0xFFFFFFFF;
-        int stroke = focused ? FOCUS_STROKE : selected ? 0xFF6DA8E8 : (light ? 0x33424B57 : 0x33FFFFFF);
+        int stroke = focused ? ThemeController.focusRingColor(this) : selected ? 0xFF6DA8E8 : (light ? 0x33424B57 : 0x33FFFFFF);
         button.setTextColor(fg);
         button.setBackgroundTintList(ColorStateList.valueOf(bg));
         button.setStrokeColor(ColorStateList.valueOf(stroke));
@@ -834,7 +834,7 @@ public class TmdbPersonActivity extends BaseActivity {
     private void applyPhotoButtonFocus(MaterialButton button, boolean focused) {
         button.setBackgroundTintList(ColorStateList.valueOf(focused ? 0x33FFFFFF : 0x18FFFFFF));
         button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : PHOTO_STROKE_DP));
-        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : 0x4DFFFFFF));
+        button.setStrokeColor(ColorStateList.valueOf(focused ? ThemeController.focusRingColor(this) : 0x4DFFFFFF));
     }
 
     private void showPhotoActionDialog(String url) {

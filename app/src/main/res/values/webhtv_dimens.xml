@@ -12,4 +12,9 @@
     <dimen name="webhtv_card_radius_default">8dp</dimen>
     <dimen name="webhtv_card_radius_large">12dp</dimen>
     <dimen name="webhtv_size_dialog_corner">22dp</dimen>
+    <!--
+        电视版统一焦点边框环宽度。与 ?attr/tvFocusRing 既有的 3dp 规范一致：
+        全 TV 只允许这一个宽度来源，新增可聚焦控件必须引用它。
+    -->
+    <dimen name="webhtv_focus_ring_width">3dp</dimen>
 </resources>

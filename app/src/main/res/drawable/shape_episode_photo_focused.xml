@@ -6,6 +6,6 @@
 
     <stroke
         android:width="3dp"
-        android:color="#FFD166" />
+        android:color="?attr/tvFocusRing" />
 
 </shape>

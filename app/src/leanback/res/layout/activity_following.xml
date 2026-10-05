@@ -37,7 +37,9 @@
                 android:nextFocusDown="@id/recycler"
                 android:text="@string/following_check_all"
                 android:textColor="@color/following_button_primary_text"
-                app:backgroundTint="@color/following_button_primary_bg" />
+                app:backgroundTint="@color/following_button_primary_bg"
+                app:strokeColor="@color/focus_ring_primary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/readAll"
@@ -52,7 +54,9 @@
                 android:nextFocusDown="@id/recycler"
                 android:text="@string/following_read_all"
                 android:textColor="@color/following_button_secondary_text"
-                app:backgroundTint="@color/following_button_secondary_bg" />
+                app:backgroundTint="@color/following_button_secondary_bg"
+                app:strokeColor="@color/focus_ring_primary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/filter"
@@ -67,7 +71,9 @@
                 android:layout_marginStart="8dp"
                 android:text="@string/following_filter_updates"
                 android:textColor="@color/following_button_secondary_text"
-                app:backgroundTint="@color/following_button_secondary_bg" />
+                app:backgroundTint="@color/following_button_secondary_bg"
+                app:strokeColor="@color/focus_ring_primary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/alistImport"
@@ -81,7 +87,9 @@
                 android:layout_marginStart="8dp"
                 android:text="@string/following_server_import"
                 android:textColor="@color/following_button_secondary_text"
-                app:backgroundTint="@color/following_button_secondary_bg" />
+                app:backgroundTint="@color/following_button_secondary_bg"
+                app:strokeColor="@color/focus_ring_primary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <TextView
                 android:id="@+id/summary"

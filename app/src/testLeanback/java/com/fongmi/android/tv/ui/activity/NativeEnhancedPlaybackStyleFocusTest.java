@@ -37,7 +37,8 @@ public class NativeEnhancedPlaybackStyleFocusTest {
     @Test
     public void unifiedFocusTokensAreDeclaredOnceAndThemeable() throws Exception {
         String colors = read(COLORS);
-        assertTrue("焦点环色必须只有一个来源", colors.contains("<color name=\"tv_item_focus_ring\">#FFD166</color>"));
+        assertTrue("焦点环色必须只有一个来源且必须跟随主题焦点槽",
+                colors.contains("<color name=\"tv_item_focus_ring\">@color/webhtv_color_focus</color>"));
         assertTrue("当前播放环色必须只有一个来源", colors.contains("<color name=\"tv_item_current_ring\">#2CC56F</color>"));
         assertTrue("常态描边色必须只有一个来源", colors.contains("<color name=\"tv_item_normal_stroke\">#33FFFFFF</color>"));
 

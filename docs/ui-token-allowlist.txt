@@ -152,7 +152,6 @@ app/src/main/res/drawable/shape_lab_uninstall_btn.xml|Lab-only palette retained 
 app/src/main/res/drawable/shape_lab_update_btn.xml|Lab-only palette retained for development tooling
 app/src/main/res/drawable/shape_lab_version.xml|Lab-only palette retained for development tooling
 app/src/main/res/drawable/shape_login_state_badge.xml|Legacy drawable shape retained pending dedicated component cleanup
-app/src/main/res/drawable/shape_mpv_action_menu.xml|Legacy drawable shape retained pending dedicated component cleanup
 app/src/main/res/drawable/shape_mpv_active_badge.xml|Legacy drawable shape retained pending dedicated component cleanup
 app/src/main/res/drawable/shape_multi_thread_proxy_input.xml|Legacy drawable shape retained pending dedicated component cleanup
 app/src/main/res/drawable/shape_player_osd_diagnostics.xml|Legacy drawable shape retained pending dedicated component cleanup
@@ -199,3 +198,4 @@ app/src/mobile/res/drawable/shape_quick_search_item.xml|Legacy drawable shape re
 app/src/mobile/res/drawable/shape_quick_search_panel.xml|Legacy drawable shape retained pending dedicated component cleanup
 app/src/mobile/res/drawable/shape_toolbar_popup.xml|Legacy drawable shape retained pending dedicated component cleanup
 app/src/mobile/res/drawable/shape_video_context_scrim_light.xml|Player/immersive overlay uses fixed translucent colors over video content
+app/src/mobile/res/drawable/selector_tmdb_flag_item_dark.xml|Player/immersive overlay uses fixed translucent colors over video content

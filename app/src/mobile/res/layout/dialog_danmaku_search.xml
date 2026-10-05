@@ -27,8 +27,8 @@
             android:inputType="textCapWords|textAutoCorrect|textAutoComplete"
             android:maxLength="255"
             android:singleLine="true"
-            android:textColor="?attr/colorOnSurface"
-            android:textColorHint="?attr/colorOnSurfaceVariant"
+            android:textColor="?attr/webhtvColorOnWallpaper"
+            android:textColorHint="@color/webhtv_color_player_control_muted"
             android:textSize="14sp" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>

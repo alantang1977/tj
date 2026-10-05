@@ -1777,7 +1777,7 @@ public class TmdbDetailActivityLayoutTest {
                         && activity.contains("private void applyEpisodeToolButtonsFocus()")
                         && activity.contains("applyEpisodeToolButtonFocus(binding.episodeReverse, colors);")
                         && activity.contains("applyEpisodeToolButtonFocus(binding.episodeViewMode, colors);")
-                        && activity.contains("button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : colors.lineStrong));"));
+                        && activity.contains("button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : colors.lineStrong));"));
         assertTrue("episode tool delayed refocus must not steal focus back from the sibling tool",
                 activity.contains("isEpisodeToolFocusedOtherThan(button)")
                         && activity.contains("retryDetailButtonFocus(button, previousFocus)")
@@ -1907,7 +1907,7 @@ public class TmdbDetailActivityLayoutTest {
                         && activity.contains("button.setMinWidth(ResUtil.dp2px(64));")
                         && activity.contains("ThemeColors colors = currentThemeColors();")
                         && activity.contains("background.setColor(focused ? colors.control : selected ? colors.chipActive : colors.chip);")
-                        && activity.contains("background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : selected ? 2 : CHIP_STROKE_DP), focused ? FOCUS_STROKE : selected ? colors.accent : colors.line);")
+                        && activity.contains("background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : selected ? 2 : CHIP_STROKE_DP), focused ? focusStroke() : selected ? colors.accent : colors.line);")
                         && activity.contains("button.setTextColor(colors.primary);")
                         && activity.contains("button.setBackground(background);")
                         && activity.contains("button.setActivated(selected);")
@@ -2304,9 +2304,10 @@ public class TmdbDetailActivityLayoutTest {
                         && helper.contains("card.setForeground(null);")
                         && helper.contains("card.setRippleColor(ColorStateList.valueOf(0x00000000));"));
         assertTrue("shared TMDB card focus helper should draw a transparent foreground border above card content",
-                helper.contains("private static final int FOCUS_STROKE = 0xFFFFD166;")
-                        && helper.contains("card.setStrokeColor(focused ? FOCUS_STROKE : strokeColor);")
-                        && helper.contains("card.setForeground(focused ? foregroundBorder(card, FOCUS_STROKE, FOCUS_STROKE_DP) : null);")
+                helper.contains("private static final int FOCUS_STROKE_DP = 3;")
+                        && helper.contains("int focus = ThemeController.focusRingColor(card.getContext());")
+                        && helper.contains("card.setStrokeColor(focused ? focus : strokeColor);")
+                        && helper.contains("card.setForeground(focused ? foregroundBorder(card, focus, FOCUS_STROKE_DP) : null);")
                         && helper.contains("drawable.setColor(Color.TRANSPARENT);")
                         && !helper.contains("FOCUS_SCALE")
                         && !helper.contains("scaleX(")
@@ -2600,8 +2601,8 @@ public class TmdbDetailActivityLayoutTest {
         assertTrue("episode tool focus refresh should keep text and icons on the neutral detail theme color",
                 applyBody.contains("button.setTextColor(colors.primary);")
                         && applyBody.contains("button.setIconTint(ColorStateList.valueOf(colors.primary));"));
-        assertTrue("episode tool focus refresh should use the shared yellow focus stroke and themed idle stroke",
-                applyBody.contains("focused ? FOCUS_STROKE : colors.lineStrong")
+        assertTrue("episode tool focus refresh should use the shared theme focus stroke and themed idle stroke",
+                applyBody.contains("focused ? focusStroke() : colors.lineStrong")
                         && !applyBody.contains("focused ? colors.accent : colors.lineStrong"));
     }
 
@@ -3133,11 +3134,11 @@ public class TmdbDetailActivityLayoutTest {
 
         int method = adapter.indexOf("private void applyNativeEnhancedCardFocus");
         assertTrue(adapterPath + " is missing native enhanced card focus styling", method >= 0);
-        assertTrue("native enhanced episode focus must use the same yellow stroke as TV buttons",
-                adapter.contains("private static final int FOCUS_STROKE = 0xFFFFD166;")
-                        && adapter.indexOf("holder.binding.getRoot().setStrokeColor(focused ? FOCUS_STROKE : activated ? activeStrokeColor : 0x00000000);", method) > method
+        assertTrue("native enhanced episode focus must use the same theme focus ring as TV buttons",
+                adapter.contains("int focusStroke = ThemeController.focusRingColor(holder.binding.getRoot().getContext());")
+                        && adapter.indexOf("holder.binding.getRoot().setStrokeColor(focused ? focusStroke : activated ? activeStrokeColor : 0x00000000);", method) > method
                         && adapter.indexOf("Drawable foreground = focused", method) > method
-                        && adapter.indexOf("TmdbCardFocusHelper.foregroundBorder(holder.binding.getRoot(), FOCUS_STROKE, FOCUS_STROKE_DP)", method) > method
+                        && adapter.indexOf("TmdbCardFocusHelper.foregroundBorder(holder.binding.getRoot(), focusStroke, FOCUS_STROKE_DP)", method) > method
                         && adapter.indexOf("holder.binding.getRoot().setForeground(foreground);", method) > method);
         assertTrue("currently playing episode cards must keep the green active border when not focused",
                 adapter.contains("private int activeStrokeColor = 0xFF2CC56F;")
@@ -3146,9 +3147,12 @@ public class TmdbDetailActivityLayoutTest {
                 !adapter.contains("FOCUS_SCALE")
                         && adapter.indexOf("scaleX(", method) < 0
                         && adapter.indexOf("scaleY(", method) < 0);
-        assertTrue("legacy episode foreground selector must also keep focus yellow and playing green",
+        assertTrue("legacy episode foreground selector must also keep focus theme-driven and playing green",
                 selector.contains("android:color=\"?attr/tvFocusRing\"")
                         && selector.contains("android:color=\"?attr/tvCurrentRing\""));
+        assertTrue("legacy photo focus shape must resolve the ring through the theme attribute, not a literal",
+                readMainRes("drawable", "shape_episode_photo_focused.xml").contains("?attr/tvFocusRing")
+                        && !readMainRes("drawable", "shape_episode_photo_focused.xml").contains("FFD166"));
     }
 
     @Test
@@ -3665,6 +3669,12 @@ public class TmdbDetailActivityLayoutTest {
     private static String readLayout(String file) throws Exception {
         Path layoutPath = findMainResPath().resolve(Path.of("layout", file));
         return new String(Files.readAllBytes(layoutPath), StandardCharsets.UTF_8);
+    }
+
+    /** Reads a shared (main source set) drawable by name. */
+    private static String readMainRes(String dir, String file) throws Exception {
+        Path path = findMainResPath().resolve(Path.of(dir, file));
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
     }
 
     private static String readLeanbackLayout(String file) throws Exception {

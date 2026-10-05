@@ -1,21 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    关于弹窗右下角的齿轮图标按钮。
+
+    它此前只在获得焦点时把填充换成写死的 #0B57D0，既不受主题控制，也和"关于"页
+    其他按钮的焦点表现不一致。现在统一走边框环：焦点态 = 主题色圆角填充 + 3dp 配对
+    on-色描边，与 checkUpdate / githubProxy / confirm 三个按钮完全同一套规范。
+
+    未聚焦态同时保留一圈全透明描边，使描边宽度在两种状态下都是常量，
+    避免焦点切换引起任何尺寸变化。
+-->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
-        <shape android:shape="rectangle">
-            <solid android:color="#0B57D0" />
-            <corners android:radius="18dp" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <solid android:color="?attr/colorPrimary" />
+                    <corners android:radius="18dp" />
+                </shape>
+            </item>
+            <item>
+                <shape android:shape="rectangle">
+                    <stroke
+                        android:width="@dimen/webhtv_focus_ring_width"
+                        android:color="?attr/colorOnPrimary" />
+                    <corners android:radius="18dp" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
     <item android:state_pressed="true">
-        <shape android:shape="rectangle">
-            <solid android:color="#0B57D0" />
-            <corners android:radius="18dp" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <solid android:color="?attr/colorPrimary" />
+                    <corners android:radius="18dp" />
+                </shape>
+            </item>
+            <item>
+                <shape android:shape="rectangle">
+                    <stroke
+                        android:width="@dimen/webhtv_focus_ring_width"
+                        android:color="?attr/colorOnPrimary" />
+                    <corners android:radius="18dp" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
     <item>
-        <shape android:shape="rectangle">
-            <solid android:color="@color/transparent" />
-            <corners android:radius="18dp" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/transparent" />
+                    <corners android:radius="18dp" />
+                </shape>
+            </item>
+            <item>
+                <shape android:shape="rectangle">
+                    <stroke
+                        android:width="@dimen/webhtv_focus_ring_width"
+                        android:color="@color/transparent" />
+                    <corners android:radius="18dp" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
 </selector>

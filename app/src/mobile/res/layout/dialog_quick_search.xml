@@ -25,7 +25,7 @@
             android:ellipsize="end"
             android:gravity="start|center_vertical"
             android:maxLines="1"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="17sp"
             android:textStyle="bold"
             tools:text="快搜 “仙逆”" />
@@ -56,8 +56,8 @@
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
             android:singleLine="true"
-            android:textColor="?attr/colorOnSurface"
-            android:textColorHint="?attr/colorOnSurfaceVariant"
+            android:textColor="?attr/webhtvColorOnWallpaper"
+            android:textColorHint="@color/webhtv_color_player_control_muted"
             android:textSize="15sp" />
 
         <androidx.appcompat.widget.AppCompatImageButton
@@ -70,7 +70,7 @@
             android:padding="10dp"
             android:scaleType="center"
             android:src="@drawable/ic_action_search"
-            app:tint="@color/dialog_outlined_button_text" />
+            app:tint="?attr/webhtvColorOnWallpaper" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 
@@ -106,7 +106,7 @@
             android:gravity="center"
             android:paddingHorizontal="24dp"
             android:text="@string/error_empty"
-            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textColor="@color/webhtv_color_player_control_muted"
             android:textSize="14sp"
             android:visibility="gone"
             tools:visibility="visible" />

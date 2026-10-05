@@ -25,6 +25,7 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.DialogMpvConfigManagerBinding;
 import com.fongmi.android.tv.player.mpv.MpvConfigStore;
+import com.fongmi.android.tv.theme.ThemeController;
 import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
 import com.fongmi.android.tv.ui.adapter.MpvConfigProfileAdapter;
 import com.fongmi.android.tv.utils.Notify;
@@ -85,8 +86,12 @@ public class MpvConfigDialog extends BaseAlertDialog implements MpvConfigProfile
     private void setupTabs() {
         binding.tabs.setTabMode(TabLayout.MODE_FIXED);
         binding.tabs.setTabGravity(TabLayout.GRAVITY_FILL);
-        binding.tabs.setSelectedTabIndicatorColor(Color.parseColor("#1A73E8"));
-        binding.tabs.setTabTextColors(Color.parseColor("#5F6368"), Color.parseColor("#1A73E8"));
+        // Tab 是对话框面板上的前景：未选中用次要前景，选中用强调色。
+        // 原先硬编码 #5F6368 / #1A73E8，夜间在深色面板上只有 2.23:1。
+        binding.tabs.setSelectedTabIndicatorColor(ThemeController.current().colorPrimary());
+        binding.tabs.setTabTextColors(
+                ThemeController.current().colorOnSurfaceVariant(),
+                ThemeController.current().colorPrimary());
         binding.tabs.setTabRippleColor(android.content.res.ColorStateList.valueOf(Color.TRANSPARENT));
         binding.tabs.setUnboundedRipple(false);
         for (String label : targets()) binding.tabs.addTab(binding.tabs.newTab().setText(label));
@@ -240,7 +245,9 @@ public class MpvConfigDialog extends BaseAlertDialog implements MpvConfigProfile
         item.setPadding(ResUtil.dp2px(14), 0, ResUtil.dp2px(14), 0);
         item.setCompoundDrawablePadding(ResUtil.dp2px(12));
         item.setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0);
-        int color = Color.parseColor(danger ? "#C5221F" : "#202124");
+        // 菜单底色是 ?attr/colorSurfaceContainerLowest（日间白 / 夜间近黑），
+        // 所以文字必须跟着调色板走：普通项用 onSurface，删除项用 error。
+        int color = danger ? ThemeController.current().colorError() : ThemeController.current().colorOnSurface();
         item.setTextColor(color);
         TextViewCompat.setCompoundDrawableTintList(item, android.content.res.ColorStateList.valueOf(color));
         TypedValue value = new TypedValue();

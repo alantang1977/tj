@@ -13,6 +13,19 @@
 - 未验证项：播放器长时/字幕/音轨/倍速回归与管理页、reader、WebHome 三页面浏览器视觉逐项人工验收仍需完成；高级主题编辑器按计划继续延后，需独立审批。
 - 下一步唯一动作：Layer 1、Layer 2A–2D 的代码与自动化门禁均已落地（Layer 2D 见 `docs/THEME-CUSTOMIZATION-LAYERS-20260921.md` 第 4.11 节）；Layer 2 的设备功能矩阵仍未执行，需在可进入原生“外观”页的环境中补做后才能宣称全局主题自定义完成。
 
+### 阶段 M（电视版统一焦点环）实施记录（2026-10-04）
+
+- 问题：焦点态只改填充色，而 `colorFocus == colorPrimary`，导致自带主题色按钮
+  （关于弹窗、追更页）聚焦无视觉差异；齿轮写死 `#0B57D0`。
+- 方案：状态化边框环 + 主题 token。新增 `focus_ring_primary/secondary/error.xml` 状态色表，
+  环色取焦点态填充的配对 on-色；`tv_item_focus_ring` 由写死 `#FFD166` 接线到
+  `@color/webhtv_color_focus`，宽度统一 `@dimen/webhtv_focus_ring_width=3dp`。
+- 实机验收又暴露出两处配对错误（环配到常态填充而非焦点态填充，对比度仅 1.33:1 / 1.40:1），
+  已修正为 `on_primary` / `on_error_container`，实机复测 6.09:1 / 6.41:1。
+- 契约：`TvFocusRingContractTest`（7 项）固化 R1 边框环存在、R2 单机制单宽度、
+  R3 主题可控，以及环/填充 ≥3:1 的对比度回归；`NativeEnhancedPlaybackStyleFocusTest` /
+  `FollowingUiSourceTest` 全绿无回归。
+
 ### 阶段 G（Layer 1 主题来源整合）实施记录（2026-09-21）
 
 - 任务：`L1-THEME-INTEGRATE-20260921`；详细设计、DoD 与验收证据见 `docs/THEME-CUSTOMIZATION-LAYERS-20260921.md`。
@@ -600,6 +613,24 @@ Resolver 必须执行，静态检查必须验证：
 - 弹窗底部最多两个强调动作；危险操作使用 `error`，并放在明确位置。
 - 禁用态必须同时改变对比度/透明度并提供不可用语义，不能只改 cursor。
 - 焦点/选中/按下分别定义；TV 焦点必须有 ring 或 1.1x 容器变化，不能只改文字颜色。
+
+**电视版统一焦点环规范（2026-10-04 明文化）**：
+
+- 焦点态一律由 **边框环** 表达，填充色变化不得作为唯一焦点线索（Android TV 要求统一高亮方案，
+  Material 3 亦以 ring 为聚焦做法）。
+- 环宽唯一来源：`@dimen/webhtv_focus_ring_width` = 3dp；新增可聚焦控件必须引用它，禁止写死描边宽度。
+- 环色 = 该控件**焦点态实际填充色**的**配对 on-色**，由主题解析器保证对比度（参考 §5.3 焦点环 ≥3:1 门槛）：
+  primary/focus 填充 → `@color/focus_ring_on_primary`，secondaryContainer 填充 →
+  `@color/focus_ring_on_secondary_container`，errorContainer 填充 → `@color/focus_ring_on_error_container`。
+  配对对象必须是“焦点态**实际**填充”，而非常态填充：`following_button_*_bg` 聚焦时填充换成 FOCUS 色
+  （冻结色板里 == primary），因此这两个家族的环都取 `on_primary`；
+  `?attr/colorErrorContainer` 必须配 `on_error_container` 而不是 `on_error`。错配会使环贴在近似色上，
+  对比度降到 1.3–1.4:1（已由 `everyRingColourKeepsNonTextContrastAgainstItsFocusFill` 固化为回归测试）。
+- 透明/表面型图标按钮的焦点环沿用 `?attr/tvFocusRing`，其取值已接线到主题 FOCUS 用户槽
+  （`tv_item_focus_ring = @color/webhtv_color_focus`），用户改主题即跟随。
+- 非聚焦态保留**同宽透明描边**（strokeWidth 常量、只切换 strokeColor），避免焦点切换引起尺寸变化。
+- 已落地：关于弹窗三按钮+齿轮、追更页顶栏与卡片按钮（`focus_ring_primary/secondary/error.xml`
+  状态色表；契约测试 `TvFocusRingContractTest` 固化 R1/R2/R3）。
 
 ### 9.2 输入框
 

@@ -17,6 +17,7 @@ import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.TmdbEpisode;
 import com.fongmi.android.tv.databinding.AdapterTmdbEpisodeBinding;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.theme.ThemeController;
 import com.fongmi.android.tv.ui.helper.TmdbEpisodeGridPolicy;
 import com.fongmi.android.tv.ui.helper.TmdbEpisodeMatcher;
 import com.fongmi.android.tv.utils.EpisodeTitleFormatter;
@@ -33,7 +34,6 @@ import java.util.Objects;
 
 public class TmdbEpisodeAdapter extends RecyclerView.Adapter<TmdbEpisodeAdapter.ViewHolder> {
 
-    private static final int FOCUS_STROKE = 0xFFFFD166;
     private static final int FOCUS_STROKE_DP = 3;
     private static final int ACTIVE_STROKE_DP = 2;
     private static final int FOCUS_ELEVATION_DP = 8;
@@ -547,17 +547,18 @@ public class TmdbEpisodeAdapter extends RecyclerView.Adapter<TmdbEpisodeAdapter.
     }
 
     private void applyNativeEnhancedCardFocus(ViewHolder holder, boolean activated, boolean focused) {
+        int focusStroke = ThemeController.focusRingColor(holder.binding.getRoot().getContext());
         holder.binding.getRoot().setSelected(false);
         holder.binding.getRoot().setActivated(false);
         holder.binding.getRoot().setChecked(false);
         holder.binding.getRoot().setForeground(null);
         holder.binding.getRoot().setCardBackgroundColor(0xFF141A20);
-        holder.binding.getRoot().setStrokeColor(focused ? FOCUS_STROKE : activated ? activeStrokeColor : 0x00000000);
+        holder.binding.getRoot().setStrokeColor(focused ? focusStroke : activated ? activeStrokeColor : 0x00000000);
         holder.binding.getRoot().setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : activated ? ACTIVE_STROKE_DP : 0));
         holder.binding.getRoot().setCardElevation(ResUtil.dp2px(focused ? FOCUS_ELEVATION_DP : 0));
         holder.binding.getRoot().setTranslationZ(ResUtil.dp2px(focused ? FOCUS_ELEVATION_DP : 0));
         Drawable foreground = focused
-                ? TmdbCardFocusHelper.foregroundBorder(holder.binding.getRoot(), FOCUS_STROKE, FOCUS_STROKE_DP)
+                ? TmdbCardFocusHelper.foregroundBorder(holder.binding.getRoot(), focusStroke, FOCUS_STROKE_DP)
                 : activated ? TmdbCardFocusHelper.foregroundBorder(holder.binding.getRoot(), activeStrokeColor, ACTIVE_STROKE_DP) : null;
         holder.binding.getRoot().setForeground(foreground);
         holder.binding.getRoot().animate().cancel();

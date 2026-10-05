@@ -98,7 +98,9 @@ public class TmdbSourceDialogInflationContractTest {
     }
 
     private static String read(Path path) throws Exception {
-        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+        // 工作区行尾随平台而变（Windows autocrlf=true 时为 CRLF），归一化后再比对，
+        // 让多行 contains 断言在 LF/CRLF 检出下行为一致（CI ubuntu 与本地 Windows 都能通过）。
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8).replace("\r\n", "\n");
     }
 
     private static Path sourcePath() {

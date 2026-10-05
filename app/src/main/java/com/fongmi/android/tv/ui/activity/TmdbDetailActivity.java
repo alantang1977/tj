@@ -154,6 +154,7 @@ import com.fongmi.android.tv.setting.MultiThreadProxySetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.setting.TmdbSitePolicy;
+import com.fongmi.android.tv.theme.ThemeController;
 import com.fongmi.android.tv.title.MediaTitleLearningExample;
 import com.fongmi.android.tv.title.MediaTitleLearningStore;
 import com.fongmi.android.tv.title.MediaTitleParser;
@@ -286,7 +287,6 @@ import java.util.regex.Pattern;
 public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.Listener, Clock.Callback, PlayerGesture.Listener, SubtitlePlaybackSession.Host, TmdbDetailHost {
 
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.getDefault());
-    private static final int FOCUS_STROKE = 0xFFFFD166;
     private static final int FOCUS_STROKE_DP = 3;
     private static final int CHIP_STROKE_DP = 1;
     private static final int CHIP_MAX_WIDTH_DP = 240;
@@ -2283,7 +2283,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             return;
         }
         boolean focused = binding.playerPanel.hasFocus() && !hasFocusedChild(inlineControlsView());
-        binding.playerPanel.setStrokeColor(focused ? FOCUS_STROKE : colors.line);
+        binding.playerPanel.setStrokeColor(focused ? focusStroke() : colors.line);
         binding.playerPanel.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP));
     }
 
@@ -2333,7 +2333,12 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void applyButtonFocus(MaterialButton button, int stroke, boolean focused) {
         button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP));
-        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : stroke));
+        button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : stroke));
+    }
+
+    /** TV 焦点环的唯一代码来源：与 {@code ?attr/tvFocusRing} 同一取值，跟随主题 FOCUS 槽。 */
+    private int focusStroke() {
+        return ThemeController.focusRingColor(this);
     }
 
     private void setEpisodeToolButton(MaterialButton button, ThemeColors colors) {
@@ -2375,7 +2380,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         button.setTextColor(colors.primary);
         button.setIconTint(ColorStateList.valueOf(colors.primary));
         button.setStrokeWidth(focused ? ResUtil.dp2px(FOCUS_STROKE_DP) : (lightCinemaPlate ? ResUtil.dp2px(CHIP_STROKE_DP) : 0));
-        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : (lightCinemaPlate ? colors.line : Color.TRANSPARENT)));
+        button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : (lightCinemaPlate ? colors.line : Color.TRANSPARENT)));
     }
 
     private int episodeTitleRestingColor(boolean lightCinemaPlate, ThemeColors colors) {
@@ -2390,7 +2395,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         button.setTextColor(colors.primary);
         button.setIconTint(ColorStateList.valueOf(colors.primary));
         button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP));
-        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : colors.lineStrong));
+        button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : colors.lineStrong));
     }
 
     private void tintTextTree(View view, ThemeColors colors) {
@@ -4428,7 +4433,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         GradientDrawable background = new GradientDrawable();
         background.setColor(modeController.isCinemaStyle() ? TmdbCinemaTheme.palette(lightTheme).ratingChip() : colors.chip);
         background.setCornerRadius(ResUtil.dp2px(10));
-        background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP), focused ? FOCUS_STROKE : colors.line);
+        background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP), focused ? focusStroke() : colors.line);
         row.setBackground(background);
         for (int i = 0; i < row.getChildCount(); i++) {
             View child = row.getChildAt(i);
@@ -7151,7 +7156,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private void applyPhotoButtonFocus(MaterialButton button, boolean focused) {
         button.setBackgroundTintList(ColorStateList.valueOf(focused ? 0x33FFFFFF : 0x18FFFFFF));
         button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP));
-        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : 0x4DFFFFFF));
+        button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : 0x4DFFFFFF));
     }
 
     private void showPhotoActionDialog(String url) {
@@ -9646,7 +9651,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         GradientDrawable background = new GradientDrawable();
         background.setCornerRadius(ResUtil.dp2px(4));
         background.setColor(focused ? colors.control : selected ? colors.chipActive : colors.chip);
-        background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : selected ? 2 : CHIP_STROKE_DP), focused ? FOCUS_STROKE : selected ? colors.accent : colors.line);
+        background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : selected ? 2 : CHIP_STROKE_DP), focused ? focusStroke() : selected ? colors.accent : colors.line);
         button.setSelected(selected);
         button.setActivated(selected);
         button.setTextColor(colors.primary);
@@ -9828,8 +9833,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         GradientDrawable background = new GradientDrawable();
         background.setCornerRadius(ResUtil.dp2px(6));
         if (focused) {
-            background.setColor(lightTheme ? 0x1AFFD166 : 0x55FFD166);
-            background.setStroke(ResUtil.dp2px(FOCUS_STROKE_DP), FOCUS_STROKE);
+            background.setColor(ThemeController.focusRingColor(this, lightTheme ? 0.10f : 0.33f));
+            background.setStroke(ResUtil.dp2px(FOCUS_STROKE_DP), focusStroke());
             button.setTextColor(lightTheme ? colors.primary : 0xFFFFFFFF);
         } else if (selected) {
             background.setColor(lightTheme ? 0x1F20B866 : 0x332CC56F);
@@ -9847,8 +9852,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         GradientDrawable background = new GradientDrawable();
         background.setCornerRadius(ResUtil.dp2px(6));
         if (focused) {
-            background.setColor(0x55FFD166);
-            background.setStroke(ResUtil.dp2px(FOCUS_STROKE_DP), FOCUS_STROKE);
+            background.setColor(ThemeController.focusRingColor(this, 0.33f));
+            background.setStroke(ResUtil.dp2px(FOCUS_STROKE_DP), focusStroke());
         } else {
             background.setColor(0x00000000);
         }
@@ -9891,8 +9896,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         int text = focused ? (lightTheme ? colors.primary : 0xFFFFFFFF) : colors.primary;
         button.setTextColor(text);
         button.setIconTint(ColorStateList.valueOf(text));
-        button.setBackgroundTintList(ColorStateList.valueOf(focused ? (lightTheme ? 0x1AFFD166 : 0x55FFD166) : colors.control));
-        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : colors.lineStrong));
+        button.setBackgroundTintList(ColorStateList.valueOf(focused ? ThemeController.focusRingColor(this, lightTheme ? 0.10f : 0.33f) : colors.control));
+        button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : colors.lineStrong));
         button.setStrokeWidth(ResUtil.dp2px(focused ? 2 : 1));
     }
 
@@ -13080,7 +13085,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private void applyChipFocus(MaterialButton button, boolean selected, boolean focused, ThemeColors colors) {
         button.setSelected(!Util.isLeanback() || selected || focused);
         button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : (selected ? 2 : CHIP_STROKE_DP)));
-        button.setStrokeColor(ColorStateList.valueOf(focused ? FOCUS_STROKE : (selected ? colors.accent : colors.line)));
+        button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : (selected ? colors.accent : colors.line)));
     }
 
     private void styleMetaChips() {

@@ -106,7 +106,9 @@
                 android:textColor="?attr/colorOnPrimary"
                 android:textSize="14sp"
                 app:backgroundTint="?attr/colorPrimary"
-                app:cornerRadius="8dp" />
+                app:cornerRadius="8dp"
+                app:strokeColor="@color/focus_ring_primary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/githubProxy"
@@ -120,7 +122,9 @@
                 android:textColor="?attr/colorOnPrimary"
                 android:textSize="14sp"
                 app:backgroundTint="?attr/colorPrimary"
-                app:cornerRadius="8dp" />
+                app:cornerRadius="8dp"
+                app:strokeColor="@color/focus_ring_primary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 
@@ -136,7 +140,9 @@
             android:textColor="@color/dialog_primary_button_text"
             android:textSize="14sp"
             app:backgroundTint="@color/dialog_primary_button_bg"
-            app:cornerRadius="8dp" />
+            app:cornerRadius="8dp"
+            app:strokeColor="@color/focus_ring_primary"
+            app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
         <androidx.appcompat.widget.AppCompatImageButton
             android:id="@+id/updateSettings"

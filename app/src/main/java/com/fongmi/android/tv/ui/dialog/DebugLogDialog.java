@@ -6,13 +6,13 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
-import android.graphics.Color;
 
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.server.Server;
+import com.fongmi.android.tv.theme.ThemeController;
 import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -36,7 +36,10 @@ public final class DebugLogDialog {
         String message = activity.getString(R.string.debug_log_dialog_message, lanUrl, localUrl);
         MaterialTextView content = new MaterialTextView(activity);
         content.setText(message);
-        content.setTextColor(Color.parseColor("#5F6368"));
+        // 说明文字是次要前景：跟随调色板的 onSurfaceVariant。原先硬编码 #5F6368，
+        // 而承载它的 shape_shell_proxy_dialog 面板是 ?attr/colorSurfaceContainerHigh
+        // （日间浅色、夜间深色），于是夜间变成深底深字（实测 2.23:1）。
+        content.setTextColor(ThemeController.current().colorOnSurfaceVariant());
         content.setTextSize(14);
         content.setLineSpacing(ResUtil.dp2px(2), 1f);
         android.widget.LinearLayout panel = new android.widget.LinearLayout(activity); panel.setOrientation(android.widget.LinearLayout.VERTICAL);
@@ -44,7 +47,8 @@ public final class DebugLogDialog {
         for (com.github.catvod.crawler.diagnostics.DiagnosticCategories.Category category : com.github.catvod.crawler.diagnostics.DiagnosticCategories.Category.values()) {
             androidx.appcompat.widget.SwitchCompat toggle = new androidx.appcompat.widget.SwitchCompat(activity);
             toggle.setText(category.title);
-            toggle.setTextColor(Color.parseColor("#202124"));
+            // 开关标签是主要前景：跟随调色板的 onSurface（原先硬编码 #202124，夜间仅 1.19:1）。
+            toggle.setTextColor(ThemeController.current().colorOnSurface());
             toggle.setPadding(0, ResUtil.dp2px(8), 0, ResUtil.dp2px(8));
             toggle.setFocusable(true);
             toggle.setChecked(com.github.catvod.crawler.diagnostics.DiagnosticCategories.accepts(com.github.catvod.crawler.DebugLogStore.categories(), category));

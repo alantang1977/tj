@@ -42,10 +42,31 @@
         - focus   获得焦点：3dp 圆环
         - current 当前播放/当前生效：2dp 圆环
         - stroke  常态描边：1dp
+
+        focus 环色必须可被主题设置覆写：它直连色板的 FOCUS 用户槽(webhtv_color_focus)，
+        于是 ?attr/tvFocusRing 的全部消费者（选集卡、演员卡、播放页控件、快捷栏…）都跟随
+        主题编辑器的焦点色。此前写死 #FFD166，用户改主题时焦点环纹丝不动。
     -->
-    <color name="tv_item_focus_ring">#FFD166</color>
+    <color name="tv_item_focus_ring">@color/webhtv_color_focus</color>
     <color name="tv_item_current_ring">#2CC56F</color>
     <color name="tv_item_normal_stroke">#33FFFFFF</color>
+    <!--
+        自带主题色填充的控件（关于弹窗按钮、齿轮、追更页按钮组）获得焦点时的边框环色。
+        环色取控件**焦点态实际填充色**的配对 on-色，由主题解析器保证两者对比度，因此换任何
+        主题都仍然可见；“焦点色 == 填充色”那类看不见焦点的写法从此不再需要。
+
+        配对按“焦点态填充家族”各一条，错配会让环贴在近似色上而完全看不见
+        （实机曾把 FOCUS 填充配成 on_secondary_container，环与填充仅 1.33:1）：
+          primary / focus 填充  -> on_primary
+          secondaryContainer    -> on_secondary_container
+          errorContainer        -> on_error_container
+        注意 `following_button_*_bg` 的焦点态填充就是 FOCUS 色(== primary)，追更页
+        “全部已读/显示全部/导入订阅/标记已读”因此取 on_primary；只有填充不随焦点变化的
+        “检查/提醒开/换源/下季”才取 on_secondary_container。
+    -->
+    <color name="focus_ring_on_primary">@color/webhtv_color_on_primary</color>
+    <color name="focus_ring_on_secondary_container">@color/webhtv_color_on_secondary_container</color>
+    <color name="focus_ring_on_error_container">@color/webhtv_color_on_error_container</color>
     <color name="site_health_good">@color/webhtv_color_health_good</color>
     <color name="site_health_warn">@color/webhtv_color_health_warn</color>
     <color name="site_health_bad">@color/webhtv_color_health_bad</color>
