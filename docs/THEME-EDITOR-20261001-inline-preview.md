@@ -77,17 +77,49 @@
 
 回滚：撤销本单元提交即可。Profile schema=2未改变，已保存模板仍是旧解析器可读的普通 slot 值。用户可选默认后保存恢复冻结配色，壁纸和其他设置不被删除。
 
+## 后续修正：小屏/竖屏/带系统栏模式下的主题色彩弹层显示不全（2026-10-05）
+
+用户反馈：主题色彩编辑器的保存按钮外溢，被系统返回键/导航栏遮挡并与底部按钮行重叠。
+
+### 复现与根因
+
+在 192.168.50.3:5559（1920×1080 / 280dpi / API 28）上以 `wm size 1080x1920` + `wm overscan 0,0,0,90` 复现竖屏带导航栏形态，`mStable=[0,42][1080,1830]`（导航栏从 y=1830 开始）。
+
+- 根因：`ThemeDialog.configureWindow` 用 `ResUtil.getScreenWidth/Height` 的**原始显示边界**计算窗口尺寸。该实现返回整块显示（API 30+ 取 `getCurrentWindowMetrics().getBounds()`，不含 insets），于是窗口被设为 1864px 高（`[28,42][1052,1906]` 量级），底部按钮行落到 1796–1850px，被从 1830px 开始的导航栏裁掉约 20px。
+- 修复前实测（同一场景）：保存按钮蓝色像素行 `[1796,1850]`，导航栏顶端 1830 → 被遮挡 20px。
+
+### 采用方案：自适应弹层（不改为全屏页）
+
+保持弹层形态，只把尺寸基准从「原始显示边界」换成「系统栏安全区」：
+
+- `ThemeDialogLayout.Insets` 描述要避让的四个系统栏尺寸；`Insets.ofContent` 用「显示尺寸 − 宿主 content 视图尺寸」推导，作为窗口自身 insets 不可用时的后备。
+- `ThemeDialogLayout.safeArea(screenW, screenH, insets)` 返回 `显示尺寸 − 各边 insets`，并按屏幕边界钳制；结果非正时回退整屏，绝不产出非正尺寸。
+- `ThemeDialog.systemBarInsets(...)` 优先读取弹窗自身窗口的 `systemBars() | displayCutout()` insets（精确值）；为空或为 0 时回退到宿主 content 视图推导值。
+- 不设 `params.x/y`：`Gravity.CENTER` 会把浮动窗口居中在系统栏安全区内，实测窗口落在 `[28,94][1052,1778]`，底部距导航栏 52px，无需也不应再做偏移（早期版本加过偏移，会被 WM 按显示边界重新钳制）。
+- 不选全屏页的理由：编辑器已有固定底部操作行 + 权重滚动区，安全区内弹层即可完整显示；全屏页会引入新的返回键/生命周期语义并改变 mobile 与 leanback 的既有交互契约，风险大于收益。
+
+### 验证（2026-10-05）
+
+- 定向单测：`ThemeDialogLayoutTest` mobile 10/10、leanback 10/10 通过（新增系统栏安全区、横屏/挖孔、content 后备、退化输入用例）。
+- 主题+对话框全量定向：mobile 310、leanback 191，零失败/错误/跳过。
+- 设备（5559，arm64 Debug 覆盖安装，未卸载）：
+  - 竖屏 1080×1920 + 底部 90px 占位：弹窗 frame `[28,94][1052,1778]`，面板 94–1777，保存按钮行 `[1668,1747]`，距导航栏 83px；取消/恢复默认/保存应用三键均可见可点。
+  - 横屏/导航栏分支由 `ThemeDialogLayoutTest` 覆盖安全区计算；leanback 横屏设备实测窗口 `[48,48][1872,1032]`（1824×984），保存按钮行 `[906,997]`，距屏底 83px，与修复前基线一致，无回归。
+  - `OnApplyWindowInsetsListener` 会在窗口首次布局后再次收敛尺寸，覆盖旋转、导航栏显示状态变化等时序差异。
+  - 草稿边界：点「保存应用」后正常落盘并回到设置页；`theme_profile_v2_json` / `theme_profile_v2_last_good` 在保存前一致、保存后按预期更新；点「取消」后与取消前逐字节一致（sha256 前缀 `dedb21ec79b0848a`），确认不落盘。
+  - 设备状态已恢复：`wm size`/`wm overscan` reset、`accelerometer_rotation=1`、`user_rotation=0`、`policy_control=null`；`shared_prefs` 13 个文件全部 SHA-256 与任务开始时一致，应用重新启动可用。
+
+### 回滚
+
+仅回退本单元提交即可；`ThemeDialogLayout` 的宽度/高度函数与 Material 面板背景契约未变，无 schema/数据迁移。
+
 ## Recovery anchor
 
-- 目标/验收：见顶部，完整目标未缩减。
-- 计划状态：编辑器/模板/本地picker/三语言字符串已实现；主题定向测试、mobile/leanback Debug 构建与 5559 设备验收均已完成，进入资源清理和最终提交。
-- 范围/基线/保护：见边界；guard已启动。
-- 已完成：ThemeEditor.replace/reset保留原始dirty基线且不落盘；ThemePresets提供默认、7套完整模板及动态壁纸；ThemePreviewView已改为稳定分组控件；两flavor ThemeDialog字节一致，使用本地tokens更新真实页面、窗口/遮罩，保存失败不自动关闭；picker使用本地tokens和真实初始色；新增模型/源代码/Robolectric视图测试。
-- 已验证：`LANG=C.UTF-8 LC_ALL=C.UTF-8 bash gradlew :app:testMobileArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.theme.*' --tests 'com.fongmi.android.tv.ui.dialog.ThemeDialogLayoutTest' :app:testLeanbackArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.theme.*' --tests 'com.fongmi.android.tv.ui.dialog.ThemeDialogLayoutTest' --no-daemon --console=plain` BUILD SUCCESSFUL（1m23s）；mobile 137、leanback 139，零失败/错误/跳过。另行验证 `ThemeColorPickerPrecisionTest` 2/2 通过。构建日志已在会话中核验，收尾时清理。
-- 修正记录：第一次编译捕获内部PresetCard.render与外层render同名，改为ThemeDialog.this.render；第二次构建资产哈希失败为环境：LANG=en_US.UTF-8但locale未安装导致Java文件名编码为ASCII，显式C.UTF-8后通过。没有修改资产或放宽构建规则。
-- 已验证：mobile Debug 与 leanback Debug 均在 `LANG=C.UTF-8 LC_ALL=C.UTF-8` 下通过 `scripts/build_arm64_debug_install.sh --flavor ... --serial 192.168.50.3:5559`，分别约 193/194M arm64 Debug，并以 `adb install -r` 覆盖安装；1920×1080/API28 设备均显示默认首位、完整模板色条、浅/深切换、分组编辑页和底部保存操作。构建日志与截图已在会话中核验，收尾时随临时资源清理。
-- 已验证设备草稿边界：mobile/leanback 均通过选择模板、浅深预览、滚动编辑、取消/返回/恢复默认不落盘及保存后重开场景；leanback 还确认精确 HEX 初值 `#A9C7FF` 保持不变、编辑 `#A5C9F0` 后页面临时显示、清空槽位恢复自动值、透明度拖动连续生效且无独立“实时预览”控件，取消后仍保持保存前的澄海蓝。
-- 已验证并恢复设备状态：`/tmp/webhtv-theme-editor-20261001/original-preferences.xml` 与恢复后的 `shared_prefs/com.silent.android.webhtv_preferences.xml` SHA-256 均为 `a4d33bd6734878c5770b9319a77810f36f126308ff3e832db6aa43eb393f90ff`；恢复后重新启动 SettingActivity 成功。未提交/tag。
-- 风险处置：移动端截图中的旧 profile `paletteStyle=vibrant` 显示“已微调”属于模板修改检测的真实结果，不影响默认首位或保存语义；本次保留该提示。仅使用5559设备并全程覆盖安装。
-- 回滚锚点：d2853d20ad9ee7c81f6b1785fef82702c8027cfd。
-- 下一步唯一动作：清理本次 Debug 构建与 `/tmp/webhtv-theme-editor-20261001` 临时产物，执行最终范围/差异校验并用 task guard 原子提交、创建本地 annotated recovery tag。
+- 目标/验收：主题色彩编辑器在带状态栏/导航栏、竖屏、小屏、横屏和 leanback 模式下完整显示；保存按钮不再被返回键/导航栏遮挡；保留草稿、取消、保存语义。
+- 计划状态：已完成实现、测试、mobile/leanback Debug 构建与 5559 覆盖安装验收；当前仅剩最终差异校验、清理并提交/tag。
+- 范围/基线/保护：任务 `THEME-EDITOR-INSET-20261005`；基线 `79244f274d15ae1b624bacc6a9f68bae8eafc3e3`；受保护初始脏路径为空；仅改动本文件及本任务 4 个代码/测试文件。
+- 实现：`ThemeDialogLayout.Insets/Area` 计算系统栏安全区；ThemeDialog 优先读取 `WindowInsetsCompat` 的 systemBars/displayCutout，未就绪时回退宿主 content 尺寸；`OnApplyWindowInsetsListener` 在首帧后重新收敛窗口尺寸；mobile/leanback ThemeDialog 字节一致；不设 `params.x/y`，避免 WM 重新钳制导致的错位。
+- 已验证：主题+对话框全量定向单测 mobile 310、leanback 191，零失败/错误/跳过；`ThemeDialogLayoutTest` mobile/leanback 各 10/10；mobile arm64 Debug 与 leanback arm64 Debug 均成功，并按规则使用 `adb install -r` 覆盖安装。
+- 设备证据：5559 竖屏+导航栏模拟下最终窗口 `[28,94][1052,1778]`，保存按钮 `[1668,1747]`，导航栏顶端 1830，余量 83px；leanback 横屏窗口 `[48,48][1872,1032]`，保存按钮 `[906,997]`，无回归；取消草稿后 theme profile 两个持久化键逐字节不变；保存后正常回到设置页。
+- 设备恢复：`wm size`、`wm overscan`、`wm density` reset；`accelerometer_rotation=1`、`user_rotation=0`、`policy_control=null`；原始 `shared_prefs` 已恢复并逐文件 SHA-256 一致；应用重新启动可用。
+- 回滚锚点：`79244f274d15ae1b624bacc6a9f68bae8eafc3e3`；下一步唯一动作：运行 `task_guard finish`，由 guard 原子提交并创建本地 recovery tag。

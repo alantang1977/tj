@@ -16,6 +16,7 @@ import androidx.core.os.HandlerCompat;
 
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.server.proxy.MultiThreadProxy;
+import com.fongmi.android.tv.cache.CacheScheduler;
 import com.fongmi.android.tv.playback.PlaybackRemoteSyncer;
 import com.fongmi.android.tv.player.PlaybackMemoryMonitor;
 import com.fongmi.android.tv.player.PlaybackSystemConditionMonitor;
@@ -130,6 +131,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
         registerActivityLifecycleCallbacks(this);
         registerContentHandlers();
         resumeBackgroundServices();
+        post(() -> CacheScheduler.get().start(), 30_000L);
     }
 
     private void registerContentHandlers() {

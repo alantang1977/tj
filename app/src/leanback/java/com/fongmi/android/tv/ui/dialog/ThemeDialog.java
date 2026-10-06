@@ -16,6 +16,8 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
 
@@ -49,6 +51,14 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
     private boolean dark;
     private int wallpaperColor;
     private int savedScroll;
+    /**
+     * System-bar insets reported by the dialog window, or {@code null} before they arrive.
+     *
+     * <p>{@code onStart} runs before the window is always laid out, so the insets can still
+     * be missing when the window is first sized; the listener installed in {@link #onStart}
+     * re-sizes the window once they are known.
+     */
+    private ThemeDialogLayout.Insets windowInsets;
     private LinearLayout root;
     private ThemePreviewView panel;
     private ScrollView scroll;
@@ -319,6 +329,27 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
         if (dialog == null) return;
         configureWindow(dialog);
         render();
+        // The window can be laid out before the platform reports its system-bar insets, in
+        // which case the first sizing falls back to the display bounds and the footer row
+        // ends up under the navigation bar. Re-sizing when the real insets arrive is what
+        // makes the fix independent of that ordering.
+        Window window = dialog.getWindow();
+        View decorView = window == null ? null : window.getDecorView();
+        if (decorView != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(decorView, (view, insets) -> {
+                androidx.core.graphics.Insets bars = insets.getInsets(
+                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+                ThemeDialogLayout.Insets next = new ThemeDialogLayout.Insets(
+                        bars.left, bars.top, bars.right, bars.bottom);
+                if (!next.equals(windowInsets)) {
+                    windowInsets = next;
+                    Dialog current = getDialog();
+                    if (current != null && current.getWindow() != null) configureWindow(current);
+                }
+                return insets;
+            });
+            ViewCompat.requestApplyInsets(decorView);
+        }
         if (savedScroll > 0) scroll.post(() -> scroll.scrollTo(0, savedScroll));
     }
 
@@ -326,13 +357,17 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
         Window window = dialog.getWindow();
         if (window == null) return;
         int margin = ResUtil.dp2px(ThemeDialogLayout.marginDp(Util.isLeanback()));
-        int width = ThemeDialogLayout.width(ResUtil.getScreenWidth(requireContext()), margin);
-        int height = ThemeDialogLayout.height(ResUtil.getScreenHeight(requireContext()), margin);
+        View decorView = window.getDecorView();
+        int screenWidth = ResUtil.getScreenWidth(requireContext());
+        int screenHeight = ResUtil.getScreenHeight(requireContext());
+        ThemeDialogLayout.Area area = ThemeDialogLayout.safeArea(screenWidth, screenHeight,
+                systemBarInsets(screenWidth, screenHeight));
+        int width = ThemeDialogLayout.width(area.width(), margin);
+        int height = ThemeDialogLayout.height(area.height(), margin);
         WindowManager.LayoutParams params = window.getAttributes();
         params.width = width;
         params.height = height;
         params.gravity = Gravity.CENTER;
-        View decorView = window.getDecorView();
         Drawable panel = ThemeDialogLayout.panelBackground(decorView.getBackground());
         if (panel != null) window.setBackgroundDrawable(panel);
         decorView.setPadding(0, 0, 0, 0);
@@ -344,6 +379,65 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
             rootParams.height = ViewGroup.LayoutParams.MATCH_PARENT;
             root.setLayoutParams(rootParams);
         }
+    }
+
+    /**
+     * The system bars the editor window has to stay clear of.
+     *
+     * <p>Insets reported by the dialog window are exact and preferred. Until they arrive, the
+     * space the host already gave up to the bars (the display minus its content view) is
+     * used; that value also covers the host's own chrome, so it can only over-reserve, never
+     * clip. A host content view that has not been laid out yet reports nothing, and the
+     * display is used until the listener re-sizes the window.
+     */
+    private ThemeDialogLayout.Insets systemBarInsets(int screenWidth, int screenHeight) {
+        // 1) The dialog window's own report, which is the exact value whenever the platform
+        //    actually fills it in.
+        if (windowInsets != null && !windowInsets.isEmpty()) return windowInsets;
+        // 2) The host activity's root window insets. This is the same source Util.isFullscreen
+        //    already trusts, and it stays correct while a floating dialog window keeps reporting
+        //    systemBars() = [0,0,0,0] on API 28.
+        ThemeDialogLayout.Insets host = hostWindowInsets();
+        if (!host.isEmpty()) return host;
+        // 3) The space the host content view has already given up to the bars.
+        ThemeDialogLayout.Insets fallback =
+                ThemeDialogLayout.Insets.ofContent(screenWidth, screenHeight, contentWidth(), contentHeight());
+        return fallback.isEmpty() ? ThemeDialogLayout.Insets.none() : fallback;
+    }
+
+    /**
+     * The system bars the host activity has to keep clear.
+     *
+     * <p>Used because a floating dialog window is not guaranteed to report its own insets: on
+     * API 28 the editor's window reports {@code systemBars() = [0,0,0,0]} while the navigation bar
+     * is on screen, and accepting that as "no bars" is what pushed the footer row under it.</p>
+     */
+    private ThemeDialogLayout.Insets hostWindowInsets() {
+        try {
+            WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(requireActivity().getWindow().getDecorView());
+            if (insets == null) return ThemeDialogLayout.Insets.none();
+            androidx.core.graphics.Insets bars = insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            return new ThemeDialogLayout.Insets(bars.left, bars.top, bars.right, bars.bottom);
+        } catch (RuntimeException error) {
+            return ThemeDialogLayout.Insets.none();
+        }
+    }
+
+    /**
+     * The host activity's content view size.
+     *
+     * <p>Its difference from the display is the system-bar space the host gave up, which is
+     * the safe-area fallback while the dialog window's own insets are still unknown.
+     */
+    private int contentWidth() {
+        View content = requireActivity().findViewById(android.R.id.content);
+        return content == null ? 0 : content.getWidth();
+    }
+
+    private int contentHeight() {
+        View content = requireActivity().findViewById(android.R.id.content);
+        return content == null ? 0 : content.getHeight();
     }
 
     @Override
@@ -362,6 +456,8 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
         root = null;
         panel = null;
         scroll = null;
+        // The next window reports its own insets; a stale value from this one must not be reused.
+        windowInsets = null;
     }
 
     @Override

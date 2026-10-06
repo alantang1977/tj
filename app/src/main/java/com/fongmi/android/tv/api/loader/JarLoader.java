@@ -87,6 +87,10 @@ public class JarLoader {
         SpiderDebug.log("jar-loader", "recent=%s", recent);
     }
 
+    public java.util.Set<String> activeKeys() {
+        return java.util.Set.copyOf(loaders.keySet());
+    }
+
     private void load(String key, File file) {
         long start = System.currentTimeMillis();
         if (Thread.currentThread().isInterrupted()) {

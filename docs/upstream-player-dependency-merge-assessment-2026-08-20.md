@@ -48,6 +48,8 @@
 | `C18` | common / beta 同步复评 | 将 beta 最新代码合入 dev4，复评 FOLLOW-1 与 C16 等全部未推送改动并完成交付 | **进行中**：合并树双端编译和移动端 JVM 全量测试已通过，待最终复评、提交、推送和 PR 到 `beta` | [C18-beta-sync-review-dev4-20260920.md](C18-beta-sync-review-dev4-20260920.md) |
 | `E-SP8` | Exo 性能/播放行为 | 基于现有短剧源设置的单实例队列连播、下一集预解析与受控预加载 | **代码实施及 beta 合并后复评通过**：`2b22c5240d52a8c2054299326f44fee6743ab26f` / `recovery/E-SP8/20260911201514-2b22c5240d52`；实验默认策略不变，连续切集双端设备验收与正式放量尚未完成；不变更依赖 | [E-SP8-exo-short-drama-queue.md](E-SP8-exo-short-drama-queue.md) |
 | `C20` | common / 追更刷新策略 | App 前台使用时将常规追更检查间隔缩短为 15 分钟，并提高前台到期批量；后台 6 小时兜底和已完结/计划中低频策略保持不变 | **已实现**：聚焦策略单测 5/5 与 Mobile/Leanback arm64 Java 编译通过，待 task guard 原子提交和恢复标签 | [C20-foreground-following-refresh.md](C20-foreground-following-refresh.md) |
+| `C37` | common / 上游同步 | 合并上游 `webhtv/webhtv` 分支 `Silent1566`（缓存管理 P0–P4：清单统计、分级清理、模块/总上限、自动清理调度、清理日志）并适配本地主题语义 token | **已完成合并与验证**：上游 tip `d042cd542b8768ec9dbd2582923088e54a7bfeb1`（58 提交 / 72 路径）全部纳入，5 个并集型冲突已解决；双 flavor Java 编译通过，缓存包 13 个测试类 64 用例全通过，`check_ui_tokens.sh --strict` 相对基线零新增违规，TV + 手机实机主路径（弹窗渲染、真实清理、`CACHE` 事件即时刷新、配置持久化）通过 | [C37-upstream-sync-silent1566.md](C37-upstream-sync-silent1566.md) |
+| `C39` | common / beta 同步复评 | 将 beta 最新代码（PR#407，含缓存管理 P0–P4 上游同步）合入 dev3，复评 dev3 全部已修改代码含未推送的主题编辑器安全区改动 | **已完成合并、4 轮评审与全部验证**：合并 0 冲突（合并树 `5b0ad6bb5` 与 `merge-tree` 预测逐字节一致）、16 个 beta revert 提交移除内容零复活（54 路径差异 0）；修复 2 处真实缺陷（合并带入代码裸用 `MaterialAlertDialogBuilder` 违反主题契约门禁；主题编辑器全零 insets 未回退导致竖屏导航栏场景按钮被裁 48px，修复后余量 60px）；全量 JVM mobile 5191 / leanback 4346 零失败，双 flavor 实机验收通过 | [C39-beta-merge-review-dev3-20261005.md](C39-beta-merge-review-dev3-20261005.md) |
 
 `C1` 是跨播放器真实输入验收维度，不单独形成代码任务或文档；它写入对应的 E/P 任务文档。`E-SP3` 已在 `fongmi-sync` 完成 App/Media3 合并，保留既有 `E4-J1`/`E6-1`/`E7-1`/`E7-2 + C3` 能力；`E9-3` 与已完成的 `P1` 现已共同进入集成树，后续按既定顺序处理 P2 阶段。
 
@@ -5024,3 +5026,12 @@ C3 的触发来源主要是 media `990abc2368fd74779f525ee345734470659f3d53`（`
 - 验证：Mobile/Leanback arm64 Debug Java 编译通过；Mobile arm64 Debug 单测 4587 项、0 failure、0 error、1 skipped；双 ABI MPV ELF/资产门禁通过；无冲突标记与 whitespace 错误。
 - 未执行：APK 打包、设备安装、实机播放矩阵、native 重建；不将当前证据扩大为实机机型验收。
 - 下一动作：由当前 C4 guard 生成双亲 merge commit 和 annotated recovery tag，不推送。
+
+## 检查点 61：2026-10-04 C37 同步 webhtv/webhtv Silent1566（缓存管理 P0–P4）
+
+- 基线：`dev2@e72239063b4122c5cfc3658231fed2b06798848a`；共同祖先：`d187f6ae8bfaf0a4720724281d0a91186c57f73d`；目标：`webhtv/webhtv:Silent1566@d042cd542b8768ec9dbd2582923088e54a7bfeb1`。
+- 范围：58 个上游提交、72 个变动路径（50 新增 + 22 修改），全部为设置页「缓存管理」升级单一功能波次；5 个冲突文件全部按“本地既有行为/主题语义 + 上游功能并集”解决，0 个未解决冲突。
+- 评审：强制最佳实践门对比 `不合并` / `原样采用上游` / `本地适配后采用`。上游在 leanback 布局与 `selector_cache_button_focus.xml` 使用硬编码 `@color/white`、`#FFFFFFFF`、`#33FFFFFF`，原样采用会新增 1 个 UI token 违规并在手机日间表下白环不可见，故仅把这两处前景/焦点色替换为语义角色（`?attr/colorOnSurface` / `?attr/webhtvColorOnWallpaper` / `?attr/colorPrimary` / `?attr/colorOnSurface_20`），功能与结构 100% 采用上游。
+- 验证：双 flavor arm64 Debug Java 编译通过；缓存包 13 个测试类 **64 用例 0 failure 0 error**；`check_ui_tokens.sh --strict` 相对合并前基线零新增违规（`hex_drawables` 553→553 中的 1 个新增已消除，`violations=1` 仍为既有 `item_following.xml`）；TV（emulator-5556）与手机（emulator-5560）实机覆盖安装后主路径通过——弹窗 90%×90% 渲染 15 个模块、全部操作控件可见可聚焦、确认框默认焦点在「取消」、模块级真实清理（TV 释放 13.4 MB / 6 文件，手机释放 12.5 MB / 5 文件）与 `cache_mgmt_cleanup_history` 记录一致、设置行经 `RefreshEvent.CACHE` 即时刷新（TV 203.4→190 MB、手机 54→40.8 MB，无需离开页面重进）。
+- 未执行：完整 Instrumentation 测试、低空间/系统配额极限场景、native 重建；上游自述的三项环境/设计边界（应用更新闭环受 `ApkUrlPolicy` 限制、插件模块上限自动淘汰暂不启用、冷启动首次扫描 2 秒预算截断）为上游既有已知边界，非本次合并引入。
+- 下一动作：由当前 C37 guard 生成双亲 merge commit 和 annotated recovery tag，不推送。

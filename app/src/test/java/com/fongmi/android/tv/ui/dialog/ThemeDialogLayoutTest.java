@@ -37,6 +37,93 @@ public class ThemeDialogLayoutTest {
         assertEquals(1080 - 48, ThemeDialogLayout.height(1080, 24));
     }
 
+    /**
+     * The editor used to size its window from the raw display bounds. On a portrait phone
+     * with a navigation bar the window was taller than the visible area, so the footer's
+     * cancel/reset/save row was pushed under the navigation bar and the save button was
+     * clipped. The window must be derived from the system-bar-safe area instead.
+     */
+    @Test
+    public void safeAreaExcludesTheSystemBars() {
+        // 1080x1920 portrait, 42px status bar, 90px navigation bar.
+        ThemeDialogLayout.Area area = ThemeDialogLayout.safeArea(1080, 1920,
+                new ThemeDialogLayout.Insets(0, 42, 0, 90));
+        assertEquals(1080, area.width());
+        assertEquals(1788, area.height());
+        // Window = 1788 - 2*28 = 1732 tall; centred in the bar-safe area [42,1830] it spans
+        // [70,1802], clear of the navigation bar at y=1830.
+        assertEquals(1732, ThemeDialogLayout.height(area.height(), 28));
+        assertEquals(70, 42 + (1788 - 1732) / 2);
+        assertEquals(1802, 42 + (1788 - 1732) / 2 + 1732);
+    }
+
+    @Test
+    public void safeAreaAlsoHandlesLandscapeAndCutouts() {
+        // 1920x1080 landscape with a 42px status bar and a 90px navigation bar.
+        ThemeDialogLayout.Area landscape = ThemeDialogLayout.safeArea(1920, 1080,
+                new ThemeDialogLayout.Insets(0, 42, 0, 90));
+        assertEquals(1920, landscape.width());
+        assertEquals(948, landscape.height());
+        // A left display cutout narrows the area as well.
+        ThemeDialogLayout.Area cutout = ThemeDialogLayout.safeArea(1080, 1920,
+                new ThemeDialogLayout.Insets(60, 42, 0, 90));
+        assertEquals(1020, cutout.width());
+        assertEquals(1788, cutout.height());
+    }
+
+    @Test
+    public void contentFallbackInsetsMatchTheHostLayout() {
+        // The display minus the host content view is exactly the bar space the host gave up.
+        ThemeDialogLayout.Insets fallback = ThemeDialogLayout.Insets.ofContent(1080, 1920, 1080, 1788);
+        assertEquals(new ThemeDialogLayout.Insets(0, 0, 0, 132), fallback);
+        // A host content view that has not been laid out means "unknown", not "no bars".
+        assertEquals(ThemeDialogLayout.Insets.none(), ThemeDialogLayout.Insets.ofContent(1080, 1920, 0, 0));
+        // A content view larger than the display must never produce negative insets.
+        assertEquals(ThemeDialogLayout.Insets.none(), ThemeDialogLayout.Insets.ofContent(1080, 1920, 1200, 2000));
+    }
+
+    @Test
+    public void unusableInsetsFallBackToTheWholeDisplay() {
+        // No insets at all still yields the full display, not a collapsed window.
+        assertEquals(ThemeDialogLayout.fullScreen(1080, 1920),
+                ThemeDialogLayout.safeArea(1080, 1920, ThemeDialogLayout.Insets.none()));
+        assertEquals(ThemeDialogLayout.fullScreen(1080, 1920), ThemeDialogLayout.safeArea(1080, 1920, null));
+        // Insets covering the whole display would leave no room, so the display is used.
+        assertEquals(ThemeDialogLayout.fullScreen(1080, 1920),
+                ThemeDialogLayout.safeArea(1080, 1920, new ThemeDialogLayout.Insets(600, 1000, 600, 1000)));
+        // Insets wider than the display are clamped instead of producing a negative area.
+        ThemeDialogLayout.Area clamped = ThemeDialogLayout.safeArea(1080, 1920,
+                new ThemeDialogLayout.Insets(5000, 5000, 5000, 5000));
+        assertEquals(1080, clamped.width());
+        assertEquals(1920, clamped.height());
+    }
+
+    /**
+     * A floating dialog window on API 28 reports {@code systemBars()} as {@code [0,0,0,0]} even
+     * while a navigation bar is on screen (measured: window insets {@code [0,0][0,0]} against a
+     * display stable area of {@code [0,42][1080,1830]}). An all-zero report therefore means
+     * "unknown", not "no bars", and must not override the host-content fallback - otherwise the
+     * editor keeps growing past the navigation bar and the footer buttons are clipped.
+     */
+    @Test
+    public void anAllZeroInsetReportIsTreatedAsUnknown() {
+        assertTrue("an all-zero report must be reported as empty/unknown",
+                ThemeDialogLayout.Insets.none().isEmpty());
+        assertTrue(new ThemeDialogLayout.Insets(0, 0, 0, 0).isEmpty());
+        assertFalse(new ThemeDialogLayout.Insets(0, 42, 0, 90).isEmpty());
+        assertFalse(new ThemeDialogLayout.Insets(60, 0, 0, 0).isEmpty());
+        // The value a real navigation bar produces must never be mistaken for "no bars".
+        assertFalse(new ThemeDialogLayout.Insets(0, 0, 0, 132).isEmpty());
+    }
+
+    @Test
+    public void safeAreaIsNeverSmallerThanOnePixel() {
+        ThemeDialogLayout.Area area = ThemeDialogLayout.safeArea(0, 0, ThemeDialogLayout.Insets.none());
+        assertEquals(1, area.width());
+        assertEquals(1, area.height());
+        assertTrue(area.width() > 0 && area.height() > 0);
+    }
+
     @Test
     public void enlargedFootprintIsMateriallyLargerThanTheMeasuredBaseline() {
         int width = ThemeDialogLayout.width(1920, 16);
@@ -68,6 +155,28 @@ public class ThemeDialogLayoutTest {
             String dialog = read("src/" + flavour + "/java/com/fongmi/android/tv/ui/dialog/ThemeDialog.java");
             assertTrue(flavour + " must size the window from the shared helper",
                     dialog.contains("ThemeDialogLayout.marginDp("));
+            // Regression guard: sizing from the raw display bounds pushed the footer's
+            // save button under the navigation bar on portrait phones and clipped it.
+            assertTrue(flavour + " must derive its window from the system-bar-safe area",
+                    dialog.contains("ThemeDialogLayout.safeArea("));
+            assertTrue(flavour + " must read the window's own system-bar insets",
+                    dialog.contains("ViewCompat.setOnApplyWindowInsetsListener("));
+            assertTrue(flavour + " must include the display cutout in those insets",
+                    dialog.contains("WindowInsetsCompat.Type.displayCutout()"));
+            assertTrue(flavour + " must re-size the window when the real insets arrive",
+                    dialog.contains("ViewCompat.requestApplyInsets("));
+            assertTrue(flavour + " must fall back to the host content view while insets are unknown",
+                    dialog.contains("findViewById(android.R.id.content)"));
+            // A floating dialog window on API 28 keeps reporting systemBars() = [0,0,0,0] while a
+            // navigation bar is on screen; accepting that as "no bars" re-clips the footer.
+            assertTrue(flavour + " must treat an all-zero inset report as unknown",
+                    dialog.contains("!windowInsets.isEmpty()"));
+            assertTrue(flavour + " must also read the host activity's root window insets",
+                    dialog.contains("ViewCompat.getRootWindowInsets(requireActivity().getWindow().getDecorView())"));
+            assertFalse(flavour + " must not offset the window; Gravity.CENTER inside the inset-safe area already centres it",
+                    dialog.contains("params.x = ") || dialog.contains("params.y = "));
+            assertTrue(flavour + " must keep the full-height scroll area inside the safe height",
+                    dialog.contains("ViewGroup.LayoutParams.MATCH_PARENT, 0, 1"));
             assertTrue(flavour + " must size the width from the shared helper",
                     dialog.contains("ThemeDialogLayout.width("));
             assertTrue(flavour + " must size the height from the shared helper",

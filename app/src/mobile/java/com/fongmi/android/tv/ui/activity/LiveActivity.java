@@ -141,6 +141,13 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     private boolean rotate;
     private int count;
     private boolean mFailedThisSession;
+    /**
+     * 本轮播放失败自动换线的起点线路下标，配合 {@link #mLineFallbackExhausted} 使用。
+     * -1 表示当前没有进行中的失败回退轮换；自动换线绕回该下标即本频道所有线路都已试过，
+     * 置位 exhausted 阻止 onError 立即开启新一轮死循环；手动换线/换台/换源或播放成功后重置。
+     */
+    private int mLineFallbackAnchor = -1;
+    private boolean mLineFallbackExhausted;
     private PiP mPiP;
     private boolean mKeepPlaybackAfterPipExit;
     private OneShotPreDrawListener pipEntryListener;
@@ -269,7 +276,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         mHides = new ArrayList<>();
         mR1 = this::hideControl;
         mR2 = this::setTraffic;
-        mBufferingTimeout = this::startFlow;
+        mBufferingTimeout = this::onBufferingTimeout;
         mR3 = this::hideInfo;
         mEndRetry = this::checkNext;
         mPiP = new PiP();
@@ -501,7 +508,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     private void renderLive(Live live) {
         if (live == null || live.getGroups().isEmpty()) {
-            if (LiveSetting.isSourceFallback()) startFlow();
+            if (LiveSetting.isSourceFallback()) startSourceFallback();
             return;
         }
         if (liveMenuRendered) return;
@@ -1101,6 +1108,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         } else if (mGroup != null) {
             mGroup.setPosition(mChannelAdapter.setSelected(item.group(mGroup)));
             mChannel = item;
+            resetLineFallback();
             setArtwork();
             showInfo();
             hideUI(syncPosition);
@@ -1326,11 +1334,14 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     }
 
     private void handleSameReloadUrl(String msg) {
-        if (mChannel != null && !mChannel.isOnly()) {
-            nextLine(true);
-        } else {
-            onError(msg);
-        }
+        // 同 URL 重载失败等价于该线路播放失败：走带绕圈/耗尽保护的自动换线，
+        // 不重置本轮回退状态，避免 reload 路径重新开启死循环。
+        // 沿用重载路径既有语义（不校验用户的自动换线开关），只补齐保护：
+        // 换不动（单线路或本轮已绕回起点）时必须给出可见失败反馈，
+        // 否则 fetch() 刚 showProgress() 的进度条会一直转、错误文案永远不出现。
+        if (advanceLineForFallback()) return;
+        App.removeCallbacks(mBufferingTimeout);
+        showError(msg);
     }
 
     private void checkControl() {
@@ -1470,7 +1481,8 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     @Override
     protected boolean onSourceHttpError(int statusCode, String msg) {
-        if (!LiveSetting.isSourceFallback()) return false;
+        // HTTP 播放错误优先交给直播回退流程：开启自动换线或接口回退任一时短路播放器重试链。
+        if (!LiveSetting.isChange() && !LiveSetting.isSourceFallback()) return false;
         onError(msg);
         return true;
     }
@@ -1487,6 +1499,17 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
             showError(msg);
             startFlow();
         }
+    }
+
+    /**
+     * 缓冲超时（既没出画面也没报错）：等价于本条线路播放失败。
+     * <p>
+     * 与 onError 不同，本路径不受 mFailedThisSession 限制：上一轮换线后新线路若一直卡在
+     * 解析/缓冲阶段，mFailedThisSession 仍为 true，但此时必须仍能继续换线；
+     * 确实无线路可换（单线路或本轮已绕回起点）时给出可见的失败提示，避免进度条一直转。
+     */
+    private void onBufferingTimeout() {
+        if (!startFlow()) showError(ResUtil.getString(R.string.error_play_url));
     }
 
     @Override
@@ -1521,6 +1544,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
                 checkControl();
                 player().reset();
                 mFailedThisSession = false;
+                resetLineFallback();
                 break;
             case Player.STATE_ENDED:
                 checkEnded();
@@ -1594,6 +1618,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         player().reset();
         player().clear();
         player().stop();
+        resetLineFallback();
         resetAdapter();
         hideControl();
         getLive();
@@ -1654,17 +1679,74 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
         player().setMetadata(buildMetadata());
     }
 
-    private void startFlow() {
-        Live next = LiveSetting.isSourceFallback() ? LiveConfig.getNextHome() : null;
-        LiveSourceFallbackPolicy.Action action = LiveSourceFallbackPolicy.decide(
+    /**
+     * 线路播放失败的自动回退：只在当前频道的线路间轮换（含最后一条绕回），
+     * 试完一圈即停，绝不因播放失败直接跳到配置里的下一个直播接口。
+     * 调用点：onError、缓冲超时（mBufferingTimeout -> onBufferingTimeout）。
+     * <p>
+     * 本方法只负责「还能不能再换一条线路」，换不动时返回 false，
+     * 失败文案由调用方负责显示。
+     *
+     * @return true 表示已换到另一条线路并重新拉流
+     */
+    private boolean startFlow() {
+        LiveSourceFallbackPolicy.Action action = LiveSourceFallbackPolicy.decideLineFailure(
                 LiveSetting.isChange(),
-                LiveSetting.isSourceFallback(),
                 mChannel != null,
-                mChannel == null || mChannel.isLast(),
-                mChannel == null || mChannel.isOnly(),
+                mChannel != null && !mChannel.isOnly());
+        return action == LiveSourceFallbackPolicy.Action.NEXT_LINE && advanceLineForFallback();
+    }
+
+    /**
+     * 直播接口节目列表拉取失败（renderLive 空结果）时的回退：只有此时才直接
+     * 跳转到配置里的下一个直播接口。
+     */
+    private void startSourceFallback() {
+        Live next = LiveConfig.getNextHome();
+        LiveSourceFallbackPolicy.Action action = LiveSourceFallbackPolicy.decideSourceFailure(
+                LiveSetting.isSourceFallback(),
                 next != null);
-        if (action == LiveSourceFallbackPolicy.Action.NEXT_LINE) nextLine(true);
-        else if (action == LiveSourceFallbackPolicy.Action.NEXT_SOURCE) setLive(next);
+        if (action == LiveSourceFallbackPolicy.Action.NEXT_SOURCE) setLive(next);
+    }
+
+    /**
+     * 播放失败自动换线：从失败起点开始轮换，绕回起点即本轮所有线路都已试过，置位
+     * exhausted 停止后续回退；否则刷新线路信息并重新拉流。
+     * <p>
+     * 本方法是唯一改动 mChannel 线路下标的地方，因此 exhausted 短路必须放在这里：
+     * 无论从 onError、缓冲超时还是同 URL 重载进来，都不可能再开启新一轮
+     * A→B→A 死循环（否则 anchor 未清时换线会重新绕回起点并重新拉流）。
+     *
+     * @return true 表示已换到另一条线路并重新拉流；false 表示没有可换的线路
+     * （单线路）或本轮线路已绕回起点（回退耗尽），调用方需要自行给出失败反馈。
+     */
+    private boolean advanceLineForFallback() {
+        if (isLineFallbackExhausted()) return false;
+        if (mChannel == null || mChannel.isOnly()) return false;
+        if (mLineFallbackAnchor < 0) mLineFallbackAnchor = mChannel.getIndex();
+        mChannel.switchLine(true);
+        if (mChannel.getIndex() == mLineFallbackAnchor) {
+            mLineFallbackExhausted = true;
+            return false;
+        }
+        showInfo();
+        fetch();
+        return true;
+    }
+
+    /**
+     * 播放失败回退已耗尽（本轮所有线路都试过且都失败）时不再自动换线，避免死循环。
+     */
+    private boolean isLineFallbackExhausted() {
+        return mLineFallbackExhausted;
+    }
+
+    /**
+     * 手动换线、换台、换直播接口或播放成功后，重置失败回退轮换状态。
+     */
+    private void resetLineFallback() {
+        mLineFallbackAnchor = -1;
+        mLineFallbackExhausted = false;
     }
 
     private boolean prevGroup() {
@@ -1720,6 +1802,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
 
     private void nextLine(boolean show) {
         if (mChannel == null || mChannel.isOnly()) return;
+        resetLineFallback();
         mChannel.switchLine(true);
         if (show) showInfo();
         else setInfo();
@@ -1729,6 +1812,7 @@ public class LiveActivity extends PlaybackActivity implements CustomKeyDown.List
     private void setLine(int position) {
         if (mChannel == null || position < 0 || position >= mChannel.getUrls().size()) return;
         if (mChannel.getIndex() == position) return;
+        resetLineFallback();
         mChannel.setIndex(position);
         setInfo();
         fetch();

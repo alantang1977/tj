@@ -5566,9 +5566,8 @@ private boolean runtimeSourceOnly;
         FollowingPlaybackBridge.findAsync(identityKey, existing -> {
             if (isFinishing() || isDestroyed()) return;
             if (existing != null) {
-                followingActionPending = false;
-                mBinding.following.setEnabled(true);
-                FollowingActivity.start(this, existing.identityKey);
+                // 播放页保持原地：已追更时再次点击即刻取消，绝不跳转追更页打断播放。
+                cancelFollowing(identityKey);
                 return;
             }
             Following item = FollowingPlaybackBridge.build(mHistory, currentSourceSeasonNumber());
@@ -5586,6 +5585,23 @@ private boolean runtimeSourceOnly;
                 updateFollowingState();
                 Notify.show(R.string.following_added);
             });
+        });
+    }
+
+    /** 播放页取消追更：写墓碑后立即刷新按钮状态，不离开当前播放页。 */
+    private void cancelFollowing(String identityKey) {
+        FollowingScheduler.cancelNext(this, identityKey);
+        FollowingPlaybackBridge.deleteAsync(identityKey, error -> {
+            followingActionPending = false;
+            if (isFinishing() || isDestroyed()) return;
+            if (error != null) {
+                mBinding.following.setEnabled(true);
+                Notify.show(error.getMessage());
+                return;
+            }
+            updateFollowingState();
+            FollowingPlaybackBridge.refreshUnreadCountAsync(null);
+            Notify.show(R.string.following_canceled);
         });
     }
 

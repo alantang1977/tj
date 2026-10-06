@@ -180,6 +180,10 @@ CAT_ZOOM_SQUIRCLE = 1.357  # 自适应圆角(0.30)用：配合下移使耳尖到
 CAT_ZOOM_SQUARE = 1.55  # 方形用：bbox居中后上下左右各留15px（直边无裁切，无需下移）
 CAT_ZOOM_BANNER = 1.68   # TV Banner 用：上下留约2px，猫高度几乎填满
 CAT_KEEP_ALPHA = 80  # 视为“实体猫”的 alpha 下限（腮红115/暗边130保留，弱光晕26/60剔除）
+# 手机版 launcher 在“最大化填满+耳/领均衡”之后的额外整体上移量（占短边比例，方案1轻微上移）。
+# place_cat_fill 内部会钳制：上移后耳侧仍保留安全余量，耳尖绝不触边、不超出画布。
+LAUNCHER_LIFT_ROUNDED = 6 / 512    # 圆角 launcher：@512 上移 6px（顶22/底16）
+LAUNCHER_LIFT_CIRCLE = 20 / 512    # 圆形 launcher：@512 上移 20px（顶68/底30）
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
 GRAD_INSET_ADAPTIVE = 1.0 / 6.0
@@ -1393,15 +1397,20 @@ def _fill_clear_side(kind, W, H, s, oy, G, radius_ratio, ux, uy, TW, TH, top):
     return worst
 
 
-def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512, head_k=1.12):
+def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512,
+                   head_k=1.12, lift_frac=0.0):
     """把猫以"最大化填满 + 耳/领缝隙均衡"放入 W×H 画布，返回透明底 RGBA。
     kind: circle / rounded / rect(方形或横幅) / safe_circle(自适应安全圆)。
     gap_frac: 缝隙占短边的比例（随画布尺寸等比缩放；越小猫越满）。
     head_k: 头部放大系数（1.12=手机版放大，1.0=TV版/其他原版不放大）。
+    lift_frac: 均衡点确定后额外整体上移量占短边的比例（手机版 launcher 视觉上移，
+               默认 0=不上移）。为避免斜上方耳尖触边，上移时会自动按比例极轻微
+               缩小，保证耳尖四周仍留安全余量——耳朵完整、绝不超出画布。
 
     不要求几何严格居中：先二分求最大缩放（任意纵向偏移可行），再在可行偏移区间内
-    取"耳侧最小缝隙≈项圈侧最小缝隙"的均衡点，使整只猫从耳尖到绿项圈尽量占满画布，
-    同时四周留缝不触边。圆角/方形/横幅平顶下猫可达到很大占比。"""
+    取"耳侧最小缝隙≈项圈侧最小缝隙"的均衡点；若指定 lift_frac，则固定上移后的
+    目标位置并重新求该位置下的最大缩放（轻微缩小），使整只猫从耳尖到绿项圈尽量
+    占满画布，同时四周留缝不触边。"""
     tile, (ux, uy) = _cat_fill_tile(head_k=head_k)
     TW, TH = tile.size
     gap = gap_frac * min(W, H)
@@ -1429,6 +1438,21 @@ def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512, he
         else:
             b = mid_oy
     oy = (a + b) / 2.0
+    # 2b) 额外整体上移（手机版 launcher 视觉上移）。直接上移会让斜上方耳尖触边/被裁，
+    #      因此固定目标 oy 后重新二分"该 oy 下的最大可行缩放"，以极轻微缩小给耳尖
+    #      腾出空间，保证耳尖四周缝隙仍 >= G——耳朵完整、绝不超出画布。
+    if lift_frac > 0.0:
+        oy_target = oy - lift_frac * min(W, H)
+        l2, h2 = 0.0, s
+        for _ in range(60):
+            m2 = (l2 + h2) / 2.0
+            iv = _fill_oy_interval(kind, W, H, m2, G, radius_ratio, ux, uy, TW, TH)
+            if iv is not None and iv[0] - 1e-6 <= oy_target <= iv[1] + 1e-6:
+                l2 = m2
+            else:
+                h2 = m2
+        s = l2
+        oy = oy_target
     # 3) SS 超采样渲染、居中、降采样
     nw = max(1, int(round(TW * s * SS)))
     nh = max(1, int(round(TH * s * SS)))
@@ -1441,11 +1465,12 @@ def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512, he
 
 
 def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
-           inset=None, badge=None, style="3d", head_k=1.12):
+           inset=None, badge=None, style="3d", head_k=1.12, lift_frac=0.0):
     """渲染完整图标。
 
     style: cat（卡通蓝猫头）/ 3d（高级立体浮雕字标）/ iphone17（带光影字标）。
     head_k: 头部放大系数（1.12=手机版 launcher 放大，1.0=playstore/logo/favicon 等原版不放大）。
+    lift_frac: 猫整体上移量占短边比例（仅手机版 launcher 启用，耳朵不触边）。
     """
     if inset is None:
         inset = {"circle": GRAD_INSET_CIRCLE,
@@ -1466,9 +1491,10 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
             img.putalpha(_mask(big, shape, radius_ratio))
         img = img.resize((size, size), Image.LANCZOS)
         # 猫：填满适配——最大化但留统一缝隙，耳尖/项圈/两侧均不触边不裁切
-        # head_k 由调用方控制：1.12=手机版 launcher 放大，1.0=其他原版不放大
+        # head_k / lift_frac 由调用方控制：手机版 launcher 放大并轻微上移，其他原版不上移
         kind = {"circle": "circle", "rounded": "rounded", "square": "rect"}.get(shape, "rect")
-        catf = place_cat_fill(size, size, kind=kind, radius_ratio=radius_ratio, head_k=head_k)
+        catf = place_cat_fill(size, size, kind=kind, radius_ratio=radius_ratio,
+                              head_k=head_k, lift_frac=lift_frac)
         img.alpha_composite(catf)
         return img
 
@@ -1748,8 +1774,8 @@ def save_text(text, rel):
 def do_preview(style="3d"):
     out = "build/icon-preview"
     print(f"[preview] -> {out}/ (Style: {style})")
-    save_img(render(512, "rounded", style=style), f"{out}/rounded_512.png")
-    save_img(render(512, "circle", fill=FILL_CIRCLE, style=style), f"{out}/circle_512.png")
+    save_img(render(512, "rounded", style=style, lift_frac=LAUNCHER_LIFT_ROUNDED), f"{out}/rounded_512.png")
+    save_img(render(512, "circle", fill=FILL_CIRCLE, style=style, lift_frac=LAUNCHER_LIFT_CIRCLE), f"{out}/circle_512.png")
     save_img(render(512, "square", style=style, head_k=1.0), f"{out}/square_512.png")
     save_img(render(48, "rounded", style=style), f"{out}/rounded_48.png")
     save_img(render(72, "rounded", style=style), f"{out}/rounded_72.png")
@@ -1807,9 +1833,9 @@ def do_export(style="cat"):
             px = launcher_px[name]
             mdir = os.path.join(base_dir, f"mipmap-{name}")
             os.makedirs(mdir, exist_ok=True)
-            save_img(render(px, "rounded", style=style),
+            save_img(render(px, "rounded", style=style, lift_frac=LAUNCHER_LIFT_ROUNDED),
                      os.path.join(mdir, "ic_launcher.png"), format="PNG")
-            save_img(render(base, "circle", fill=FILL_CIRCLE, style=style),
+            save_img(render(base, "circle", fill=FILL_CIRCLE, style=style, lift_frac=LAUNCHER_LIFT_CIRCLE),
                      os.path.join(mdir, "ic_launcher_round.webp"),
                      format="WEBP", lossless=True, quality=100)
         # 自适应图标 XML（mipmap-anydpi-v26）
@@ -1934,9 +1960,9 @@ def do_write(style="3d"):
     for name, base in DENSITIES:
         px = {"mdpi": 128, "hdpi": 192, "xhdpi": 256,
               "xxhdpi": 384, "xxxhdpi": 512}[name]
-        save_img(render(px, "rounded", style=style), f"{MAIN_RES}/mipmap-{name}/ic_launcher.png",
+        save_img(render(px, "rounded", style=style, lift_frac=LAUNCHER_LIFT_ROUNDED), f"{MAIN_RES}/mipmap-{name}/ic_launcher.png",
                   format="PNG")
-        save_img(render(base, "circle", fill=FILL_CIRCLE, style=style),
+        save_img(render(base, "circle", fill=FILL_CIRCLE, style=style, lift_frac=LAUNCHER_LIFT_CIRCLE),
                  f"{MAIN_RES}/mipmap-{name}/ic_launcher_round.webp",
                  format="WEBP", lossless=True, quality=100)
     print("[play store]")

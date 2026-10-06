@@ -215,11 +215,11 @@ public class LiveActivityLayoutTest {
         String renderLiveBody = section(source, "private void renderLive(Live live)", "private void setGroup(Live live)");
 
         assertFalse(sourcePath + " is missing renderLive", renderLiveBody.isEmpty());
-        assertTrue("an empty parsed live source must enter fallback when source fallback is enabled",
+        assertTrue("an empty parsed live source must enter the source-level fallback when source fallback is enabled",
                 renderLiveBody.contains("if (live == null || live.getGroups().isEmpty())")
-                        && renderLiveBody.contains("if (LiveSetting.isSourceFallback()) startFlow();"));
+                        && renderLiveBody.contains("if (LiveSetting.isSourceFallback()) startSourceFallback();"));
         assertTrue("an empty parsed live source must stop before rendering groups",
-                renderLiveBody.indexOf("startFlow();") < renderLiveBody.indexOf("return;"));
+                renderLiveBody.indexOf("startSourceFallback();") < renderLiveBody.indexOf("return;"));
         assertTrue("a valid parsed live source must still render its groups",
                 renderLiveBody.contains("mViewModel.parseXml(live);")
                         && renderLiveBody.contains("setGroup(live);")
@@ -239,9 +239,9 @@ public class LiveActivityLayoutTest {
         String method = section(source, "protected boolean onSourceHttpError(int statusCode, String msg)", "protected void onError(String msg)");
 
         assertFalse(sourcePath + " is missing onSourceHttpError", method.isEmpty());
-        assertTrue("disabled source fallback must preserve the normal player retry chain",
-                method.contains("if (!LiveSetting.isSourceFallback()) return false;"));
-        assertTrue("enabled source fallback must route the HTTP failure into the live fallback flow",
+        assertTrue("disabled line change and source fallback must preserve the normal player retry chain",
+                method.contains("if (!LiveSetting.isChange() && !LiveSetting.isSourceFallback()) return false;"));
+        assertTrue("enabled line change or source fallback must route the HTTP failure into the live fallback flow",
                 method.contains("onError(msg);") && method.contains("return true;"));
         assertTrue("the failure must be handled before returning true",
                 method.indexOf("onError(msg);") < method.indexOf("return true;"));
@@ -267,11 +267,58 @@ public class LiveActivityLayoutTest {
     }
 
     @Test
+    public void lineFallbackExhaustionKeepsErrorFeedbackForMobileAndLeanback() throws Exception {
+        assertLineFallbackExhaustionKeepsErrorFeedback(findMobileJavaPath());
+        assertLineFallbackExhaustionKeepsErrorFeedback(findLeanbackJavaPath());
+    }
+
+    private static void assertLineFallbackExhaustionKeepsErrorFeedback(Path javaRoot) throws Exception {
+        Path sourcePath = javaRoot.resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "activity", "LiveActivity.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+
+        String advanceBody = section(source, "private boolean advanceLineForFallback()", "private boolean isLineFallbackExhausted()");
+        assertFalse(sourcePath + " is missing advanceLineForFallback", advanceBody.isEmpty());
+        assertTrue("the only line-switching site must itself refuse to rotate once the round is exhausted",
+                advanceBody.contains("if (isLineFallbackExhausted()) return false;"));
+        assertTrue("an exhausted rotation must report that no line was switched",
+                advanceBody.contains("mLineFallbackExhausted = true;")
+                        && advanceBody.contains("return false;"));
+        assertTrue("a real line switch must report success after reloading the stream",
+                advanceBody.indexOf("fetch();") < advanceBody.lastIndexOf("return true;"));
+
+        String startFlowBody = section(source, "private boolean startFlow()", "private void startSourceFallback()");
+        assertFalse(sourcePath + " is missing startFlow", startFlowBody.isEmpty());
+        assertTrue("startFlow must report whether it actually switched lines",
+                startFlowBody.contains("return action == LiveSourceFallbackPolicy.Action.NEXT_LINE && advanceLineForFallback();"));
+
+        String onErrorBody = section(source, "protected void onError(String msg)", "protected void onReload(String msg)");
+        assertFalse(sourcePath + " is missing onError", onErrorBody.isEmpty());
+        assertTrue("a playback failure must surface its reason before any fallback decision",
+                onErrorBody.indexOf("showError(msg);") < onErrorBody.indexOf("startFlow();"));
+
+        String timeoutBody = section(source, "private void onBufferingTimeout()", "protected void onReload(String msg)");
+        assertFalse(sourcePath + " is missing onBufferingTimeout", timeoutBody.isEmpty());
+        assertTrue("the buffering timeout must not be muted by the previous attempt's failure flag",
+                source.contains("mBufferingTimeout = this::onBufferingTimeout;")
+                        && !timeoutBody.contains("mFailedThisSession"));
+        assertTrue("a stall that cannot switch lines must still show a visible failure",
+                timeoutBody.contains("if (!startFlow()) showError("));
+
+        String reloadBody = section(source, "private void handleSameReloadUrl(String msg)", "private void resetAdapter()");
+        assertFalse(sourcePath + " is missing handleSameReloadUrl", reloadBody.isEmpty());
+        assertTrue("a reload that cannot switch lines must still show a visible failure",
+                reloadBody.contains("if (advanceLineForFallback()) return;")
+                        && reloadBody.contains("showError(msg);"));
+        assertFalse("the reload path must not re-implement the switch preconditions and bypass the exhaustion guard",
+                reloadBody.contains("mChannel != null && !mChannel.isOnly() && advanceLineForFallback()"));
+    }
+
+    @Test
     public void playbackEndStaysOnCurrentChannelForMobileAndLeanback() throws Exception {
         assertPlaybackEndStaysOnCurrentChannel(findMobileJavaPath());
         assertPlaybackEndStaysOnCurrentChannel(findLeanbackJavaPath());
     }
-
     private static void assertPlaybackEndStaysOnCurrentChannel(Path javaRoot) throws Exception {
         Path sourcePath = javaRoot.resolve(Path.of(
                 "com", "fongmi", "android", "tv", "ui", "activity", "LiveActivity.java"));

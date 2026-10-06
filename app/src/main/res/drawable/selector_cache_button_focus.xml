@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        Focused: ring only. A tinted fill would be painted above the label (foreground draws over
+        content) and would dim the text, which made the focused button look disabled.
+
+        The ring and the pressed fill use the theme's primary/on-surface roles instead of a fixed
+        opaque white, so the dialog keeps a visible 3dp ring on a light surface as well as on the
+        dark TV surface (a fixed white ring is invisible on the mobile day palette).
+    -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp" />
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="3dp"
+                android:color="?attr/colorPrimary" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp" />
+            <solid android:color="?attr/colorOnSurface_20" />
+            <stroke
+                android:width="3dp"
+                android:color="?attr/colorPrimary" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp" />
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="3dp"
+                android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</selector>
