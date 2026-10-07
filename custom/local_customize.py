@@ -1771,18 +1771,31 @@ def save_text(text, rel):
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
     print(f"  {rel}")
+def render_adaptive_preview(size, shape="circle", radius_ratio=0.30):
+    """按设备真实方式合成自适应图标预览（API26+），确保预览即设备所得：
+      背景 = ic_launcher_background 等价的对角渐变铺满（make_gradient, inset=GRAD_INSET_ADAPTIVE）；
+      前景 = ic_launcher_foreground.png（render_cat_foreground, head_k=1.0）；
+      最后套 shape 蒙版仅用于预览展示各 launcher 的裁切形状（圆形/圆角）。
+    与旧的"render() 直接合成"不同，这里前景/背景与实际自适应资源一一对应。"""
+    bg = make_gradient(size, GRAD_INSET_ADAPTIVE)   # 等价 vector_background()
+    fg = render_cat_foreground(size, head_k=1.0)    # 实际前景 PNG
+    bg.alpha_composite(fg)
+    bg.putalpha(_mask(size, shape, radius_ratio))
+    return bg
+
+
 def do_preview(style="3d"):
     out = "build/icon-preview"
     print(f"[preview] -> {out}/ (Style: {style})")
     save_img(render(512, "rounded", style=style, lift_frac=LAUNCHER_LIFT_ROUNDED), f"{out}/rounded_512.png")
     save_img(render(512, "circle", fill=FILL_CIRCLE, style=style, lift_frac=LAUNCHER_LIFT_CIRCLE), f"{out}/circle_512.png")
     save_img(render(512, "square", style=style, head_k=1.0), f"{out}/square_512.png")
-    save_img(render(48, "rounded", style=style), f"{out}/rounded_48.png")
-    save_img(render(72, "rounded", style=style), f"{out}/rounded_72.png")
-    save_img(render(96, "rounded", style=style), f"{out}/rounded_96.png")
+    save_img(render(48, "rounded", style=style, lift_frac=LAUNCHER_LIFT_ROUNDED), f"{out}/rounded_48.png")
+    save_img(render(72, "rounded", style=style, lift_frac=LAUNCHER_LIFT_ROUNDED), f"{out}/rounded_72.png")
+    save_img(render(96, "rounded", style=style, lift_frac=LAUNCHER_LIFT_ROUNDED), f"{out}/rounded_96.png")
     save_img(render_banner(320, 180, style), f"{out}/banner.png")
-    save_img(render(432, "circle", fill=FILL_SAFE, style=style, head_k=1.0), f"{out}/adaptive_circle.png")
-    save_img(render(432, "rounded", fill=FILL_SAFE, radius_ratio=0.30, style=style, head_k=1.0),
+    save_img(render_adaptive_preview(432, "circle"), f"{out}/adaptive_circle.png")
+    save_img(render_adaptive_preview(432, "rounded", 0.30),
               f"{out}/adaptive_squircle.png")
     mono = Image.new("RGBA", (432, 432), (0x1F, 0x1F, 0x1F, 255))
     if style == "cat":
@@ -2001,7 +2014,140 @@ def do_write(style="3d"):
     save_img(frames[-1], "app/src/main/assets/favicon.ico", format="ICO",
               sizes=[(px, px) for px in sizes],
               append_images=frames[:-1])
+    # ===== 强制一致性校验：实际写入图标必须与渲染/预览来源完全一致，否则判定失败 =====
+    print("[verify] 校验实际产物与预览一致性 ...")
+    _icons_ok, _ = verify_icons(style, verbose=True)
+    if not _icons_ok:
+        raise RuntimeError("图标一致性校验失败：实际写入图标与预览来源不一致（详见上方 FAIL 项）")
     print("\nDone.")
+
+
+# ===== 图标一致性强制校验 =====
+# 实测依据：PNG 完全无损（往返 0 差异）；WEBP lossless 的 alpha 通道、以及"合成到不透明
+# 背景后的视觉"完全无损（仅完全透明像素的隐藏 RGB 被容器置零，用户不可见，故 WEBP 用视觉比对）。
+VERIFY_MAX_PIXEL_DIFF = 2          # 单通道最大允许差异（容器/重采样容差）
+VERIFY_MAX_MEAN_DIFF = 0.5         # 平均通道差异上限
+VERIFY_MAX_DIFF_PIXEL_RATIO = 0.01  # 有差异像素占比上限（1%）
+
+
+def _verify_bg(size, kind):
+    """合成视觉比对用的标准不透明背景（与 render 背景一致）。"""
+    inset = {"circle": GRAD_INSET_CIRCLE, "rounded": GRAD_INSET_ROUNDED}.get(kind, GRAD_INSET_SQUARE)
+    return make_gradient(size, inset)
+
+
+def _pixel_metrics(expected, actual, mode, bg):
+    """返回 (size_ok, 最大通道差, 平均通道差, 差异像素占比)。
+    mode: rgba=原始RGBA逐通道(PNG)；visual=合成到bg后比RGB(WEBP)；alpha=仅比alpha。"""
+    size_ok = expected.size == actual.size
+    e = expected.convert("RGBA"); a = actual.convert("RGBA")
+    if mode == "visual":
+        e = Image.alpha_composite(bg, e).convert("RGB")
+        a = Image.alpha_composite(bg, a).convert("RGB")
+    elif mode == "alpha":
+        e = e.split()[3]; a = a.split()[3]
+    ea = np.asarray(e).astype(int); aa = np.asarray(a).astype(int)
+    d = np.abs(ea - aa)
+    maxd = int(d.max()); meand = float(d.mean())
+    ratio = float((d.sum(2) > 0).mean()) if d.ndim == 3 else float((d > 0).mean())
+    return size_ok, maxd, meand, ratio
+
+
+def verify_icons(style="cat", verbose=True):
+    """强制校验 do_write 实际写入的全部图标 == 渲染函数当前输出（即 do_preview 预览来源）。
+
+    位图逐文件"同参数重渲染 expected → 解码磁盘文件 → 像素比对"；XML 逐字符比对。
+    任一项超阈值即判定失败，返回 (ok, rows)。do_write 末尾会调用本函数，失败即抛错，
+    从机制上保证：脚本执行后写入的图标与预览图必然一致，否则阻断提交/CI 打包。"""
+    launcher_px_map = {"mdpi": 128, "hdpi": 192, "xhdpi": 256, "xxhdpi": 384, "xxxhdpi": 512}
+    rows = []
+
+    def check_bitmap(rel, expected, mode, bg):
+        disk = os.path.join(REPO, rel)
+        if not os.path.exists(disk):
+            rows.append((rel, False, "文件不存在")); return
+        actual = Image.open(disk)
+        size_ok, maxd, meand, ratio = _pixel_metrics(expected, actual, mode, bg)
+        ok = size_ok and maxd <= VERIFY_MAX_PIXEL_DIFF and meand <= VERIFY_MAX_MEAN_DIFF \
+            and ratio <= VERIFY_MAX_DIFF_PIXEL_RATIO
+        rows.append((rel, ok, f"尺寸{'OK' if size_ok else '不符'} 最大差{maxd} "
+                              f"平均{meand:.3f} 差异像素{ratio * 100:.2f}%"))
+
+    def check_text(rel, expected_text):
+        disk = os.path.join(REPO, rel)
+        if not os.path.exists(disk):
+            rows.append((rel, False, "文件不存在")); return
+        with open(disk, "r", encoding="utf-8") as f:
+            actual_text = f.read()
+        rows.append((rel, actual_text == expected_text,
+                     "内容一致" if actual_text == expected_text else "内容被修改/漂移"))
+
+    # launcher 圆角 PNG + 圆形 WEBP（5 密度）
+    for dname, base in DENSITIES:
+        px = launcher_px_map[dname]
+        check_bitmap(f"{MAIN_RES}/mipmap-{dname}/ic_launcher.png",
+                     render(px, "rounded", style=style, lift_frac=LAUNCHER_LIFT_ROUNDED), "rgba", None)
+        check_bitmap(f"{MAIN_RES}/mipmap-{dname}/ic_launcher_round.webp",
+                     render(base, "circle", fill=FILL_CIRCLE, style=style, lift_frac=LAUNCHER_LIFT_CIRCLE),
+                     "visual", _verify_bg(base, "circle"))
+    # 自适应 / banner 前景 PNG
+    check_bitmap(f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png",
+                 render_cat_foreground(432, head_k=1.0), "rgba", None)
+    check_bitmap("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png",
+                 render_cat_foreground(432, head_k=1.0), "rgba", None)
+    # TV banner、in-app logo、playstore
+    check_bitmap("app/src/leanback/res/drawable/ic_banner.png", render_banner(320, 180, style), "rgba", None)
+    check_bitmap(f"{MAIN_RES}/drawable-nodpi/ic_logo.png",
+                 render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0), "rgba", None)
+    check_bitmap("app/src/main/ic_launcher-playstore.png",
+                 render(512, "square", style=style, head_k=1.0), "rgba", None)
+    # 通知 PNG（4 密度）
+    for dname, npx in NOTIFY_DENSITIES:
+        check_bitmap(f"{MAIN_RES}/drawable-{dname}/ic_notification.png",
+                     render_notification(npx, style=style), "rgba", None)
+    # favicon.ico：校验帧尺寸集合 + 默认(最大)主帧视觉。ICO 多帧 seek 解码不稳定，
+    # favicon 又由同一 render 生成，主帧视觉正确 + 尺寸集合正确即足以保证一致。
+    fav_rel = "app/src/main/assets/favicon.ico"
+    fav_disk = os.path.join(REPO, fav_rel)
+    if os.path.exists(fav_disk):
+        ico = Image.open(fav_disk)
+        got_sizes = set(ico.ico.sizes())
+        expect_sizes = {(p, p) for p in FAVICON_SIZES}
+        rows.append((f"{fav_rel}/sizes", got_sizes == expect_sizes,
+                     f"帧尺寸 {sorted(s[0] for s in got_sizes)}" if got_sizes == expect_sizes
+                     else f"帧尺寸集合{got_sizes} != {expect_sizes}"))
+        ico.seek(0)
+        main_fw = ico.size[0]
+        exp = render(main_fw, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0)
+        size_ok, maxd, meand, ratio = _pixel_metrics(exp, ico.copy().convert("RGBA"),
+                                                     "visual", _verify_bg(main_fw, "circle"))
+        ok = size_ok and maxd <= VERIFY_MAX_PIXEL_DIFF and meand <= VERIFY_MAX_MEAN_DIFF \
+            and ratio <= VERIFY_MAX_DIFF_PIXEL_RATIO
+        rows.append((f"{fav_rel}/{main_fw}px", ok,
+                     f"最大差{maxd} 平均{meand:.3f} 差异像素{ratio * 100:.2f}%"))
+    else:
+        rows.append((fav_rel, False, "文件不存在"))
+    # XML（cat 风格）逐字符校验
+    check_text(f"{MAIN_RES}/drawable/ic_launcher_background.xml", vector_background())
+    check_text(f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml", vector_cat())
+    check_text(f"{MAIN_RES}/mipmap-anydpi-v26/ic_launcher.xml", ADAPTIVE_XML)
+    check_text(f"{MAIN_RES}/mipmap-anydpi-v26/ic_launcher_round.xml", ADAPTIVE_XML)
+    check_text("app/src/leanback/res/mipmap-anydpi-v26/ic_banner.xml", BANNER_XML)
+    check_text(f"{MAIN_RES}/drawable-anydpi/ic_notification.xml", vector_cat(size_dp=24))
+
+    ok_all = all(r[1] for r in rows)
+    if verbose:
+        print("=" * 72)
+        print(f"[verify] 实际产物 vs 预览/渲染来源，共 {len(rows)} 项")
+        for rel, ok, detail in rows:
+            print(f"  [{'PASS' if ok else 'FAIL'}] {rel}  {detail}")
+        print("=" * 72)
+        if ok_all:
+            print("  [verify] 全部一致：执行后图标与预览完全相符。")
+        else:
+            n = sum(1 for r in rows if not r[1])
+            print(f"  [verify] {n} 项不一致：实际图标与预览不符，已阻断（禁止提交/打包）。")
+    return ok_all, rows
 
 
 _ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
@@ -4007,7 +4153,8 @@ def main():
     results.append(modify_all_strings(config))
 
     print("\n--- [3/11] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
-    results.append(generate_app_icons(config))
+    icon_ok = generate_app_icons(config)
+    results.append(icon_ok)
 
     print("\n--- [4/11] 启动图（startup_logo / mobile_startup）---")
     results.append(replace_startup_images(config))
@@ -4086,6 +4233,14 @@ def main():
             sign_ok = False
     results.append(sign_ok)
 
+    # 图标生成失败 / 一致性校验未通过，必须以非零码退出，阻断提交与 CI 打包
+    if not icon_ok:
+        print("\n" + "=" * 72)
+        print("  [ERROR] 图标生成失败或一致性校验未通过（实际图标与预览不一致）。")
+        print("  本次运行以非零码退出，请勿提交；请按上方 [verify] 的 FAIL 项排查后重跑。")
+        print("=" * 72)
+        sys.exit(1)
+
     print("\n" + "=" * 72)
     if all([ns_ok, pkg_ok, sign_ok]):
         print("  [DONE] 自定义修改完成，且 包名 / namespace / 发布签名 一致性校验通过。")
@@ -4112,8 +4267,13 @@ def main():
 
 
 if __name__ == "__main__":
+    # --verify：仅校验已写入图标是否与预览/渲染来源一致，不修改项目（一致退出0，否则1）
+    if "--verify" in sys.argv:
+        load_config_env()
+        _ok, _ = verify_icons(CONFIG.get("ICON_STYLE", "cat"), verbose=True)
+        sys.exit(0 if _ok else 1)
     # --export：仅导出全部图标到 build/icon-export/（手机版/电视版分文件夹），不修改项目
-    if "--export" in sys.argv:
+    elif "--export" in sys.argv:
         load_config_env()
         do_export(CONFIG.get("ICON_STYLE", "cat"))
     else:
