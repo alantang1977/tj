@@ -125,7 +125,7 @@
             android:gravity="center"
             android:singleLine="true"
             android:text="@string/exit_confirm_positive"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="15sp"
             android:textStyle="bold" />
 

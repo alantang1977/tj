@@ -1306,6 +1306,42 @@ public class VideoActivityLayoutTest {
     }
 
     @Test
+    public void leanbackPlaybackLoadingIgnoresStaleReadyBeforeNewPlayerStarts() throws Exception {
+        Path sourcePath = findLeanbackJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        String getPlayer = methodBody(source, "private void getPlayer(Flag flag, Episode episode)", "private void setPlayer(Result result)");
+        String request = methodBody(source, "private void beginPlayerContentRequest(String key, String flag, String episode)", "private boolean isShortDramaSource()");
+        String setPlayer = methodBody(source, "private void setPlayer(Result result)", "private int danmakuTmdbId()");
+        String state = methodBody(source, "protected void onStateChanged(int state)", "public void onMediaItemTransition");
+        String error = methodBody(source, "protected void onError(String msg)", "protected void onReload(String msg)");
+        int startPlayer = setPlayer.indexOf("startPlayer(getHistoryKey(), result");
+        int markStarted = setPlayer.indexOf("mPlaybackPlayerStarted = true;");
+
+        assertTrue("a new TV episode request must enter the loading state before the player result arrives",
+                getPlayer.contains("beginPlayerContentRequest(getKey(), playFlag, episode.getUrl());")
+                        && getPlayer.contains("showProgress();")
+                        && request.contains("mPlaybackRequestActive = true;")
+                        && request.contains("mPlaybackPlayerStarted = false;"));
+        assertTrue("the new player session must be marked started before startPlayer can synchronously emit READY",
+                markStarted >= 0 && startPlayer > markStarted);
+        assertTrue("a stale READY callback must not hide the new episode loading spinner before startPlayer",
+                state.contains("if (mPlaybackRequestActive && !mPlaybackPlayerStarted) break;")
+                        && state.indexOf("mPlaybackRequestActive = false;") > state.indexOf("if (mPlaybackRequestActive && !mPlaybackPlayerStarted) break;"));
+        assertTrue("playback errors must clear the request guard together with the loading overlay",
+                error.contains("mPlaybackRequestActive = false;")
+                        && error.contains("mPlaybackPlayerStarted = false;")
+                        && error.contains("showError(msg);"));
+        // 早退分支同样必须释放守卫：同一结果已在播时不会再走 startPlayer，没有新的 READY 回调，
+        // 守卫留下就等于「画面在动、圈不走」——两个清除点都被它自己挡下。
+        int duplicateResultReturn = setPlayer.indexOf("if (result == mAppliedPlayerResult && !player().isEmpty())");
+        assertTrue("the duplicate-result early return must release the loading guard", duplicateResultReturn >= 0);
+        String duplicateResultBranch = setPlayer.substring(duplicateResultReturn, setPlayer.indexOf("mAppliedPlayerResult = result;", duplicateResultReturn));
+        assertTrue("a duplicate result that is already playing has no later READY callback, so it must clear the guard itself",
+                duplicateResultBranch.contains("mPlaybackRequestActive = false;")
+                        && duplicateResultBranch.contains("mPlaybackPlayerStarted = false;"));
+    }
+
+    @Test
     public void introSkipCallbackWaitsForReadyBeforeSeeking() throws Exception {
         Path mobilePath = findMobileJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java"));
         Path leanbackPath = findLeanbackJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java"));

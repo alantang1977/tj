@@ -499,6 +499,8 @@ private boolean runtimeSourceOnly;
     private String playerContentFlag = "";
     private String playerContentEpisode = "";
     private Result mAppliedPlayerResult;
+    private boolean mPlaybackRequestActive;
+    private boolean mPlaybackPlayerStarted;
     private final ShortDramaQueueCoordinator mShortDramaQueue = new ShortDramaQueueCoordinator();
     private PlaySpec mShortDramaQueuedSpec;
     private Result mShortDramaQueuedResult;
@@ -1432,6 +1434,8 @@ private boolean runtimeSourceOnly;
         if (mViewModel != null) mViewModel.cancelPlayerContent();
         invalidatePlayerContent();
         mAppliedPlayerResult = null;
+        mPlaybackRequestActive = false;
+        mPlaybackPlayerStarted = false;
         playerKernelSwitchRequestId++;
         setAudioStageVisible(false);
         restoreImmersiveAudioRequest();
@@ -3039,7 +3043,15 @@ private boolean runtimeSourceOnly;
             SpiderDebug.log("video-flow", "drop player result before detail ready key=%s id=%s", getKey(), getId());
             return;
         }
-        if (result == mAppliedPlayerResult && !player().isEmpty()) return;
+        if (result == mAppliedPlayerResult && !player().isEmpty()) {
+            // 同一个结果已经在播，本次不会再走 startPlayer，也就不会有新的 READY 回调来收圈。
+            // 守卫若留在这里，onStateChanged 与 hidePlaybackProgressIfStale 都会被它挡下，
+            // 圈再没有任何清除路径——正是那个兜底方法要防的「画面在动、圈不走」。
+            // 此时播放器已在播同一结果，加载态本身是陈旧的，直接释放。
+            mPlaybackRequestActive = false;
+            mPlaybackPlayerStarted = false;
+            return;
+        }
         mAppliedPlayerResult = result;
         mQualityAdapter.addAll(result);
         mQualityAdapter.setPosition(mQualityAdapter.getPosition());
@@ -3054,12 +3066,17 @@ private boolean runtimeSourceOnly;
         applyAudioQueueMetadata(getPlaybackEpisode());
         if (result.hasPosition()) mHistory.setPosition(result.getPosition());
         mBinding.control.parse.setVisibility(isUseParse() && PlayerButtonSetting.isVisible(PlayerButtonSetting.PARSE) ? View.VISIBLE : View.GONE);
-        if (redirectToContentHandler(result)) return;
+        if (redirectToContentHandler(result)) {
+            mPlaybackRequestActive = false;
+            mPlaybackPlayerStarted = false;
+            return;
+        }
         List<Danmaku> siteDanmakus = result.getDanmaku();
         mInitialPlaybackPosition = resolveInitialPlaybackPosition();
         SpiderDebug.log("video-flow", "startPlayer dispatch initialPosition=%d music=%s ijk=%s", mInitialPlaybackPosition, isMusicLike(), service() != null && player().isIjk());
         long start = System.currentTimeMillis();
         if (SubtitleRestoreCoordinator.restore(mHistory, player(), result)) syncHistory();
+        mPlaybackPlayerStarted = true;
         startPlayer(getHistoryKey(), result, isUseParse(), getSite().getTimeout(), buildMetadata(), mInitialPlaybackPosition);
         SpiderDebug.log("video-flow", "startPlayer return cost=%dms sincePlayerStart=%dms", System.currentTimeMillis() - start, System.currentTimeMillis() - playerStartTime);
         subtitlePlaybackSession.onPlaybackStarted(this, result);
@@ -3109,6 +3126,8 @@ private boolean runtimeSourceOnly;
 
     private void beginPlayerContentRequest(String key, String flag, String episode) {
         if (mViewModel != null) mViewModel.cancelPlayerContent();
+        mPlaybackRequestActive = true;
+        mPlaybackPlayerStarted = false;
         mPendingPlayer = null;
         invalidatePlayerContent();
         playerContentKey = key;
@@ -5910,6 +5929,8 @@ private boolean runtimeSourceOnly;
         mClock.setCallback(null);
         clearLyrics();
         clearKaraokeState();
+        mPlaybackRequestActive = false;
+        mPlaybackPlayerStarted = false;
         player().resetTrack();
         player().reset();
         player().stop();
@@ -5951,6 +5972,9 @@ private boolean runtimeSourceOnly;
                 showProgress();
                 break;
             case Player.STATE_READY:
+                if (mPlaybackRequestActive && !mPlaybackPlayerStarted) break;
+                mPlaybackRequestActive = false;
+                mPlaybackPlayerStarted = false;
                 mKaraokeResultShown = false;
                 showPlaybackContent();
                 boolean pendingResumeSeekApplied = applyPendingResumeSeek();
@@ -6031,6 +6055,7 @@ private boolean runtimeSourceOnly;
      */
     private void hidePlaybackProgressIfStale() {
         if (mBinding.progress.getRoot().getVisibility() != View.VISIBLE) return;
+        if (mPlaybackRequestActive && !mPlaybackPlayerStarted) return;
         if (service() == null || player() == null || player().isReleased() || player().isEmpty()) return;
         if (!isOwner()) return;
         if (player().getPlaybackState() != Player.STATE_READY) return;

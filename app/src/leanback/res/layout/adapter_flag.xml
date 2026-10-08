@@ -14,6 +14,6 @@
     android:nextFocusDown="@id/episode"
     android:scrollHorizontally="true"
     android:singleLine="true"
-    android:textColor="?attr/colorOnSurface"
+    android:textColor="?attr/webhtvColorOnWallpaper"
     android:textSize="16sp"
     tools:text="泥巴" />

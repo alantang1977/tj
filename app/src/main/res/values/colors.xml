@@ -84,4 +84,12 @@
     <color name="following_button_text">@color/webhtv_color_primary</color>
     <color name="following_danger_soft">@color/webhtv_color_error_container</color>
     <color name="following_danger">@color/webhtv_color_error</color>
+    <!--
+        TMDB 豆瓣评分徽标前景：徽标底是固定的半透明黑（shape_episode_card_badge /
+        shape_tmdb_rating），压在任意海报图上，与调色板无关。因此前景必须是两套色板
+        恒定的浅绿；若走 @color/webhtv_color_success（日间 #146C2E 深绿），日间模式下
+        会变成深绿压深底（实测 1.31–3.10:1）。与 TmdbRailAdapter 里既有的 0xFF78E08F
+        保持一致。
+    -->
+    <color name="tmdb_douban_rating_green">#78E08F</color>
 </resources>

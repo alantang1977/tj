@@ -49,6 +49,7 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
     private ThemeEditor editor;
     private ThemeTokens previewTokens;
     private boolean dark;
+    private boolean modeChanged;
     private int wallpaperColor;
     private int savedScroll;
     /**
@@ -83,10 +84,12 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
     @Override
     public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
         editor = ThemeEditor.load();
-        dark = Util.isLeanback() || ThemeController.isNight(requireContext());
+        int savedMode = Setting.getThemeMode();
+        dark = savedMode == 1 || (savedMode < 0 && ThemeController.isNight(requireContext()));
         wallpaperColor = Setting.getWallColor();
         if (savedInstanceState != null) {
             dark = savedInstanceState.getBoolean("preview_dark", dark);
+            modeChanged = savedInstanceState.getBoolean("mode_changed", false);
             savedScroll = savedInstanceState.getInt("preview_scroll", 0);
             String draft = savedInstanceState.getString("preview_draft");
             if (draft != null) {
@@ -160,8 +163,8 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
         row.addView(modeTitle, ThemeEditorUi.weighted());
         lightButton = ThemeEditorUi.button(requireContext(), R.string.theme_editor_light);
         darkButton = ThemeEditorUi.button(requireContext(), R.string.theme_editor_dark);
-        lightButton.setOnClickListener(view -> { dark = false; render(); });
-        darkButton.setOnClickListener(view -> { dark = true; render(); });
+        lightButton.setOnClickListener(view -> selectMode(false));
+        darkButton.setOnClickListener(view -> selectMode(true));
         LinearLayout.LayoutParams lightParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lightParams.setMarginEnd(dp(8));
         row.addView(lightButton, lightParams);
@@ -445,6 +448,7 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
         super.onSaveInstanceState(state);
         if (editor != null) state.putString("preview_draft", ThemeProfileCodec.encode(editor.draft()));
         state.putBoolean("preview_dark", dark);
+        state.putBoolean("mode_changed", modeChanged);
         state.putInt("preview_scroll", scroll == null ? savedScroll : scroll.getScrollY());
     }
 
@@ -475,11 +479,22 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
         render();
     }
 
+    private void selectMode(boolean dark) {
+        this.dark = dark;
+        modeChanged = true;
+        editor.setMode(dark ? ThemeProfile.MODE_DARK : ThemeProfile.MODE_LIGHT);
+        render();
+    }
+
     private void applyDraft() {
         ThemeProfileStore.ApplyResult result = editor.apply();
         if (!result.success()) {
             setStatus(getString(R.string.theme_editor_save_failed, result.error()));
             return;
+        }
+        if (modeChanged) {
+            Setting.putThemeMode(dark ? 1 : 0);
+            ThemeController.applyNightModeToApp();
         }
         dismissAllowingStateLoss();
         // AppearanceDialog already publishes the refresh event. Do not post a second recreation.

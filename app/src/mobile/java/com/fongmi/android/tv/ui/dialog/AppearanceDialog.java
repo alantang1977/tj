@@ -1,7 +1,6 @@
 package com.fongmi.android.tv.ui.dialog;
 
 import android.app.Dialog;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -18,14 +17,19 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.theme.AppearanceRowTheme;
 import com.fongmi.android.tv.theme.ThemeController;
 import com.fongmi.android.tv.theme.ThemeProfile;
 import com.fongmi.android.tv.theme.ThemeProfileStore;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.textview.MaterialTextView;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public final class AppearanceDialog extends DialogFragment {
 
+    private final List<Row> rows = new ArrayList<>();
     private String[] uiScales;
     private String[] languages;
     private String[] imageSizes;
@@ -37,6 +41,10 @@ public final class AppearanceDialog extends DialogFragment {
 
     public static void show(Fragment fragment) {
         new AppearanceDialog().show(fragment.getChildFragmentManager(), AppearanceDialog.class.getSimpleName());
+    }
+
+    /** One dialog row, kept so a theme change can re-colour it without a rebuild. */
+    private record Row(LinearLayout root, MaterialTextView title, MaterialTextView summary) {
     }
 
     @NonNull
@@ -63,7 +71,6 @@ public final class AppearanceDialog extends DialogFragment {
         LinearLayout row = new LinearLayout(requireContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackgroundResource(R.drawable.selector_git_cloud_card);
         row.setClickable(true);
         row.setFocusable(true);
         row.setPadding(dp(16), 0, dp(16), 0);
@@ -71,14 +78,12 @@ public final class AppearanceDialog extends DialogFragment {
 
         MaterialTextView title = new MaterialTextView(requireContext());
         title.setText(titleRes);
-        title.setTextColor(ThemeController.current().colorOnSurface());
         title.setTextSize(15);
         title.setSingleLine(true);
         row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         MaterialTextView summary = new MaterialTextView(requireContext());
         summary.setText(value);
-        summary.setTextColor(ThemeController.current().colorOnSurfaceVariant());
         summary.setTextSize(14);
         summary.setGravity(Gravity.END);
         summary.setSingleLine(true);
@@ -87,10 +92,26 @@ public final class AppearanceDialog extends DialogFragment {
         summaryParams.leftMargin = dp(12);
         row.addView(summary, summaryParams);
 
+        // Row fill, stroke and both text colours must come from one palette. The row used
+        // to keep the fixed light selector_git_cloud_card while its text already followed
+        // ThemeController.current(), which on the TV dark table measured 1.16:1 / 1.36:1.
+        AppearanceRowTheme.apply(row, title, summary, ThemeController.current());
+        rows.add(new Row(row, title, summary));
+
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58));
         rowParams.bottomMargin = dp(8);
         content.addView(row, rowParams);
         return summary;
+    }
+
+    /**
+     * Re-colours the rows with the active palette.
+     *
+     * <p>Called when the dialog is shown and again after a theme change, so an open
+     * dialog follows a new profile without being rebuilt.
+     */
+    private void applyRowTheme() {
+        for (Row row : rows) AppearanceRowTheme.apply(row.root(), row.title(), row.summary(), ThemeController.current());
     }
 
     private void chooseUiScale(View view) {
@@ -147,8 +168,17 @@ public final class AppearanceDialog extends DialogFragment {
         });
     }
 
+    @Override
+    public void onStart() {
+        super.onStart();
+        // A profile applied while this dialog stayed on screen must reach the rows, and the
+        // rows are only attached after createContent(), so the repaint happens here.
+        applyRowTheme();
+    }
+
     void onThemeProfileApplied() {
         themeValue.setText(getThemeText());
+        applyRowTheme();
         dismissAllowingStateLoss();
         RefreshEvent.theme();
     }

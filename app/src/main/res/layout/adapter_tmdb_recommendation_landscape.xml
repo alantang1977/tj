@@ -78,7 +78,7 @@
                 android:minWidth="48dp"
                 android:paddingStart="7dp"
                 android:paddingEnd="7dp"
-                android:textColor="@color/webhtv_color_success"
+                android:textColor="@color/tmdb_douban_rating_green"
                 android:textSize="10sp"
                 android:textStyle="bold"
                 android:visibility="gone"

@@ -14,14 +14,13 @@ public class ThemeInlinePreviewContractTest {
     public void bothFlavoursOwnALocalSnapshotAndPutPresetsFirst() throws Exception {
         String mobile = read("mobile/java/com/fongmi/android/tv/ui/dialog/ThemeDialog.java");
         String tv = read("leanback/java/com/fongmi/android/tv/ui/dialog/ThemeDialog.java");
-        assertEquals("the two flavours must not drift", mobile, tv);
+        assertNotEquals("TV mode persistence must remain an explicit TV-only contract", mobile, tv);
         for (String source : new String[]{mobile, tv}) {
             assertTrue(source.contains("editor.preview(dark, wallpaperColor)"));
             assertTrue(source.contains("root.setTag(\"webhtv:ignore\")"));
             assertTrue(source.indexOf("content.addView(buildPresetRow()") < source.indexOf("content.addView(buildPaletteRow()"));
             assertFalse(source.contains("ThemeController.current()"));
             assertFalse(source.contains("ThemeController.apply("));
-            assertFalse(source.contains("setDefaultNightMode("));
             assertFalse(source.contains("removeAllViews()"));
             assertTrue(source.contains("panel.render(editor, dark, tokens)"));
             assertTrue(source.contains("preview_draft"));
@@ -29,6 +28,10 @@ public class ThemeInlinePreviewContractTest {
             assertTrue(source.contains("preview_scroll"));
             assertTrue(source.contains("previewTokens, hex ->"));
         }
+        assertTrue(tv.contains("editor.setMode(dark ? ThemeProfile.MODE_DARK : ThemeProfile.MODE_LIGHT)"));
+        assertTrue(tv.contains("Setting.putThemeMode(dark ? 1 : 0)"));
+        assertTrue(tv.contains("ThemeController.applyNightModeToApp()"));
+        assertFalse(mobile.contains("editor.setMode(dark ? ThemeProfile.MODE_DARK : ThemeProfile.MODE_LIGHT)"));
     }
 
     @Test

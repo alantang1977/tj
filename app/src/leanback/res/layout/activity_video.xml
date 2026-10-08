@@ -113,7 +113,7 @@
                                 android:scaleType="centerCrop"
                                 android:src="@drawable/artwork"
                                 app:shapeAppearanceOverlay="@style/ShapeAppearance.WebHTV.AudioCover"
-                                app:strokeColor="?attr/colorOnSurface_20"
+                                app:strokeColor="@color/white_20"
                                 app:strokeWidth="1dp" />
 
                         </FrameLayout>
@@ -127,7 +127,7 @@
                             android:ellipsize="end"
                             android:gravity="center"
                             android:maxLines="2"
-                            android:textColor="?attr/colorOnSurface"
+                            android:textColor="?attr/webhtvColorOnWallpaper"
                             android:textSize="22sp"
                             android:textStyle="bold"
                             tools:text="八段锦口令音乐" />
@@ -141,7 +141,7 @@
                             android:ellipsize="end"
                             android:gravity="center"
                             android:maxLines="1"
-                            android:textColor="?attr/colorOnSurface_70"
+                            android:textColor="@color/white_70"
                             android:textSize="14sp"
                             tools:text="站源 · 当前播放列表" />
 
@@ -165,7 +165,7 @@
                                 android:paddingStart="10dp"
                                 android:paddingEnd="10dp"
                                 android:text="@string/player_audio_badge_audio"
-                                android:textColor="?attr/colorOnSurface_90"
+                                android:textColor="@color/white_90"
                                 android:textSize="13sp" />
 
                             <com.google.android.material.textview.MaterialTextView
@@ -180,7 +180,7 @@
                                 android:paddingStart="10dp"
                                 android:paddingEnd="10dp"
                                 android:text="@string/player_audio_badge_lyrics"
-                                android:textColor="?attr/colorOnSurface_90"
+                                android:textColor="@color/white_90"
                                 android:textSize="13sp" />
 
                             <com.google.android.material.textview.MaterialTextView
@@ -195,7 +195,7 @@
                                 android:paddingStart="10dp"
                                 android:paddingEnd="10dp"
                                 android:text="@string/player_audio_badge_queue"
-                                android:textColor="?attr/colorOnSurface_90"
+                                android:textColor="@color/white_90"
                                 android:textSize="13sp" />
 
                         </androidx.appcompat.widget.LinearLayoutCompat>
@@ -272,7 +272,7 @@
                                     android:gravity="center"
                                     android:singleLine="true"
                                     android:text="@string/player_audio_repeat"
-                                    android:textColor="?attr/colorOnSurface_80"
+                                    android:textColor="@color/white_80"
                                     android:textSize="12sp" />
 
                             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -296,7 +296,7 @@
                                     android:gravity="center"
                                     android:singleLine="true"
                                     android:text="@string/play_prev"
-                                    android:textColor="?attr/colorOnSurface_80"
+                                    android:textColor="@color/white_80"
                                     android:textSize="12sp" />
 
                             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -320,7 +320,7 @@
                                     android:gravity="center"
                                     android:singleLine="true"
                                     android:text="@string/play"
-                                    android:textColor="?attr/colorOnSurface_80"
+                                    android:textColor="@color/white_80"
                                     android:textSize="12sp" />
 
                             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -344,7 +344,7 @@
                                     android:gravity="center"
                                     android:singleLine="true"
                                     android:text="@string/play_next"
-                                    android:textColor="?attr/colorOnSurface_80"
+                                    android:textColor="@color/white_80"
                                     android:textSize="12sp" />
 
                             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -368,7 +368,7 @@
                                     android:gravity="center"
                                     android:singleLine="true"
                                     android:text="@string/player_audio_playlist"
-                                    android:textColor="?attr/colorOnSurface_80"
+                                    android:textColor="@color/white_80"
                                     android:textSize="12sp" />
 
                             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -403,7 +403,7 @@
                                     android:gravity="center"
                                     android:singleLine="true"
                                     android:text="@string/player_lyrics_search"
-                                    android:textColor="?attr/colorOnSurface_80"
+                                    android:textColor="@color/white_80"
                                     android:textSize="12sp" />
 
                             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -428,7 +428,7 @@
                                     android:gravity="center"
                                     android:singleLine="true"
                                     android:text="@string/player_audio_options"
-                                    android:textColor="?attr/colorOnSurface_80"
+                                    android:textColor="@color/white_80"
                                     android:textSize="12sp" />
 
                             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -453,7 +453,7 @@
                                     android:gravity="center"
                                     android:singleLine="true"
                                     android:text="@string/player_audio_more"
-                                    android:textColor="?attr/colorOnSurface_80"
+                                    android:textColor="@color/white_80"
                                     android:textSize="12sp" />
 
                             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -580,7 +580,7 @@
         android:layout_marginEnd="24dp"
         android:layout_toEndOf="@+id/video"
         android:singleLine="true"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/webhtvColorOnWallpaper"
         android:textSize="24sp"
         tools:text="慶餘年第二季" />
 
@@ -594,7 +594,7 @@
         android:layout_marginTop="6dp"
         android:layout_marginEnd="24dp"
         android:singleLine="true"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/webhtvColorOnWallpaper"
         android:textSize="16sp"
         tools:text="更新到第二季" />
 
@@ -615,7 +615,7 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="12dp"
             android:singleLine="true"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="16sp"
             tools:text="站源：泥巴" />
 
@@ -626,7 +626,7 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="12dp"
             android:singleLine="true"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="16sp"
             tools:text="年份：2022" />
 
@@ -637,7 +637,7 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="12dp"
             android:singleLine="true"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="16sp"
             tools:text="地區：台灣" />
 
@@ -647,7 +647,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:singleLine="true"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="16sp"
             tools:text="類型：科幻" />
 
@@ -664,7 +664,7 @@
         android:layout_marginEnd="24dp"
         android:nextFocusDown="@id/actor"
         android:singleLine="true"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/webhtvColorOnWallpaper"
         android:textSize="16sp"
         tools:text="導演：FongMi" />
 
@@ -684,7 +684,7 @@
         android:ellipsize="end"
         android:gravity="top"
         android:paddingBottom="4dp"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/webhtvColorOnWallpaper"
         android:textSize="16sp"
         android:visibility="gone"
         tools:text="简介：这是一段剧情简介……" />
@@ -701,7 +701,7 @@
         android:ellipsize="end"
         android:maxLines="2"
         android:nextFocusDown="@id/content"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/webhtvColorOnWallpaper"
         android:textSize="16sp"
         tools:text="演員：FongMi" />
 
@@ -738,7 +738,7 @@
                 android:nextFocusDown="@id/tmdbCast"
                 android:singleLine="true"
                 android:text="@string/detail_desc"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/webhtvColorOnWallpaper"
                 android:textSize="16sp"
                 app:drawableStartCompat="@drawable/ic_detail_desc" />
 
@@ -757,7 +757,7 @@
                 android:nextFocusDown="@id/flag"
                 android:singleLine="true"
                 android:text="@string/play_short_display"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/webhtvColorOnWallpaper"
                 android:textSize="16sp"
                 app:drawableStartCompat="@drawable/ic_detail_short_display" />
 
@@ -777,7 +777,7 @@
                 android:nextFocusDown="@id/flag"
                 android:singleLine="true"
                 android:text="@string/play_search"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/webhtvColorOnWallpaper"
                 android:textSize="16sp"
                 app:drawableStartCompat="@drawable/ic_action_search" />
 
@@ -797,7 +797,7 @@
                 android:nextFocusDown="@id/tmdbCast"
                 android:singleLine="true"
                 android:text="@string/play_change"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/webhtvColorOnWallpaper"
                 android:textSize="16sp"
                 android:visibility="gone"
                 app:drawableStartCompat="@drawable/ic_detail_change" />
@@ -818,7 +818,7 @@
                 android:nextFocusDown="@id/tmdbCast"
                 android:singleLine="true"
                 android:text="@string/keep"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/webhtvColorOnWallpaper"
                 android:textSize="16sp"
                 app:drawableStartCompat="@drawable/ic_detail_keep_off" />
 
@@ -840,7 +840,7 @@
                 android:nextFocusDown="@id/tmdbCast"
                 android:singleLine="true"
                 android:text="@string/following_add"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/webhtvColorOnWallpaper"
                 android:textSize="16sp"
                 app:drawableStartCompat="@drawable/ic_home_following" />
 
@@ -859,7 +859,7 @@
                 android:nextFocusDown="@id/tmdbCast"
                 android:singleLine="true"
                 android:text="@string/detail_tmdb_rematch"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/webhtvColorOnWallpaper"
                 android:textSize="16sp"
                 android:visibility="gone"
                 app:drawableStartCompat="@drawable/ic_action_search" />
@@ -951,7 +951,7 @@
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
                     android:text="@string/detail_episode"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="?attr/webhtvColorOnWallpaper"
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
@@ -971,7 +971,7 @@
                     android:minWidth="76dp"
                     android:nextFocusLeft="@id/episodeTitle"
                     android:text="@string/detail_episode_reverse"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="?attr/webhtvColorOnWallpaper"
                     android:textSize="16sp" />
 
                 <com.google.android.material.textview.MaterialTextView
@@ -985,7 +985,7 @@
                     android:gravity="center"
                     android:minWidth="76dp"
                     android:text="@string/detail_episode_view_grid"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="?attr/webhtvColorOnWallpaper"
                     android:textSize="16sp" />
 
                 <com.google.android.material.textview.MaterialTextView
@@ -999,7 +999,7 @@
                     android:gravity="center"
                     android:minWidth="76dp"
                     android:text="@string/detail_episode_file_name_original"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="?attr/webhtvColorOnWallpaper"
                     android:textSize="16sp" />
 
             </LinearLayout>
@@ -1047,14 +1047,14 @@
                     <ProgressBar
                         android:layout_width="32dp"
                         android:layout_height="32dp"
-                        android:indeterminateTint="?attr/colorOnSurface" />
+                        android:indeterminateTint="?attr/webhtvColorOnWallpaper" />
 
                     <com.google.android.material.textview.MaterialTextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
                         android:text="@string/tmdb_loading_episodes"
-                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textColor="@color/webhtv_color_player_control_muted"
                         android:textSize="14sp" />
 
                 </LinearLayout>
@@ -1070,7 +1070,7 @@
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="8dp"
                 android:text="@string/tmdb_ratings_label"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/webhtvColorOnWallpaper"
                 android:textSize="18sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
@@ -1094,7 +1094,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_cast_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1122,7 +1122,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_photos_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1151,7 +1151,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_posters_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1180,7 +1180,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_related_videos_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1213,7 +1213,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_crew_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1242,7 +1242,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_recommendations_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1271,7 +1271,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_personal_recommendations_tmdb_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1300,7 +1300,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_personal_recommendations_douban_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1329,7 +1329,7 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"
             android:text="@string/tmdb_personal_recommendations_ai_label"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="18sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -1359,7 +1359,7 @@
             android:ellipsize="end"
             android:lineSpacingExtra="2dp"
             android:maxLines="2"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="15sp"
             android:visibility="gone" />
 

@@ -62,7 +62,9 @@ public class ShortDramaSourceDialog {
 
         // 初始化暂存数据
         ShortDramaConfig config = ShortDramaConfig.objectFrom(Setting.getShortDramaConfig());
-        tempEnabledRules = new ArrayList<>(config.getEnabledSites());
+        tempEnabledRules = new ArrayList<>(config.isConfigured()
+                ? config.getEnabledSites()
+                : ShortDramaConfig.defaultRules());
         tempDisabledSites = new ArrayList<>(config.getDisabledSites());
         updateChipsDisplay();
 
@@ -96,9 +98,7 @@ public class ShortDramaSourceDialog {
         List<Site> sites = VodConfig.get().getSites().stream().filter(s -> s != null && !s.isEmpty()).toList();
         if (sites.isEmpty()) return;
 
-        List<String> enabledRules = tempEnabledRules.isEmpty()
-            ? List.of(ShortDramaConfig.defaultRulesText().split(";"))
-            : new ArrayList<>(tempEnabledRules);
+        List<String> enabledRules = new ArrayList<>(tempEnabledRules);
         List<String> disabledSites = new ArrayList<>(tempDisabledSites);
 
         String[] labels = new String[sites.size()];
@@ -250,9 +250,7 @@ public class ShortDramaSourceDialog {
         enabledChips.removeAllViews();
         disabledChips.removeAllViews();
 
-        List<String> enabledRules = tempEnabledRules.isEmpty()
-            ? List.of(ShortDramaConfig.defaultRulesText().split(";"))
-            : tempEnabledRules;
+        List<String> enabledRules = tempEnabledRules;
 
         for (String rule : enabledRules) {
             if (TextUtils.isEmpty(rule)) continue;
@@ -324,6 +322,7 @@ public class ShortDramaSourceDialog {
 
     private void resetToDefault() {
         tempEnabledRules.clear();
+        tempEnabledRules.addAll(ShortDramaConfig.defaultRules());
         tempDisabledSites.clear();
         updateChipsDisplay();
     }

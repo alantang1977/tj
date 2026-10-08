@@ -117,13 +117,12 @@ public class ThemeBaseWiringTest {
      * {@code #E62F315E -> #D6282955 -> #CC303463} (or {@code #E61F1F22}); composited over
      * any frame they stay dark, so their foreground must not follow the palette.
      *
-     * <p>These are the mobile peers of the leanback sheets, which use the identical
-     * drawables and {@code ?attr/colorOnSurface}. That works on TV only because the
-     * leanback table is dark in every profile ({@code webhtv_color_on_surface} =
-     * {@code #E2E2E9}). The mobile <em>day</em> table resolves the same role to
-     * {@code #1A1C1E} and {@code colorOnSurfaceVariant} to {@code #44474F}, so commit
-     * {@code 0af2340d4} silently turned these sheets dark-on-dark: measured 1.33:1 and
-     * 1.38:1 over a dark frame, versus 12.84:1 and 7.18:1 once restored.
+     * <p>These are the mobile peers of the leanback sheets. Historically leanback used the
+     * identical drawables with {@code ?attr/colorOnSurface}, which worked on TV only because
+     * the leanback table was dark in every profile ({@code webhtv_color_on_surface} =
+     * {@code #E2E2E9}). Now that TV resolves the same day/night tables as mobile, the TV
+     * sheets carry the same palette-independent constants as these mobile ones, so both
+     * flavours stay readable in both modes.
      *
      * <p>{@code 0af2340d4} replaced the flat light values ({@code @color/white},
      * {@code white_70}, {@code white_90}, {@code white_50/60}) in exactly these files, and
@@ -141,8 +140,8 @@ public class ThemeBaseWiringTest {
      * Palette-independent foregrounds that are correct on a dark surface in every table.
      *
      * <p>{@code webhtv_on_wallpaper} and {@code webhtv_color_player_control_muted} are
-     * {@code #FFFFFF} / {@code #CCFFFFFF} in all three token tables (the light, night and
-     * leanback files), which is what makes them safe on a surface whose darkness does not
+     * {@code #FFFFFF} / {@code #CCFFFFFF} in both token tables (the day and night files),
+     * which is what makes them safe on a surface whose darkness does not
      * depend on the palette. {@code webhtv_color_overlay_light} is the matching constant
      * ripple fill. They are semantic roles, not raw values, so the sheets stay inside the
      * token system and need no allowlist exemption of their own.
@@ -274,7 +273,8 @@ public class ThemeBaseWiringTest {
         for (String[] palette : palettes) {
             assertAlphaVariants(palette[0], palette[2]);
         }
-        assertAlphaVariants("src/leanback/res/values/webhtv_tokens.xml", null);
+        // leanback 不再自带 token 表：day 走 main/values，night 走 main/values-night，
+        // 所以这里不再有第三张需要单独校验的色板。
     }
 
     /**
@@ -463,7 +463,7 @@ public class ThemeBaseWiringTest {
      * The wallpaper foreground must stay light, identical in every palette, and out of
      * the binder's reach.
      *
-     * <p>It is 0xFFFFFFFF in all three tables because the wallpaper is dark in both
+     * <p>It is 0xFFFFFFFF in both tables because the wallpaper is dark in both
      * system night modes. {@code ThemeBinder} only rewrites a view colour when
      * {@code ThemeColorIndex.replacementFor} yields a different value, so the guard is:
      * for every baseline palette and every active palette, 0xFFFFFFFF must resolve to
@@ -483,8 +483,8 @@ public class ThemeBaseWiringTest {
     public void wallpaperForegroundIsLightAndNotBinderRewritable() throws Exception {
         String light = read("src/main/res/values/webhtv_tokens.xml");
         String night = read("src/main/res/values-night/webhtv_tokens.xml");
-        String tv = read("src/leanback/res/values/webhtv_tokens.xml");
-        for (String source : new String[]{light, night, tv}) {
+        // TV 复用 main 的两张表（day/night），不再有第三张恒深色表。
+        for (String source : new String[]{light, night}) {
             assertTrue("every palette must declare webhtv_on_wallpaper",
                     source.contains("<color name=\"webhtv_on_wallpaper\">#FFFFFF</color>"));
         }

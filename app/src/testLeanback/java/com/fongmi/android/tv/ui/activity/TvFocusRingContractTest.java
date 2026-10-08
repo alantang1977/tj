@@ -46,7 +46,6 @@ public class TvFocusRingContractTest {
 
     private static final String TOKENS_LIGHT = "app/src/main/res/values/webhtv_tokens.xml";
     private static final String TOKENS_NIGHT = "app/src/main/res/values-night/webhtv_tokens.xml";
-    private static final String TOKENS_LEANBACK = "app/src/leanback/res/values/webhtv_tokens.xml";
 
     // ------------------------------------------------------------ R3 主题控制
 
@@ -90,7 +89,8 @@ public class TvFocusRingContractTest {
                 {"error container 填充", "webhtv_color_error_container", "focus_ring_on_error_container"},
         };
         String colors = read(COLORS);
-        for (String tokens : new String[]{TOKENS_LIGHT, TOKENS_NIGHT, TOKENS_LEANBACK}) {
+        // TV 不再有独立的 leanback 色板，day/night 两张表就是全部生效表。
+        for (String tokens : new String[]{TOKENS_LIGHT, TOKENS_NIGHT}) {
             for (String[] pair : pairs) {
                 String fill = tokenHex(read(tokens), pair[1]);
                 String alias = aliasTarget(colors, pair[2]);

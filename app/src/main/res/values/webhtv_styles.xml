@@ -61,9 +61,13 @@
 
     <style name="Theme.WebHTV.Mobile" parent="Theme.WebHTV" />
 
-    <style name="Theme.WebHTV.TV" parent="Theme.WebHTV">
-        <item name="isLightTheme">false</item>
-    </style>
+    <!--
+        TV 不再声明 isLightTheme：这里此前硬编码 false，使 TV 在任何配置下都被标记为深色主题，
+        与 mobile 的 DayNight 行为不一致，也是「TV 选浅色无效」的一半成因。
+        去掉后由父主题 Theme.Material3.DayNight.NoActionBar 按 values / values-night 解析，
+        与 Theme.WebHTV 的 token 选择保持同一套限定符规则。
+    -->
+    <style name="Theme.WebHTV.TV" parent="Theme.WebHTV" />
 
     <style name="Theme.WebHTV.Dialog" parent="Theme.Material3.DayNight.Dialog.Alert">
         <item name="android:windowNoTitle">true</item>

@@ -83,7 +83,9 @@ public final class ThemeDialog extends DialogFragment implements ThemePreviewVie
     @Override
     public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
         editor = ThemeEditor.load();
-        dark = Util.isLeanback() || ThemeController.isNight(requireContext());
+        // 预览模式必须与 App 当前实际渲染的模式一致：此前这里用 Util.isLeanback() 把 TV 强行
+        // 置为深色预览，于是用户在浅色模式下重新打开编辑器会看到「深色」被选中，误以为保存失败。
+        dark = ThemeController.isNight(requireContext());
         wallpaperColor = Setting.getWallColor();
         if (savedInstanceState != null) {
             dark = savedInstanceState.getBoolean("preview_dark", dark);

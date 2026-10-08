@@ -115,7 +115,7 @@ public final class ThemeController {
 
     public static void refresh() {
         boolean systemDark = (Resources.getSystem().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        current = ThemeResolver.resolve(ThemeMode.SYSTEM, ThemeSeed.NONE, 0, 0, systemDark);
+        current = ThemeResolver.resolve(currentThemeMode(), ThemeSeed.NONE, 0, 0, systemDark);
     }
 
     /**
@@ -139,7 +139,7 @@ public final class ThemeController {
         // compiled table, so the active tokens stay comparable with inflated colours on
         // every flavour (see resolvedDark()).
         boolean systemDark = resolvedDark();
-        ThemeMode themeMode = ThemeMode.SYSTEM;
+        ThemeMode themeMode = currentThemeMode();
         int themeColor = com.fongmi.android.tv.setting.Setting.getThemeColor();
         if (themeColor == -1) {
             return ThemeResolver.resolve(themeMode, ThemeSeed.NONE, 0, 0, profile, null, systemDark);
@@ -175,16 +175,22 @@ public final class ThemeController {
      *
      * <p>{@link #frozenPalette()} must describe the colours inflation produced, and
      * those come from the compiled {@code webhtv_color_*} resources. Resource
-     * selection is not purely a function of uiMode: the TV flavour overrides
-     * {@code values/} with the dark table and ships no light table of its own, so on
-     * a light-mode device its views are dark while a uiMode-derived baseline was
-     * light. Every binder rewrite compares against that baseline exactly, so the
-     * mismatch silently turned the whole TV theme channel into a no-op (measured:
+     * selection is not purely a function of uiMode: a flavour may override
+     * {@code values/} with a fixed table and ship no table of its own for the other
+     * mode. When that happens a uiMode-derived baseline describes colours no inflated
+     * view ever held. Every binder rewrite compares against that baseline exactly, so
+     * the mismatch silently turned the whole TV theme channel into a no-op (measured:
      * probe vs default = 0 changed pixels on TV while the identical probe changed
-     * ~49k pixels on mobile, and switching the device to dark made TV respond).
+     * ~49k pixels on mobile).
      *
      * <p>The compiled table is therefore read from resources whenever it can be
      * identified, and only an unidentifiable palette falls back to the uiMode rule.
+     *
+     * <p>WebHTV no longer ships such an override: the TV flavour used to carry a
+     * permanent dark {@code values/webhtv_tokens.xml} and that file is gone, so both
+     * flavours now resolve the same day/night tables and this method normally agrees
+     * with the uiMode rule. The resource probe is kept because it is what keeps the
+     * baseline honest if a flavour ever pins a palette again.
      */
     private static boolean resolvedDark() {
         boolean systemDark = (Resources.getSystem().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
@@ -196,9 +202,9 @@ public final class ThemeController {
      *
      * <p>When the compiled table is identifiable it is authoritative: it is literally
      * what inflation resolved, so it must win even over an explicit appearance mode.
-     * The TV flavour needs that - its {@code values/} holds the dark table, so a
-     * light-mode device (or a user who picked light) still renders dark views. Only an
-     * unidentifiable palette falls back to the historical mode/uiMode rule.
+     * A flavour that pins {@code values/} to one table needs that - a light-mode device
+     * (or a user who picked light) would otherwise be described by the wrong baseline.
+     * Only an unidentifiable palette falls back to the historical mode/uiMode rule.
      */
     static boolean darkPaletteFor(Boolean compiledDark, ThemeMode mode, boolean systemDark) {
         if (compiledDark != null) return compiledDark;

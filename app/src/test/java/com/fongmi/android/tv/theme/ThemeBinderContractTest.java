@@ -356,6 +356,15 @@ public class ThemeBinderContractTest {
         String light = read("src/main/java/com/fongmi/android/tv/ui/dialog/LightDialog.java");
         assertEquals("both LightDialog entry points must bind",
                 2, light.split("ThemeController\\.bindDialog\\(dialog\\)", -1).length - 1);
+        assertTrue("LightDialog must bind the window shell as well as the view tree",
+                light.contains("ThemeController.bindWindowBackground(background)"));
+        assertTrue("custom LightDialog shells must use the active semantic surface",
+                light.contains("ThemeController.current().colorSurfaceContainerHigh()"));
+        // dialogOpacity has exactly one owner: ThemeBinder.bindWindowBackground. Pre-multiplying
+        // it into the shape scaled the value twice (0.70 -> 0.49) and made the fill stop matching
+        // its baseline role, so the shell no longer followed a surfaceContainerHigh override.
+        assertFalse("the shell must ship opaque so dialogOpacity is applied only once",
+                light.contains("withAlpha(tokens.colorSurfaceContainerHigh(), tokens.dialogOpacity())"));
         assertFalse("the dialog title must not be a hard-coded hex colour",
                 light.contains("Color.parseColor(\"#202124\")"));
         assertTrue(light.contains("titleView.setTextColor(ThemeController.current().colorOnSurface())"));

@@ -16,7 +16,7 @@
         android:focusableInTouchMode="true"
         android:gravity="center"
         android:singleLine="true"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/webhtvColorOnWallpaper"
         android:textSize="18sp"
         tools:text="https://fongmi.github.io/live.json" />
 
