@@ -3429,19 +3429,25 @@ public class VideoActivityLayoutTest {
         int field = source.indexOf("private Runnable mSeekProgressFallback;");
         int init = source.indexOf("mSeekProgressFallback = this::hideSeekProgressIfReady;");
         int started = source.indexOf("protected void onSeekStarted()");
-        int show = source.indexOf("showProgress();", started);
-        int remove = source.indexOf("App.removeCallbacks(mSeekProgressFallback);", show);
-        int post = source.indexOf("App.post(mSeekProgressFallback, 500);", remove);
+        int pending = source.indexOf("mSeekProgressPending = true;", started);
+        int show = source.indexOf("showProgress();", pending);
+        int arm = source.indexOf("App.post(mSeekProgressFallback, SEEK_PROGRESS_MIN_VISIBLE_MS);", show);
         int helper = source.indexOf("private void hideSeekProgressIfReady()");
-        int readyGuard = source.indexOf("player().getPlaybackState() != Player.STATE_READY", helper);
-        int reveal = source.indexOf("showPlaybackContent();", readyGuard);
+        int gate = source.indexOf("if (!canHideSeekProgress()) return;", helper);
+        int close = source.indexOf("mSeekProgressPending = false;", gate);
+        int reveal = source.indexOf("showPlaybackContent();", close);
+        int stale = source.indexOf("private void hidePlaybackProgressIfStale()");
+        int staleGate = source.indexOf("if (!canHideSeekProgress()) return;", stale);
         int destroy = source.indexOf("protected void onDestroy()");
         int destroyRemove = source.indexOf("mSeekProgressFallback", destroy);
 
         assertTrue(sourcePath + " is missing mSeekProgressFallback", field >= 0);
         assertTrue("seek fallback runnable must be initialized", init > field);
-        assertTrue("seek must show loading before scheduling the READY fallback", show > started && remove > show && post > remove);
-        assertTrue("seek fallback must only clear loading once playback is READY", readyGuard > helper && reveal > readyGuard);
+        // 窗口必须先于 showProgress() 打开：它内部立刻投递的网速 ticker 是本次症状的直接执行者。
+        assertTrue("seek must open the pending window before showing loading", started > 0 && pending > started && show > pending);
+        assertTrue("seek must arm the minimum-visible timer after showing loading", arm > show);
+        assertTrue("seek fallback must only clear loading through the seek gate", gate > helper && close > gate && reveal > close);
+        assertTrue("the traffic-ticker fallback must respect the same seek gate", staleGate > stale);
         assertTrue("seek fallback callback must be removed on destroy", destroyRemove > destroy);
     }
 

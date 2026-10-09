@@ -16,6 +16,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
@@ -259,6 +260,14 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class VideoActivity extends PlaybackActivity implements Clock.Callback, CustomKeyDown.Listener, TrackDialog.Listener, ControlDialog.Listener, DanmakuDialog.Host, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, EpisodeGroupAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, SubtitlePlaybackSession.Host, com.fongmi.android.tv.ui.novel.NovelReaderHost {
+    /**
+     * 用户拖拽 seek 时加载圈的最小可见时长。
+     *
+     * <p>必须盖过一个完整的网速采样间隔（{@code setTraffic} 每秒一跳），因为读数是由
+     * 相邻两次采样的字节差算出的：窗口短于一跳就永远只能拿到没有间隔的首跳（空白）。
+     * 取 1.2s 留出余量，避免收圈与首跳采样同帧竞争。
+     */
+    private static final long SEEK_PROGRESS_MIN_VISIBLE_MS = 1200L;
     private static final long LYRICS_OFFSET_MIN_MS = -5000L;
     private static final long LYRICS_OFFSET_MAX_MS = 5000L;
     private static final long LYRICS_OFFSET_STEP_MS = 500L;
@@ -458,6 +467,8 @@ private int mAudioBackgroundRandomNonce;
     private Runnable mR3;
     private Runnable mR4;
     private Runnable mSeekProgressFallback;
+    private boolean mSeekProgressPending;
+    private long mSeekProgressStartedAtMs;
     private Runnable mTmdbDetailTimeout;
     private Clock mClock;
     private MpvPlayer mDiscMenuPlayer;
@@ -5428,7 +5439,9 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
             return;
         }
 
-        if (mSeekProgressFallback != null) App.removeCallbacks(mSeekProgressFallback);
+        // seek 窗口开着时不能摘掉它的最小可见计时器：那次 showProgress 属于 seek 自身
+        // （BUFFERING 分支），计时器是窗口唯一的收尾路径。
+        if (!mSeekProgressPending && mSeekProgressFallback != null) App.removeCallbacks(mSeekProgressFallback);
         mBinding.progress.getRoot().setVisibility(View.VISIBLE);
         if (mVod == null && shouldLoadTmdbDetail() && !mTmdbContentLoaded && !shouldRevealShellWhileLoading()) mBinding.progressLayout.showProgress();
         else if (mVod != null && !mBinding.progressLayout.isContent()) mBinding.progressLayout.showContent();
@@ -5437,6 +5450,9 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
     }
 
     private void hideProgress() {
+        // 任何显式收圈都同时关闭 seek 窗口，避免窗口比圈活得更久。
+        mSeekProgressPending = false;
+        mSeekProgressStartedAtMs = 0;
         if (mSeekProgressFallback != null) App.removeCallbacks(mSeekProgressFallback);
         mBinding.progress.getRoot().setVisibility(View.GONE);
         App.removeCallbacks(mR2);
@@ -6457,7 +6473,7 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
 
     @Override
     protected void onControllerReadyReconciled() {
-        showPlaybackContent();
+        if (canHideSeekProgress()) showPlaybackContent();
     }
 
     @Override
@@ -7675,8 +7691,11 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
                 showProgress();
                 break;
             case Player.STATE_READY:
+                // seek 窗口未关时不能因为一次 READY 读数就收圈：引擎在 seek 真正生效前
+                // 仍可能宣称 READY，那正是「拖拽后先卡画面」的那一帧。圈已由 onSeekStarted
+                // 亮起，这里不收它就仍在屏上，由最小可见计时器与网速 ticker 收尾。
+                if (canHideSeekProgress()) showPlaybackContent();
                 if (mPendingKaraokeResult == null) mKaraokeResultShown = false;
-                showPlaybackContent();
                 boolean pendingResumeSeekApplied = applyPendingResumeSeek();
                 checkControl();
                 refreshLyrics();
@@ -7736,8 +7755,32 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         logVideoFrame("onSurfaceAttached after");
     }
 
+    /**
+     * 判断当前能否收掉 seek 期间挂起的加载圈。
+     *
+     * <p>拖拽进度时 {@code onSeekStarted()} 先亮圈，随后才把 seek 交给控制器。这中间引擎仍
+     * 报告 READY，于是挂在网速 ticker 上的兜底收口会在 seek 真正生效前把圈收掉——现象就是
+     * 「拖拽后大概率看不到加载中/网速」。窗口打开期间必须先满过最小可见时长，且播放器确实已
+     * READY 且不在真实加载阻塞中，才允许收口。窗口没关时圈就一直留着，由每秒一跳的网速
+     * ticker 继续重判，不会自己冒出重试循环。
+     */
+    private boolean canHideSeekProgress() {
+        if (!mSeekProgressPending) return true;
+        if (SystemClock.elapsedRealtime() - mSeekProgressStartedAtMs < SEEK_PROGRESS_MIN_VISIBLE_MS) return false;
+        return service() != null
+                && player() != null
+                && !player().isReleased()
+                && !player().isEmpty()
+                && player().getPlaybackState() == Player.STATE_READY
+                && (!player().isLoading() || player().isPlaying());
+    }
+
     private void hideSeekProgressIfReady() {
-        if (service() == null || player() == null || player().isReleased() || player().isEmpty() || !isOwner() || player().getPlaybackState() != Player.STATE_READY) return;
+        if (!mSeekProgressPending) return;
+        if (service() == null || player() == null || player().isReleased() || player().isEmpty()) return;
+        if (!isOwner()) return;
+        if (!canHideSeekProgress()) return;
+        mSeekProgressPending = false;
         showPlaybackContent();
     }
 
@@ -7755,15 +7798,20 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         if (mBinding.progress.getRoot().getVisibility() != View.VISIBLE) return;
         if (service() == null || player() == null || player().isReleased() || player().isEmpty()) return;
         if (!isOwner()) return;
+        if (!canHideSeekProgress()) return;
         if (player().getPlaybackState() != Player.STATE_READY) return;
         showPlaybackContent();
     }
 
     @Override
     protected void onSeekStarted() {
-        showProgress();
         App.removeCallbacks(mSeekProgressFallback);
-        App.post(mSeekProgressFallback, 500);
+        // 窗口必须在 showProgress() 之前打开：它内部会立刻投递网速 ticker，
+        // 那个 ticker 的兜底收口会读到尚未开始 seek 的 READY。
+        mSeekProgressPending = true;
+        mSeekProgressStartedAtMs = SystemClock.elapsedRealtime();
+        showProgress();
+        App.post(mSeekProgressFallback, SEEK_PROGRESS_MIN_VISIBLE_MS);
     }
 
     @Override

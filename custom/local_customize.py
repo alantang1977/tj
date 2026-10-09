@@ -184,6 +184,10 @@ CAT_KEEP_ALPHA = 80  # 视为“实体猫”的 alpha 下限（腮红115/暗边1
 # place_cat_fill 内部会钳制：上移后耳侧仍保留安全余量，耳尖绝不触边、不超出画布。
 LAUNCHER_LIFT_ROUNDED = 14 / 512   # 圆角 launcher：@512 上移 14px（项圈底缝35、猫顶20底30）
 LAUNCHER_LIFT_CIRCLE = 40 / 512    # 圆形 launcher：@512 上移 40px（项圈底缝73、猫顶68底69）
+# 自适应图标前景（API26+ 真机实际显示的 ic_launcher_foreground）在安全圆内的整体上移量。
+# 关键：现代 Android 优先用自适应图标而非 legacy 位图，必须让前景猫也上移，否则真机仍偏下。
+# @432 上移 20px：猫顶123/底111、视觉重心居中（TV Banner 前景不上移，调用时显式传 0）。
+ADAPTIVE_FOREGROUND_LIFT = 20 / 432
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
 GRAD_INSET_ADAPTIVE = 1.0 / 6.0
@@ -1460,7 +1464,7 @@ def render_notification(size, style="3d"):
     # 注意：draw_wordmark 在 fill=FILL_NOTIFY 时会强制输出纯白无阴影，style 参数不影响结果
     return draw_wordmark(size * SS, FILL_NOTIFY, style=style).resize((size, size),
                           Image.LANCZOS)
-def render_cat_foreground(size, head_k=1.0):
+def render_cat_foreground(size, head_k=1.0, lift_frac=None):
     """自适应图标前景：完整彩色猫（透明底），填满适配放入安全圆(半径≈size/3)内。
 
     自适应图标 108dp 中系统只保证中心约 72dp 可见（半径 ≈ size/3）。
@@ -1468,8 +1472,13 @@ def render_cat_foreground(size, head_k=1.0):
     所有密度下边缘锐利无锯齿、不变形。
 
     head_k: 头部放大系数（默认 1.0 原版不放大；仅手机版 launcher 用 1.12）。
+    lift_frac: 安全圆内整体上移量（占边长比例）。默认 ADAPTIVE_FOREGROUND_LIFT，
+        修正真机自适应前景猫偏下；TV Banner 前景应显式传 0.0（不上移）。
     """
-    return place_cat_fill(size, size, kind="safe_circle", gap_frac=8 / 432, head_k=head_k)
+    if lift_frac is None:
+        lift_frac = ADAPTIVE_FOREGROUND_LIFT
+    return place_cat_fill(size, size, kind="safe_circle", gap_frac=8 / 432,
+                          head_k=head_k, lift_frac=lift_frac)
 def _remove_if_exists(rel):
     """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
     path = os.path.join(REPO, rel)
@@ -1829,8 +1838,8 @@ def do_export(style="cat"):
              os.path.join(bdd, "ic_banner.png"), format="PNG")
     bnd = os.path.join(tv, "drawable-nodpi")
     os.makedirs(bnd, exist_ok=True)
-    # TV banner 前景使用 head_k=1.0 原版不放大
-    save_img(render_cat_foreground(432, head_k=1.0),
+    # TV banner 前景使用 head_k=1.0 原版不放大；Banner 为横版，前景不做上移（lift=0）
+    save_img(render_cat_foreground(432, head_k=1.0, lift_frac=0.0),
              os.path.join(bnd, "ic_banner_foreground.png"), format="PNG")
     badir = os.path.join(tv, "mipmap-anydpi-v26")
     os.makedirs(badir, exist_ok=True)
@@ -1906,8 +1915,8 @@ def do_write(style="3d"):
     print("[tv banner]")
     if style == "cat":
         _remove_if_exists("app/src/leanback/res/drawable/ic_banner_foreground.xml")
-        # TV banner 前景使用 head_k=1.0 原版不放大猫头
-        save_img(render_cat_foreground(432, head_k=1.0),
+        # TV banner 前景使用 head_k=1.0 原版不放大；横版 Banner 前景不上移（lift=0）
+        save_img(render_cat_foreground(432, head_k=1.0, lift_frac=0.0),
                  "app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png", format="PNG")
     else:
         _remove_if_exists("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png")
@@ -2016,7 +2025,7 @@ def verify_icons(style="cat", verbose=True):
     check_bitmap(f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png",
                  render_cat_foreground(432, head_k=1.0), "rgba", None)
     check_bitmap("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png",
-                 render_cat_foreground(432, head_k=1.0), "rgba", None)
+                 render_cat_foreground(432, head_k=1.0, lift_frac=0.0), "rgba", None)
     # TV banner、in-app logo、playstore
     check_bitmap("app/src/leanback/res/drawable/ic_banner.png", render_banner(320, 180, style), "rgba", None)
     check_bitmap(f"{MAIN_RES}/drawable-nodpi/ic_logo.png",
