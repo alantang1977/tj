@@ -56,7 +56,6 @@ import com.fongmi.android.tv.player.exo.subtitle.ExoSubtitleSession;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.subtitle.RealtimeSubtitleController;
 import com.fongmi.android.tv.ui.base.BaseActivity;
-import com.fongmi.android.tv.ui.dialog.AdSkipPromptPresenter;
 import com.fongmi.android.tv.ui.dialog.DiscMenuDialog;
 import com.fongmi.android.tv.ui.dialog.VideoAspectModeDialog;
 import com.fongmi.android.tv.ui.novel.NovelRouter;
@@ -87,7 +86,6 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
     private int render = -1;
     private int requestedAspectMode = VideoAspectMode.ORIGINAL;
     private ExoOutputModeManager exoOutputModeManager;
-    private AdSkipPromptPresenter adSkipPromptPresenter;
     private ExoAssSession attachedAssSession;
     private ExoSubtitleSession attachedSubtitleSession;
     private final com.fongmi.android.tv.player.SurfaceDiagnosticCollector surfaceDiagnostics =
@@ -107,16 +105,6 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
 
     protected boolean isServiceReady() {
         return mService != null && mService.player() != null && !mService.player().isReleased();
-    }
-
-    private void bindAdAudioPrompt() {
-        if (!isServiceReady() || !isOwner()) return;
-        if (adSkipPromptPresenter == null) adSkipPromptPresenter = new AdSkipPromptPresenter(this);
-        player().bindAdAudioUi(adSkipPromptPresenter);
-    }
-
-    private void unbindAdAudioPrompt() {
-        if (isServiceReady() && isOwner()) player().unbindAdAudioUi();
     }
 
     protected View.OnClickListener guarded(Runnable action) {
@@ -673,8 +661,15 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
             logSurfaceState("attach after setRender target=" + targetRender);
         }
         surfaceDiagnostics.bind(getExoView(), player().getPlaybackTraceId());
-        if (getExoView().getPlayer() == null) {
-            getExoView().setPlayer(player().getPlayer());
+        // 切集换新媒体前 PlayerManager.clear() 会把 spec 置空，preparePlayer() 再重建引擎。
+        // 此时 render 值通常不变，旧的 attachSurface 只按“PlayerView 是否为空”判断，
+        // 会把已释放的旧引擎继续留在 PlayerView 上，新引擎从未绑定 Surface。
+        // 以引擎实例身份而不是“是否为空”判断，自动下一集的黑屏路径才能强制重绑。
+        Player currentPlayer = getExoView().getPlayer();
+        Player nextPlayer = player().getPlayer();
+        if (currentPlayer != nextPlayer) {
+            if (currentPlayer != null) getExoView().setPlayer(null);
+            getExoView().setPlayer(nextPlayer);
             logSurfaceState("attach after setPlayer");
             syncVideoSurfaceSize(null);
             if (restoreExoShutter) syncShutter();
@@ -1076,10 +1071,6 @@ public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "state changed state=%d %s", state, lifecycleState());
         syncKeepScreenOn();
         if (!isOwner()) return;
-        // Ownership is established after onServiceConnected/onResume have already run, so
-        // the earlier bind attempts were rejected by the isOwner() guard. Bind here too or
-        // the ad-audio runtime never gets a UI and stays deactivated for the whole session.
-        bindAdAudioPrompt();
         syncShutter();
         onStateChanged(state);
     }
@@ -1203,7 +1194,6 @@ public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
         mService.addPlayerCallback(mPlayerCallback);
         getSeekView().setProgressPlayer(player().getPlayer());
         player().setLutAllowed(isLutAllowed());
-        bindAdAudioPrompt();
         syncKeepScreenOn();
         player().setDanmakuForeground(true);
         publishRenderTarget(getExoView().getVideoSurfaceView());
@@ -1216,9 +1206,6 @@ public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
     @Override
     public void onServiceDisconnected(ComponentName name) {
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "service disconnected name=%s %s", name, lifecycleState());
-        unbindAdAudioPrompt();
-        if (adSkipPromptPresenter != null) adSkipPromptPresenter.close();
-        adSkipPromptPresenter = null;
         releaseController();
         getSeekView().setProgressPlayer(null);
         mService = null;
@@ -1235,7 +1222,6 @@ public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "activity resume %s", lifecycleState());
         playbackExiting = false;
         setRedirect(false);
-        bindAdAudioPrompt();
         applyExoOutputMode();
         if (shouldReclaim()) {
             detachSurface();
@@ -1253,7 +1239,6 @@ public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
 
     @Override
     protected void onStop() {
-        unbindAdAudioPrompt();
         if (mService != null) {
             mService.setPlaybackForeground(false);
             if (isOwner()) player().setDanmakuForeground(false);
@@ -1275,9 +1260,6 @@ public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
         surfaceDiagnostics.unbind();
         detachAssSurface();
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "activity destroy beforeRelease %s", lifecycleState());
-        unbindAdAudioPrompt();
-        if (adSkipPromptPresenter != null) adSkipPromptPresenter.close();
-        adSkipPromptPresenter = null;
         RealtimeSubtitleController.get().unbind(getExoView());
         restoreExoOutputMode();
         super.onDestroy();

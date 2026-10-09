@@ -12,6 +12,7 @@ import java.nio.file.Path;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -36,6 +37,7 @@ public class HistoryAdapterTest {
 
         assertHistoryCardLayout("TV", layout);
         assertHistoryCardLayout("mobile", mobileLayout);
+        assertMobileEpisodeLineUsesTheWallpaperForegroundRole(mobileLayout);
         assertMobileDeleteOverlayIsCentered(mobileLayout, mobileAdapter);
         assertBindsPlaybackProgress("TV history page", adapter);
         assertBindsPlaybackProgress("mobile history page", mobileAdapter);
@@ -156,6 +158,25 @@ public class HistoryAdapterTest {
                 "@+id/image".equals(androidAttribute(playback, "layout_alignBottom"))
                         && playback.getParentNode() == root
                         && childElementIndex(root, playback) < childElementIndex(root, info));
+    }
+
+    /**
+     * The mobile episode line sits on the shared info fill ({@code shape_vod_name},
+     * #33000000 over the app wallpaper), whose darkness does not depend on the palette, so
+     * it needs the palette-independent light role that the title line already uses.
+     *
+     * <p>Commit f63b0a81bc moved it from {@code @color/white_70} onto
+     * {@code ?attr/colorOnSurfaceVariant}, which resolves to #44474F in the day table: the
+     * reported "episode number is unreadable on the history page" measured 1.4:1 against
+     * the wallpaper card fill. The sibling list row ({@code adapter_vod_list.xml}) already
+     * paints both of its lines with this role.
+     */
+    private static void assertMobileEpisodeLineUsesTheWallpaperForegroundRole(String layout) throws Exception {
+        Element remark = findById(parseLayout(layout), "@+id/remark");
+        assertEquals("mobile history episode line must use the palette-independent wallpaper foreground",
+                "?attr/webhtvColorOnWallpaper", androidAttribute(remark, "textColor"));
+        assertEquals("mobile history title line must stay on the same palette-independent role",
+                "?attr/webhtvColorOnWallpaper", androidAttribute(findById(parseLayout(layout), "@+id/name"), "textColor"));
     }
 
     private static int elementChildCount(Element parent) {

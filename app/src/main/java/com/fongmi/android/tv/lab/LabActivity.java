@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
 import android.util.Base64;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
@@ -257,7 +258,7 @@ public class LabActivity extends AppCompatActivity implements LabPackageAdapter.
         container.addView(edit);
         TextView select = new TextView(this);
         select.setText(R.string.lab_import_select_file);
-        select.setTextColor(getColor(R.color.accent));
+        select.setTextColor(getColor(R.color.webhtv_color_primary));
         select.setPadding(0, pad, 0, 0);
         select.setClickable(true);
         container.addView(select);
@@ -352,7 +353,18 @@ public class LabActivity extends AppCompatActivity implements LabPackageAdapter.
     }
 
     private void showSettings() {
-        View root = getLayoutInflater().inflate(R.layout.dialog_lab_settings, null);
+        // 内容必须用「弹窗自己的主题」inflate，而不是 Activity 的 LayoutInflater。
+        //
+        // dialog_lab_settings.xml 里的 ?attr/colorOnSurface / colorOnSurfaceVariant / colorPrimary
+        // 是编译期解析的：用 Activity 主题（Theme.App.Lab，固定深色、白字）inflate 时，
+        // 正文永远是 #FFFFFF，而弹窗面板来自 ThemeOverlay.WebHTV.Dialog 的日/夜双表，
+        // 浅色系统下就是「白字 + 浅色面板」≈1.05:1，默认主题直接看不清。
+        //
+        // 换成弹窗主题上下文后，内容与面板同源，深浅两套表都可读；
+        // 且这些颜色精确等于冻结基线角色值，ThemeController.bindDialog 能把它们改写成当前主题 token，
+        // 用户的主题色才会真正作用到这个设置页。
+        Context dialogContext = new ContextThemeWrapper(this, R.style.Theme_App_Lab_DayNight_Dialog);
+        View root = LayoutInflater.from(dialogContext).inflate(R.layout.dialog_lab_settings, null);
         AutoCompleteTextView dropdown = root.findViewById(R.id.sourceDropdown);
         EditText input = root.findViewById(R.id.input);
         EditText rootInput = root.findViewById(R.id.rootInput);
@@ -366,7 +378,10 @@ public class LabActivity extends AppCompatActivity implements LabPackageAdapter.
         MaterialSwitch navEntry = root.findViewById(R.id.navEntrySwitch);
         navEntryRow.setVisibility(Util.isMobile() ? View.VISIBLE : View.GONE);
         String[] items = {getString(R.string.lab_source_local), getString(R.string.lab_source_url)};
-        dropdown.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, items));
+        // 适配器必须用弹窗主题上下文：ArrayAdapter 用自身 context 解析 item 布局，
+        // 用 Activity 上下文（Theme.App.Lab，固定深色）会让下拉项永远是白字，
+        // 而弹出面板跟着日/夜表走 —— 浅色系统下就是白字浅底，看不见。
+        dropdown.setAdapter(new ArrayAdapter<>(dialogContext, R.layout.item_lab_dropdown, items));
         int source = LabConfig.get().getSource();
         dropdown.setText(items[indexOfSource(source)], false);
         applySourceFields(input, folder, source);

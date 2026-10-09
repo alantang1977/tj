@@ -27,7 +27,15 @@
             app:boxStrokeColor="?attr/colorPrimary"
             app:hintTextColor="?attr/colorPrimary"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
-            <AutoCompleteTextView
+            <!--
+                MaterialAutoCompleteTextView（而不是 android.widget.AutoCompleteTextView）是下拉菜单
+                跟随主题的前提：只有它应用 Widget.Material3.AutoCompleteTextView.OutlinedBox 的
+                dropDownBackgroundTint（= colorSurfaceContainer）与 simpleItemLayout，
+                并把 item 文字交给主题。用普通 AutoCompleteTextView 时，弹出面板会落到
+                @android:layout/simple_dropdown_item_1line 的 Material 基线字色，
+                浅色系统下实测是「白字 + 浅色面板」1.76:1，默认主题下依然看不清。
+            -->
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
                 android:textSize="14sp"
                 android:textColor="?attr/colorOnSurface"
                 android:id="@+id/sourceDropdown"

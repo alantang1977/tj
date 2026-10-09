@@ -18,6 +18,7 @@ import com.fongmi.android.tv.server.process.Proxy;
 import com.fongmi.android.tv.server.process.CatMessage;
 import com.fongmi.android.tv.server.process.RemoteTrustSetup;
 import com.fongmi.android.tv.server.process.SpiderApi;
+import com.fongmi.android.tv.server.process.VodApi;
 import com.fongmi.android.tv.server.process.WebResourceGateway;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Asset;
@@ -58,6 +59,7 @@ public class Nano extends NanoHTTPD {
         process.add(new CatMessage());
         process.add(new RemoteTrustSetup());
         process.add(new SpiderApi());
+        process.add(new VodApi());
         process.add(new WebResourceGateway());
     }
 
@@ -85,6 +87,11 @@ public class Nano extends NanoHTTPD {
         if (shouldLogRequest(url)) SpiderDebug.log("server", "%s %s params=%s", session.getMethod(), url, session.getParms());
         if (url.startsWith("/tvbus")) return ok(LiveConfig.getResp());
         if (url.startsWith("/device")) return ok(Device.get().toString());
+        // 实验室模板从外部目录下载脚本；未放置离线包时退回内置版本，不覆盖用户脚本。
+        if ("/file/WebHTV/EnvFiles/T4Proxy.js".equals(url)
+                && !com.github.catvod.utils.Path.local(url.substring(5)).isFile()) {
+            return getAssets("VodPlus/EnvFiles/T4Proxy.js");
+        }
         for (Process process : process) if (process.isRequest(session, url)) return process.doResponse(session, url, files);
         return getAssets(url.substring(1));
     }

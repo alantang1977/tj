@@ -131,6 +131,32 @@ public class PlaybackOwnershipSourceTest {
     }
 
     @Test
+    public void kernelRebuildBindsTheNewEngineToThePlayerViewByInstanceIdentity() throws Exception {
+        // 自动下一集先 clear() 把 Manager.spec 置空，再 preparePlayer() 重建引擎；此时
+        // isOwner() 为 false，onPlayerRebuild() 里的 setRender() 整段被跳过，render 值不变。
+        // 只按“PlayerView.player 是否为空”判断，就会把已释放的旧引擎留在 View 上，
+        // 新引擎从未拿到 Surface —— 画面全黑、声音正常，手动切内核/软硬解才恢复。
+        String source = read(PLAYBACK);
+        int attach = source.indexOf("private void attachSurface(boolean restoreExoShutter)");
+        int end = source.indexOf("\n    }", attach);
+        assertTrue("attachSurface must exist", attach > 0 && end > attach);
+        String body = source.substring(attach, end);
+
+        assertTrue("the surface rebind must compare the live engine instance, not emptiness",
+                body.contains("Player currentPlayer = getExoView().getPlayer();")
+                        && body.contains("Player nextPlayer = player().getPlayer();")
+                        && body.contains("if (currentPlayer != nextPlayer) {"));
+        assertTrue("the identity branch must hand the view the new engine",
+                body.contains("getExoView().setPlayer(nextPlayer);"));
+        int detach = body.indexOf("if (currentPlayer != null) getExoView().setPlayer(null);");
+        int rebind = body.indexOf("getExoView().setPlayer(nextPlayer);");
+        assertTrue("the released engine must be detached before the replacement is bound",
+                detach > 0 && rebind > detach);
+        assertFalse("attachment must no longer depend on the view merely being empty",
+                body.contains("if (getExoView().getPlayer() == null)"));
+    }
+
+    @Test
     public void staleSpinnerFallbackCannotExposeAnotherItemsPlayback() throws Exception {
         for (String path : new String[] {
                 "app/src/mobile/java/com/fongmi/android/tv/ui/activity/VideoActivity.java",

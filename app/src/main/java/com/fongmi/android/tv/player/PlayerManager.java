@@ -35,16 +35,6 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.SiteApi;
-import com.fongmi.android.tv.ad.audio.AdAudioRuleStore;
-import com.fongmi.android.tv.ad.audio.AdAudioDiagnostics;
-import com.fongmi.android.tv.ad.audio.AdAudioRuntimeController;
-import com.fongmi.android.tv.ad.audio.AdAudioSetting;
-import com.fongmi.android.tv.ad.audio.SpeechAdSetting;
-import com.fongmi.android.tv.ad.audio.AdSkipCoordinator;
-import com.fongmi.android.tv.ad.audio.AdSkipPolicyController;
-import com.fongmi.android.tv.ad.audio.PrioritizedAdAudioRuleSource;
-import com.fongmi.android.tv.ad.audio.ProbeRuleDownloader;
-import com.fongmi.android.tv.ad.audio.ProbeRuleStore;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Sub;
@@ -132,7 +122,6 @@ import com.fongmi.android.tv.setting.PlaybackPerformanceSetting;
 import com.fongmi.android.tv.setting.PlaybackProfileAbSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.subtitle.RealtimeSubtitleController;
-import com.fongmi.android.tv.subtitle.RealtimeSubtitleSpeechRecognitionFactory;
 import com.fongmi.android.tv.utils.LocalProxyDebug;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -183,16 +172,6 @@ public class PlayerManager implements ParseCallback {
     private static final long DANMAKU_FORCE_RELOAD_DEBOUNCE_MS = 10000;
     private static final long LIVE_DANMAKU_METRICS_INTERVAL_MS = 15000L;
     private static final long PLAYBACK_TELEMETRY_INTERVAL_MS = 5000L;
-    /**
-     * Rebuilding the audio pipeline restarts the player, so it must never be driven in a
-     * loop by the periodic refresh. Some configurations (audio passthrough, compressed
-     * output) can hold an AD_AUDIO capture lease that the PCM tap will never satisfy.
-     * One attempt covers the normal recovery; the second is slack. Once the budget is
-     * spent the lease is deliberately left in place: no PCM flows without a bound pipeline
-     * gate, and it also stops the realtime-subtitle path from rebuilding on its own.
-     * Only ever touched from the main thread ({@link App#post} plus the UI call sites).
-     */
-    private static final int MAX_AD_AUDIO_PIPELINE_REBUILDS = 2;
     private static final long MPV_FRAME_TIMING_LOG_INTERVAL_MS = 5000L;
     private static final long DISK_RANGE_GAP_TOLERANCE_MS = 2000L;
     private static final long BUFFERING_STALL_POLL_INTERVAL_MS = 1000L;
@@ -213,9 +192,6 @@ public class PlayerManager implements ParseCallback {
     private final PlaybackMediaClock mediaClock = new PlaybackMediaClock(500L);
     private final PlaybackMediaSessionController mediaSession =
             new PlaybackMediaSessionController(mediaSignals, mediaClock);
-    private final AdAudioRuntimeController adAudioRuntime;
-    private final AdAudioRuntimeController.SpeechAdPlaybackHealth speechAdPlaybackHealth =
-            new AdAudioRuntimeController.SpeechAdPlaybackHealth();
     private final DynamicLutEffect dynamicLutEffect;
     private final AudioManager.OnAudioFocusChangeListener audioFocusChangeListener;
     private final BroadcastReceiver noisyReceiver;
@@ -334,7 +310,6 @@ public class PlayerManager implements ParseCallback {
     private int playerType;
     private int retry;
     private int localProxyRetry;
-    private int adAudioPipelineRebuilds;
     private int prepareSeq;
     private int lutApplySeq;
     private long parseHealthStartedAt;
@@ -418,13 +393,6 @@ public class PlayerManager implements ParseCallback {
         this.playerType = PlayerSetting.getActivePlayer();
         PlayerSetting.putActivePlayer(this.playerType);
         this.playerFallbackTried = new boolean[PLAYER_COUNT];
-        this.adAudioRuntime = new AdAudioRuntimeController(
-                mediaSignals, mediaClock,
-                new PrioritizedAdAudioRuleSource(AdAudioRuleStore.get(), ProbeRuleStore.get()),
-                new AdAudioPlaybackPort(),
-                new RealtimeSubtitleSpeechRecognitionFactory());
-        configureAdAudioRuntime();
-        ProbeRuleDownloader.refreshIfDue();
         mediaSession.begin(0L);
         this.engine = buildEngine(playerType, PlayerEngine.HARD);
         this.player = engine.getPlayer();
@@ -433,7 +401,6 @@ public class PlayerManager implements ParseCallback {
     public void release() {
         mediaSession.beforeRelease();
         PlayerSetting.clearActivePlayer();
-        adAudioRuntime.close();
         prepareSeq++;
         exoSpeedRestoreState.clear();
         lutApplySeq++;
@@ -786,49 +753,6 @@ public class PlayerManager implements ParseCallback {
 
     public PlaybackMediaClock mediaClock() {
         return mediaClock;
-    }
-
-    public void bindAdAudioUi(AdSkipCoordinator.UiPort ui) {
-        if (isReleased()) return;
-        configureAdAudioRuntime();
-        adAudioRuntime.bindUi(ui);
-        refreshAdAudioRuntime();
-    }
-
-    public void unbindAdAudioUi() {
-        adAudioRuntime.unbindUi();
-    }
-
-    public void reloadAdAudioRules() {
-        reloadAdAudioSettings();
-    }
-
-    public void reloadAdAudioSettings() {
-        if (isReleased()) return;
-        configureAdAudioRuntime();
-        refreshAdAudioRuntime();
-    }
-
-    public void setAdAudioAutoSkipEnabled(boolean enabled) {
-        if (isReleased()) return;
-        AdAudioSetting.setAutoSkipEnabled(enabled);
-        reloadAdAudioSettings();
-    }
-
-    public boolean isAdAudioAutoSkipEnabled() {
-        return AdAudioSetting.isAutoSkipEnabled();
-    }
-
-    public AdAudioDiagnostics.Snapshot adAudioDiagnostics() {
-        return adAudioRuntime.diagnostics();
-    }
-
-    private void configureAdAudioRuntime() {
-        adAudioRuntime.setSkipMode(AdAudioSetting.isAutoSkipEnabled()
-                ? AdSkipPolicyController.Mode.AUTO
-                : AdSkipPolicyController.Mode.PROMPT);
-        adAudioRuntime.setSpeechConfig(SpeechAdSetting.snapshot());
-        adAudioRuntime.start(AdAudioSetting.isEnabled());
     }
 
     public long getBufferedDuration() {
@@ -1780,8 +1704,7 @@ public class PlayerManager implements ParseCallback {
         ijkRealtimeRecoveryController.onUserSeek(playbackAutoSession, now);
         ijkDecodePressureController.onUserSeek(playbackAutoSession, now);
         resetNetworkProtectionSession("user-seek");
-        if (isExo() && adAudioRuntime.isSpeechConfigured()
-                && !adAudioRuntime.isSpeechSuppressed()) {
+        if (isExo()) {
             PlaybackAnalyticsListener.onUserSeekRequested(
                     player.getCurrentPosition(),
                     time,
@@ -1907,16 +1830,6 @@ public void resetTrack(int type) {
         setRepeatOne(repeat);
         App.post(runnable, Constant.TIMEOUT_PLAY);
         callback.onPrepare();
-    }
-
-    private void refreshAdAudioRuntime() {
-        if (isReleased()) return;
-        adAudioRuntime.refresh();
-        if (!adAudioRuntime.needsPipelineRebuild()) return;
-        if (adAudioPipelineRebuilds >= MAX_AD_AUDIO_PIPELINE_REBUILDS) return;
-        adAudioPipelineRebuilds++;
-        if (SpiderDebug.isEnabled()) SpiderDebug.log("ad-audio", "pipeline rebuild requested exo=%b attempt=%d", isExo(), adAudioPipelineRebuilds);
-        rebuildAudioPipeline();
     }
 
     public void restoreVideoTrack() {
@@ -5946,14 +5859,9 @@ public void resetTrack(int type) {
     }
 
     private PlayerEngine buildEngine(int type, int decode) {
-        // Every engine build discards the AudioSink that carried the PCM tap, so the next
-        // one deserves a fresh attempt budget. rebuildAudioPipeline() itself does not come
-        // through here, which is what keeps the cap meaningful.
-        adAudioPipelineRebuilds = 0;
         if (type != PlayerSetting.EXO) {
             exoSpeedRestoreState.clear();
             mediaSignals.detachPipeline();
-            adAudioRuntime.suspend();
         }
         PlayerEngine next = switch (type) {
             case PlayerSetting.IJK -> new IjkPlayerEngine(decode, listener);
@@ -5962,58 +5870,6 @@ public void resetTrack(int type) {
             default -> new ExoPlayerEngine(decode, listener, mediaSignals, mediaClock);
         };
         return next;
-    }
-
-    private final class AdAudioPlaybackPort implements AdAudioRuntimeController.PlaybackPort {
-
-        @Override
-        public boolean isEligible(long sessionId, long generation) {
-            PlaybackMediaSignalHub.Session session = mediaSignals.session();
-            return session.id() == sessionId
-                    && session.generation() == generation
-                    && player != null
-                    && engine != null
-                    && spec != null
-                    && isExo()
-                    && player.getPlaybackState() == Player.STATE_READY
-                    && player.getCurrentMediaItem() != null
-                    && !player.isCurrentMediaItemLive()
-                    && player.getDuration() > 0L
-                    && player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM);
-        }
-
-        @Override
-        public AdSkipCoordinator.PlaybackSnapshot snapshot(long sessionId, long generation) {
-            PlaybackMediaSignalHub.Session session = mediaSignals.session();
-            long position = player == null ? 0L : Math.max(0L, player.getCurrentPosition());
-            long duration = player == null ? C.TIME_UNSET : player.getDuration();
-            boolean live = player == null || player.isCurrentMediaItemLive();
-            boolean seekable = isEligible(session.id(), session.generation());
-            return new AdSkipCoordinator.PlaybackSnapshot(
-                    session.id(), session.generation(), position, duration,
-                    seekable, live, mediaClock.snapshot(SystemClock.elapsedRealtime()));
-        }
-
-        @Override
-        public AdSkipCoordinator.SeekResult seekTo(long sessionId, long generation, long positionMs) {
-            PlaybackMediaSignalHub.Session before = mediaSignals.session();
-            if (!isEligible(sessionId, generation)
-                    || before.id() != sessionId
-                    || before.generation() != generation) {
-                return AdSkipCoordinator.SeekResult.rejected(before.id(), before.generation());
-            }
-            long duration = player.getDuration();
-            long target = Math.max(0L, Math.min(positionMs, duration));
-            try {
-                PlayerManager.this.seekTo(target);
-            } catch (RuntimeException e) {
-                PlaybackMediaSignalHub.Session current = mediaSignals.session();
-                return AdSkipCoordinator.SeekResult.rejected(current.id(), current.generation());
-            }
-            PlaybackMediaSignalHub.Session after = mediaSignals.session();
-            return new AdSkipCoordinator.SeekResult(
-                    after.id() == sessionId, after.id(), after.generation());
-        }
     }
 
     public void browse(PlaySpec spec) {
@@ -6032,8 +5888,6 @@ public void resetTrack(int type) {
     }
 
     public void start(PlaySpec spec, long timeout, boolean playWhenReady, long positionMs) {
-        adAudioRuntime.suspend();
-        adAudioPipelineRebuilds = 0;
         mediaSession.begin(0L);
         endPlaybackTelemetrySession("replace-start");
         prepareIjkRuntimeForUserPlayback();
@@ -6061,8 +5915,6 @@ public void resetTrack(int type) {
 
     public void parse(String key, Result result, boolean useParse, MediaMetadata metadata,
                       boolean playWhenReady, long positionMs) {
-        adAudioRuntime.suspend();
-        adAudioPipelineRebuilds = 0;
         mediaSession.begin(0L);
         endPlaybackTelemetrySession("replace-parse");
         prepareIjkRuntimeForUserPlayback();
@@ -7248,7 +7100,6 @@ public void resetTrack(int type) {
         clearExoDecoderResourceRecovery(true);
         lastIjkTimelinePublicationKey = null;
         playbackTrace.begin();
-        speechAdPlaybackHealth.reset();
         long now = SystemClock.elapsedRealtime();
         playbackAutoSession = playbackAutoContextStore.beginSession(playbackTrace.current(), now);
         rtspLiveLagController.beginSession(playbackAutoSession);
@@ -7467,10 +7318,6 @@ public void resetTrack(int type) {
     private void publishPlaybackTelemetryTick() {
         if (!playbackAutoSession.active()) return;
         publishPlaybackTelemetry();
-        // The ad-audio runtime has no position pump of its own: host position is otherwise
-        // only published on bind/refresh/state change, so a provider that is parked waiting
-        // for an eligible position would never be re-driven during steady playback.
-        refreshAdAudioRuntime();
         schedulePlaybackTelemetry();
     }
 
@@ -8578,7 +8425,6 @@ public void resetTrack(int type) {
                 cancelBufferingStallWatchdog();
                 completeMpvDirectFirstFrame(state);
                 manualPlayerSwitchPending = false;
-                App.post(PlayerManager.this::refreshAdAudioRuntime);
                 ijkRuntimeProfileController.onPrepared(
                         playbackAutoSession, SystemClock.elapsedRealtime());
                 ijkFirstFrameWatchdog.onPrepared(
@@ -8641,7 +8487,6 @@ public void resetTrack(int type) {
             if (reason != Player.DISCONTINUITY_REASON_SEEK) {
                 mediaSession.reset(Math.max(0L, newPosition.positionMs),
                         PlaybackMediaSignalHub.ResetReason.SOURCE_CHANGED);
-                App.post(PlayerManager.this::refreshAdAudioRuntime);
             }
             rtspLiveLagController.onPositionDiscontinuity(playbackAutoSession);
             ijkRealtimeRecoveryController.onPositionDiscontinuity(

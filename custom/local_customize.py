@@ -180,10 +180,10 @@ CAT_ZOOM_SQUIRCLE = 1.357  # 自适应圆角(0.30)用：配合下移使耳尖到
 CAT_ZOOM_SQUARE = 1.55  # 方形用：bbox居中后上下左右各留15px（直边无裁切，无需下移）
 CAT_ZOOM_BANNER = 1.68   # TV Banner 用：上下留约2px，猫高度几乎填满
 CAT_KEEP_ALPHA = 80  # 视为“实体猫”的 alpha 下限（腮红115/暗边130保留，弱光晕26/60剔除）
-# 手机版 launcher 在“最大化填满+耳/领均衡”之后的额外整体上移量（占短边比例，方案1轻微上移）。
+# 手机版 launcher 在“最大化填满+耳/领均衡”之后的额外整体上移量（占短边比例）。
 # place_cat_fill 内部会钳制：上移后耳侧仍保留安全余量，耳尖绝不触边、不超出画布。
-LAUNCHER_LIFT_ROUNDED = 6 / 512    # 圆角 launcher：@512 上移 6px（顶22/底16）
-LAUNCHER_LIFT_CIRCLE = 20 / 512    # 圆形 launcher：@512 上移 20px（顶68/底30）
+LAUNCHER_LIFT_ROUNDED = 14 / 512   # 圆角 launcher：@512 上移 14px（项圈底缝35、猫顶20底30）
+LAUNCHER_LIFT_CIRCLE = 40 / 512    # 圆形 launcher：@512 上移 40px（项圈底缝73、猫顶68底69）
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
 GRAD_INSET_ADAPTIVE = 1.0 / 6.0
@@ -1142,22 +1142,6 @@ def _bokeh_and_vignette(img):
     img.alpha_composite(vig)
 
 
-def _fit_cat(canvas_size, zoom):
-    """在 canvas_size 方画布上绘制猫，按实体轮廓(alpha>=CAT_KEEP_ALPHA)裁剪、剔除会形成
-    硬边的弱光晕/弱投影，再整体放大 zoom（相对原始 draw_cat 同画布下的实体占比）。
-    返回缩放后的实体猫 RGBA（透明底），由调用方居中贴入目标画布。"""
-    mark = draw_cat(canvas_size)
-    keep = mark.split()[3].point(lambda v: v if v >= CAT_KEEP_ALPHA else 0)
-    bbox = keep.getbbox()
-    if bbox is None:
-        return Image.new("RGBA", (1, 1), HOLE)
-    trim = mark.crop(bbox)
-    trim.putalpha(trim.split()[3].point(lambda v: v if v >= CAT_KEEP_ALPHA else 0))
-    tw, th = trim.size
-    nw, nh = max(1, int(round(tw * zoom))), max(1, int(round(th * zoom)))
-    return trim.resize((nw, nh), Image.LANCZOS)
-
-
 def _exact_centered(tile, W, H, thr=CAT_KEEP_ALPHA):
     """把透明底 tile 的实体内容(alpha>=thr)严格居中到 W×H，返回新 RGBA。
     整数像素下若画布与实体宽/高奇偶不一致则无法均分，此时对 tile 做 1px 微缩放
@@ -1214,68 +1198,6 @@ def _get_fu_font(size):
         f = None
     _FU_FONT_CACHE[size] = f
     return f
-
-
-def _cat_square_tile(size, zoom):
-    """方图标用：超采样渲染实体猫并下采样到 size（透明底，尚未严格居中）。"""
-    big = size * SS
-    cat = _fit_cat(big, zoom)
-    layer = Image.new("RGBA", (big, big), HOLE)
-    layer.alpha_composite(cat, ((big - cat.width) // 2, (big - cat.height) // 2))
-    return layer.resize((size, size), Image.LANCZOS)
-
-
-# --- 形状边界的“内部间隙”解析函数（像素，内部为正）---
-def _dist_circle(x, y, R):
-    return R - (x * x + y * y) ** 0.5
-
-
-def _dist_rect(x, y, a, b):
-    return min(a - abs(x), b - abs(y))
-
-
-def _dist_rounded(x, y, a, b, cr):
-    ax = max(abs(x) - (a - cr), 0)
-    ay = max(abs(y) - (b - cr), 0)
-    return min(a - abs(x), b - abs(y), cr - (ax * ax + ay * ay) ** 0.5)
-
-
-def _place_balanced(tile, W, H, distf, thr=CAT_KEEP_ALPHA):
-    """把透明底实体猫(alpha>=thr)贴入 W×H 画布，并在垂直方向做“等间隙”平衡：
-    猫的最上点是两只耳尖（同时最宽，落在斜上方位），最下点是铃铛（落在正下方）。
-    纯 bbox 居中会让耳尖几乎贴到圆形边、而铃铛下方空一大片（视觉偏上）。这里搜索一个
-    整数纵向位移，使上方(耳尖)与下方(铃铛)到形状边界的最小间隙相等且最大；水平仍居中。
-    """
-    b = tile.split()[3].point(lambda v: v if v >= thr else 0).getbbox()
-    if b is None:
-        return Image.new("RGBA", (W, H), HOLE)
-    x0, y0, x1, y1 = b
-    # 极值点（tile 局部，取像素中心 +0.5）：两个耳尖 + 底部铃铛
-    pts_top = [(x0 + 0.5, y0 + 0.5), (x1 - 0.5, y0 + 0.5)]
-    pts_bot = [((x0 + x1) / 2.0, y1 - 0.5)]
-    cx_t, cy_t = tile.width / 2.0, tile.height / 2.0
-
-    def clearances(oy):
-        def cv(px, py):
-            return distf(px - cx_t, py - cy_t + oy)
-        dt = min(cv(*p) for p in pts_top)
-        db = min(cv(*p) for p in pts_bot)
-        return dt, db
-
-    best = None
-    for oy in range(-H // 4, H // 4 + 1):
-        dt, db = clearances(oy)
-        if dt <= 0 or db <= 0:
-            continue
-        score = min(dt, db)
-        bal = abs(dt - db)
-        cand = (score, -bal, -abs(oy))
-        if best is None or cand > best[0]:
-            best = (cand, oy)
-    oy_use = best[1] if best else 0
-    out = Image.new("RGBA", (W, H), HOLE)
-    out.alpha_composite(tile, ((W - tile.width) // 2, (H - tile.height) // 2 + oy_use))
-    return out
 
 
 # ===== 图标猫"填满适配"：最大化填满画布 + 统一缝隙（不要求几何居中）=====

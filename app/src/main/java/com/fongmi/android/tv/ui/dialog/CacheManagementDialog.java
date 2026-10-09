@@ -42,6 +42,7 @@ import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
 import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.Util;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -430,10 +431,12 @@ public class CacheManagementDialog extends DialogFragment {
     }
 
     private void addRow(CacheModuleId id, @Nullable CacheMeasurement measurement, long totalBytes) {
+        boolean mobile = Util.isMobile();
         LinearLayout row = new LinearLayout(requireContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setOrientation(mobile ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        row.setPadding(0, 10, 0, 10);
+        int padding = mobile ? ResUtil.dp2px(8) : 10;
+        row.setPadding(0, padding, 0, padding);
         LinearLayout detailColumn = new LinearLayout(requireContext());
         detailColumn.setOrientation(LinearLayout.VERTICAL);
         String title = getModuleName(id);
@@ -446,10 +449,34 @@ public class CacheManagementDialog extends DialogFragment {
                 measurement.fileCount(),
                 formatTime(measurement.newestModifiedMs()));
         detailColumn.addView(text(detail, 14, themeColor(android.R.attr.textColorSecondary, 0xFF5F6368)));
-        row.addView(detailColumn, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(moduleButton(id));
-        row.addView(limitButton(id));
+        if (mobile) {
+            // Phone text must not compete with two minimum-width action buttons.
+            row.addView(detailColumn, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            LinearLayout actions = new LinearLayout(requireContext());
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            MaterialButton[] buttons = {moduleButton(id), limitButton(id)};
+            for (int index = 0; index < buttons.length; index++) {
+                MaterialButton button = buttons[index];
+                button.setMinWidth(0);
+                button.setMinimumWidth(0);
+                button.setMinHeight(ResUtil.dp2px(48));
+                button.setMinimumHeight(ResUtil.dp2px(48));
+                button.setPaddingRelative(ResUtil.dp2px(8), button.getPaddingTop(),
+                        ResUtil.dp2px(8), button.getPaddingBottom());
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                if (index > 0) params.setMarginStart(ResUtil.dp2px(8));
+                actions.addView(button, params);
+            }
+            row.addView(actions, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        } else {
+            row.addView(detailColumn, new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(moduleButton(id));
+            row.addView(limitButton(id));
+        }
         binding.modules.addView(row);
     }
 
@@ -532,6 +559,8 @@ public class CacheManagementDialog extends DialogFragment {
      * focus always moves through policy row -> cleanup row -> footer without skipping a row.
      */
     private void wireFocusOrder() {
+        // Mobile actions wrap; focus should follow their actual positions, not TV columns.
+        if (Util.isMobile()) return;
         linkVertical(binding.autoCleanup, null, binding.cleanupLight);
         linkVertical(binding.retention, null, binding.cleanupStandard);
         linkVertical(binding.totalLimit, null, binding.cleanupDeep);

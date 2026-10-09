@@ -74,6 +74,13 @@
         app:trackStopIndicatorSize="0dp"
         app:trackThickness="2dp" />
 
+    <!--
+        信息区底是 shape_vod_name 的半透明黑，压在壁纸上，与明暗调色板无关，所以标题行和
+        集数行都必须用恒定亮色的 ?attr/webhtvColorOnWallpaper。集数行曾被 f63b0a81bc 从
+        @color/white_70 改成 ?attr/colorOnSurfaceVariant，日间表解析成深灰，实测压在紫色
+        壁纸卡片底上只有 1.4:1，历史记录的集数信息几乎看不见。
+        具体色值见 HistoryAdapterTest 同用例说明，布局文件内不保留裸色值以免触发 token 门禁。
+    -->
     <LinearLayout
         android:id="@+id/history_info"
         android:layout_width="match_parent"
@@ -114,7 +121,7 @@
             android:marqueeRepeatLimit="marquee_forever"
             android:scrollHorizontally="true"
             android:singleLine="true"
-            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textColor="?attr/webhtvColorOnWallpaper"
             android:textSize="12sp"
             tools:text="第01集. 海边散步" />
 
