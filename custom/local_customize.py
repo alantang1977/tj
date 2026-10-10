@@ -184,9 +184,16 @@ CAT_KEEP_ALPHA = 80  # 视为“实体猫”的 alpha 下限（腮红115/暗边1
 # place_cat_fill 内部会钳制：上移后耳侧仍保留安全余量，耳尖绝不触边、不超出画布。
 LAUNCHER_LIFT_ROUNDED = 14 / 512   # 圆角 launcher：@512 上移 14px（项圈底缝35、猫顶20底30）
 LAUNCHER_LIFT_CIRCLE = 40 / 512    # 圆形 launcher：@512 上移 40px（项圈底缝73、猫顶68底69）
-# 自适应图标前景（API26+ 真机实际显示的 ic_launcher_foreground）在安全圆内的整体上移量。
-# 关键：现代 Android 优先用自适应图标而非 legacy 位图，必须让前景猫也上移，否则真机仍偏下。
-# @432 上移 20px：猫顶123/底111、视觉重心居中（TV Banner 前景不上移，调用时显式传 0）。
+# 自适应图标前景（API26+ 真机实际显示的 ic_launcher_foreground）的放大与上移参数。
+# 关键：现代 Android 优先用自适应图标而非 legacy 位图，前景猫必须放大填满并居中，
+# 否则真机要么偏下、要么偏小。
+#   头部放大 ADAPTIVE_HEAD_K=1.12（与手机 legacy launcher 一致，脸/头饱满）；
+#   安全圆半径比 ADAPTIVE_SAFE_RATIO=0.42（默认保守的1/3会偏小；放大到0.42，
+#     圆角方形设备0裁切，圆形启动器仅耳尖/铃铛极轻微约0.5%）；
+#   整体上移 ADAPTIVE_FOREGROUND_LIFT=20/432（视觉重心居中）。
+# TV Banner 前景为横版，保持原版：head_k=1.0、safe_ratio=1/3、lift=0。
+ADAPTIVE_HEAD_K = 1.12
+ADAPTIVE_SAFE_RATIO = 0.42
 ADAPTIVE_FOREGROUND_LIFT = 20 / 432
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
@@ -1245,7 +1252,7 @@ def _cat_fill_tile(head_k=1.12):
     return tile, (ux, uy)
 
 
-def _fill_y_span(kind, W, H, X, G, radius_ratio=0.22):
+def _fill_y_span(kind, W, H, X, G, radius_ratio=0.22, safe_ratio=1.0 / 3.0):
     """画布 X 处，形状内缩 G 后允许的 Y 区间 (Ylo,Yhi)；不可行返回 None。"""
     if kind == "circle":
         R = W / 2.0; cx = W / 2.0; dx = X - cx; rr = R - G
@@ -1254,7 +1261,7 @@ def _fill_y_span(kind, W, H, X, G, radius_ratio=0.22):
         d = _math.sqrt(max(0.0, rr * rr - dx * dx))
         return (cx - d, cx + d)
     if kind == "safe_circle":
-        R = W / 3.0; cx = W / 2.0; cy = H / 2.0; dx = X - cx; rr = R - G
+        R = W * safe_ratio; cx = W / 2.0; cy = H / 2.0; dx = X - cx; rr = R - G
         if abs(dx) > rr:
             return None
         d = _math.sqrt(max(0.0, rr * rr - dx * dx))
@@ -1280,13 +1287,13 @@ def _fill_y_span(kind, W, H, X, G, radius_ratio=0.22):
     raise ValueError(kind)
 
 
-def _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH):
+def _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH, safe_ratio=1.0 / 3.0):
     """给定缩放 s，返回可行纵向偏移 oy 区间；不可行返回 None。"""
     lo, hi = -1e9, 1e9
     for i in range(len(ux)):
         X = W / 2.0 + (ux[i] - 0.5) * TW * s
         Ydev = (uy[i] - 0.5) * TH * s
-        span = _fill_y_span(kind, W, H, X, G, radius_ratio)
+        span = _fill_y_span(kind, W, H, X, G, radius_ratio, safe_ratio)
         if span is None:
             return None
         Ylo, Yhi = span
@@ -1297,7 +1304,8 @@ def _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH):
     return (lo, hi)
 
 
-def _fill_clear_side(kind, W, H, s, oy, G, radius_ratio, ux, uy, TW, TH, top):
+def _fill_clear_side(kind, W, H, s, oy, G, radius_ratio, ux, uy, TW, TH, top,
+                     safe_ratio=1.0 / 3.0):
     """上半(耳)/下半(项圈)轮廓点到形状边界的最小间隙。"""
     worst = 1e9
     for i in range(len(ux)):
@@ -1309,7 +1317,7 @@ def _fill_clear_side(kind, W, H, s, oy, G, radius_ratio, ux, uy, TW, TH, top):
         if kind == "circle":
             c = W / 2.0 - _math.hypot(X - W / 2.0, Y - H / 2.0)
         elif kind == "safe_circle":
-            c = W / 3.0 - _math.hypot(X - W / 2.0, Y - H / 2.0)
+            c = W * safe_ratio - _math.hypot(X - W / 2.0, Y - H / 2.0)
         elif kind == "rect":
             c = min(X, W - X, Y, H - Y)
         elif kind == "rounded":
@@ -1324,7 +1332,7 @@ def _fill_clear_side(kind, W, H, s, oy, G, radius_ratio, ux, uy, TW, TH, top):
 
 
 def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512,
-                   head_k=1.12, lift_frac=0.0):
+                   head_k=1.12, lift_frac=0.0, safe_ratio=1.0 / 3.0):
     """把猫以"最大化填满 + 耳/领缝隙均衡"放入 W×H 画布，返回透明底 RGBA。
     kind: circle / rounded / rect(方形或横幅) / safe_circle(自适应安全圆)。
     gap_frac: 缝隙占短边的比例（随画布尺寸等比缩放；越小猫越满）。
@@ -1336,7 +1344,9 @@ def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512,
     不要求几何严格居中：先二分求最大缩放（任意纵向偏移可行），再在可行偏移区间内
     取"耳侧最小缝隙≈项圈侧最小缝隙"的均衡点；若指定 lift_frac，则固定上移后的
     目标位置并重新求该位置下的最大缩放（轻微缩小），使整只猫从耳尖到绿项圈尽量
-    占满画布，同时四周留缝不触边。"""
+    占满画布，同时四周留缝不触边。
+    safe_ratio: 仅 kind="safe_circle" 有效，目标安全圆半径占边长比例（默认 1/3，
+               对应圆形裁切可见半径）；调大可让自适应前景猫放大、填满圆角方形画布。"""
     tile, (ux, uy) = _cat_fill_tile(head_k=head_k)
     TW, TH = tile.size
     gap = gap_frac * min(W, H)
@@ -1345,21 +1355,21 @@ def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512,
     lo, hi = 0.0, max(W / TW, H / TH) * 2.5
     for _ in range(60):
         mid = (lo + hi) / 2.0
-        if _fill_oy_interval(kind, W, H, mid, G, radius_ratio, ux, uy, TW, TH) is not None:
+        if _fill_oy_interval(kind, W, H, mid, G, radius_ratio, ux, uy, TW, TH, safe_ratio) is not None:
             lo = mid
         else:
             hi = mid
     s = lo
-    rng = _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH)
+    rng = _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH, safe_ratio)
     if rng is None:
         s = lo * 0.95
-        rng = _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH) or (0.0, 0.0)
+        rng = _fill_oy_interval(kind, W, H, s, G, radius_ratio, ux, uy, TW, TH, safe_ratio) or (0.0, 0.0)
     # 2) 在可行区间内取 oy 使耳侧与项圈侧到形状边界的最小缝隙均衡
     a, b = rng
     for _ in range(40):
         mid_oy = (a + b) / 2.0
-        if _fill_clear_side(kind, W, H, s, mid_oy, G, radius_ratio, ux, uy, TW, TH, top=True) > \
-           _fill_clear_side(kind, W, H, s, mid_oy, G, radius_ratio, ux, uy, TW, TH, top=False):
+        if _fill_clear_side(kind, W, H, s, mid_oy, G, radius_ratio, ux, uy, TW, TH, top=True, safe_ratio=safe_ratio) > \
+           _fill_clear_side(kind, W, H, s, mid_oy, G, radius_ratio, ux, uy, TW, TH, top=False, safe_ratio=safe_ratio):
             a = mid_oy
         else:
             b = mid_oy
@@ -1372,7 +1382,7 @@ def place_cat_fill(W, H, kind="rounded", radius_ratio=0.22, gap_frac=8 / 512,
         l2, h2 = 0.0, s
         for _ in range(60):
             m2 = (l2 + h2) / 2.0
-            iv = _fill_oy_interval(kind, W, H, m2, G, radius_ratio, ux, uy, TW, TH)
+            iv = _fill_oy_interval(kind, W, H, m2, G, radius_ratio, ux, uy, TW, TH, safe_ratio)
             if iv is not None and iv[0] - 1e-6 <= oy_target <= iv[1] + 1e-6:
                 l2 = m2
             else:
@@ -1464,21 +1474,25 @@ def render_notification(size, style="3d"):
     # 注意：draw_wordmark 在 fill=FILL_NOTIFY 时会强制输出纯白无阴影，style 参数不影响结果
     return draw_wordmark(size * SS, FILL_NOTIFY, style=style).resize((size, size),
                           Image.LANCZOS)
-def render_cat_foreground(size, head_k=1.0, lift_frac=None):
-    """自适应图标前景：完整彩色猫（透明底），填满适配放入安全圆(半径≈size/3)内。
+def render_cat_foreground(size, head_k=None, lift_frac=None, safe_ratio=None):
+    """自适应图标前景：完整彩色猫（透明底），填满适配放入安全圆内。
 
-    自适应图标 108dp 中系统只保证中心约 72dp 可见（半径 ≈ size/3）。
-    填满适配使猫在安全圆内最大化并留统一缝隙，SS=5 超采样再 LANCZOS 缩小，
-    所有密度下边缘锐利无锯齿、不变形。
+    默认即“真机 launcher 自适应前景”参数（饱满且居中）：
+      head_k=ADAPTIVE_HEAD_K(1.12) 头部放大；
+      safe_ratio=ADAPTIVE_SAFE_RATIO(0.42) 目标安全圆半径比（1/3 保守会偏小）；
+      lift_frac=ADAPTIVE_FOREGROUND_LIFT 整体上移使视觉重心居中。
+    SS=5 超采样再 LANCZOS 缩小，边缘锐利、不变形；耳尖/铃铛不超出圆角方形画布。
 
-    head_k: 头部放大系数（默认 1.0 原版不放大；仅手机版 launcher 用 1.12）。
-    lift_frac: 安全圆内整体上移量（占边长比例）。默认 ADAPTIVE_FOREGROUND_LIFT，
-        修正真机自适应前景猫偏下；TV Banner 前景应显式传 0.0（不上移）。
+    TV Banner 前景为横版，应显式传 head_k=1.0, safe_ratio=1/3, lift_frac=0.0。
     """
+    if head_k is None:
+        head_k = ADAPTIVE_HEAD_K
+    if safe_ratio is None:
+        safe_ratio = ADAPTIVE_SAFE_RATIO
     if lift_frac is None:
         lift_frac = ADAPTIVE_FOREGROUND_LIFT
     return place_cat_fill(size, size, kind="safe_circle", gap_frac=8 / 432,
-                          head_k=head_k, lift_frac=lift_frac)
+                          head_k=head_k, lift_frac=lift_frac, safe_ratio=safe_ratio)
 def _remove_if_exists(rel):
     """删除可能残留的旧资源文件（避免同名 XML 与 PNG 冲突）。"""
     path = os.path.join(REPO, rel)
@@ -1709,7 +1723,7 @@ def render_adaptive_preview(size, shape="circle", radius_ratio=0.30):
       最后套 shape 蒙版仅用于预览展示各 launcher 的裁切形状（圆形/圆角）。
     与旧的"render() 直接合成"不同，这里前景/背景与实际自适应资源一一对应。"""
     bg = make_gradient(size, GRAD_INSET_ADAPTIVE)   # 等价 vector_background()
-    fg = render_cat_foreground(size, head_k=1.0)    # 实际前景 PNG
+    fg = render_cat_foreground(size)    # 实际前景 PNG（放大+居中）
     bg.alpha_composite(fg)
     bg.putalpha(_mask(size, shape, radius_ratio))
     return bg
@@ -1803,7 +1817,7 @@ def do_export(style="cat"):
         dnd = os.path.join(base_dir, "drawable-nodpi")
         os.makedirs(dnd, exist_ok=True)
         # 自适应前景使用原版不放大猫头（head_k=1.0），与手机版 launcher 区分
-        save_img(render_cat_foreground(432, head_k=1.0),
+        save_img(render_cat_foreground(432),
                  os.path.join(dnd, "ic_launcher_foreground.png"), format="PNG")
         save_img(render(LOGO_PX, "circle", fill=FILL_CIRCLE, style=style, head_k=1.0),
                  os.path.join(dnd, "ic_logo.png"), format="PNG")
@@ -1839,7 +1853,7 @@ def do_export(style="cat"):
     bnd = os.path.join(tv, "drawable-nodpi")
     os.makedirs(bnd, exist_ok=True)
     # TV banner 前景使用 head_k=1.0 原版不放大；Banner 为横版，前景不做上移（lift=0）
-    save_img(render_cat_foreground(432, head_k=1.0, lift_frac=0.0),
+    save_img(render_cat_foreground(432, head_k=1.0, lift_frac=0.0, safe_ratio=1.0 / 3.0),
              os.path.join(bnd, "ic_banner_foreground.png"), format="PNG")
     badir = os.path.join(tv, "mipmap-anydpi-v26")
     os.makedirs(badir, exist_ok=True)
@@ -1889,7 +1903,7 @@ def do_write(style="3d"):
         # 自适应图标前景用完整彩色猫 PNG（透明底），而非白色矢量剪影
         # 自适应前景使用原版不放大猫头（head_k=1.0），与手机版 launcher 区分
         _remove_if_exists(f"{MAIN_RES}/drawable/ic_launcher_foreground.xml")
-        save_img(render_cat_foreground(432, head_k=1.0),
+        save_img(render_cat_foreground(432),
                  f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png", format="PNG")
         # monochrome 保持纯白矢量（Android 13 主题图标系统要求），原版不放大猫头
         save_text(vector_cat(), f"{MAIN_RES}/drawable/ic_launcher_monochrome.xml")
@@ -1916,7 +1930,7 @@ def do_write(style="3d"):
     if style == "cat":
         _remove_if_exists("app/src/leanback/res/drawable/ic_banner_foreground.xml")
         # TV banner 前景使用 head_k=1.0 原版不放大；横版 Banner 前景不上移（lift=0）
-        save_img(render_cat_foreground(432, head_k=1.0, lift_frac=0.0),
+        save_img(render_cat_foreground(432, head_k=1.0, lift_frac=0.0, safe_ratio=1.0 / 3.0),
                  "app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png", format="PNG")
     else:
         _remove_if_exists("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png")
@@ -2023,9 +2037,9 @@ def verify_icons(style="cat", verbose=True):
                      "visual", _verify_bg(base, "circle"))
     # 自适应 / banner 前景 PNG
     check_bitmap(f"{MAIN_RES}/drawable-nodpi/ic_launcher_foreground.png",
-                 render_cat_foreground(432, head_k=1.0), "rgba", None)
+                 render_cat_foreground(432), "rgba", None)
     check_bitmap("app/src/leanback/res/drawable-nodpi/ic_banner_foreground.png",
-                 render_cat_foreground(432, head_k=1.0, lift_frac=0.0), "rgba", None)
+                 render_cat_foreground(432, head_k=1.0, lift_frac=0.0, safe_ratio=1.0 / 3.0), "rgba", None)
     # TV banner、in-app logo、playstore
     check_bitmap("app/src/leanback/res/drawable/ic_banner.png", render_banner(320, 180, style), "rgba", None)
     check_bitmap(f"{MAIN_RES}/drawable-nodpi/ic_logo.png",
