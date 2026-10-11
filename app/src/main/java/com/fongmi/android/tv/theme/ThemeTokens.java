@@ -43,6 +43,13 @@ public record ThemeTokens(
         int colorShadow,
         int colorFocus,
         float focusScale,
+        /**
+         * 播放页（视频层）焦点环色。由 FOCUS 槽派生并在固定玻璃面板上做了 ≥4.5:1 的可读性夹取，
+         * 因为播放页控制条是叠在视频上的固定深靛玻璃：浅色表的 FOCUS 深蓝在它上面只有 1.83:1。
+         */
+        int colorPlayerFocusRing,
+        /** 播放页「当前播放/当前生效」环色。有独立的用户可编辑槽位（profile 的 playerCurrent）。 */
+        int colorPlayerCurrentRing,
         float dialogOpacity,
         int colorPlayerControl,
         int colorPlayerControlMuted,
@@ -98,6 +105,10 @@ public record ThemeTokens(
             0xFF000000,
             0xFF0B57D0,
             1.0f,
+            // 浅色表视频层环：FOCUS 深蓝在固定深靛玻璃上仅 1.83:1，
+            // 取 ThemeResolver 夹取到 ≥3:1 的派生值（与 values/webhtv_tokens.xml 同步）。
+            0xFF447BF5,
+            0xFF00A95A,
             1.0f,
             0xFFFFFFFF,
             0xCCFFFFFF,
@@ -152,8 +163,12 @@ public record ThemeTokens(
             0xFF0B57D0,
             0x8A000000,
             0xFF000000,
-            0xFFA8C7FA,
+            0xFFF5F7FF,
             1.1f,
+            // 深色表视频层环 = 应用表面焦点环（近白）：深玻璃/深色画面都可读，
+            // 因此播放页只有一种高亮色。浅色表仍为固定玻璃上的派生夹取值。
+            0xFFF5F7FF,
+            0xFF00A95A,
             1.0f,
             0xFFFFFFFF,
             0xCCFFFFFF,

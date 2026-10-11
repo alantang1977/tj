@@ -25,6 +25,20 @@ public class PlayerDisplaySettingSyncTest {
     }
 
     @Test
+    public void tvScreenDisplayDialogRowsUseTheThemeAwareContrastWiring() throws Exception {
+        for (String flavor : new String[]{"leanback", "mobile"}) {
+            String layout = read(sourcePath(flavor, "res").resolve(Path.of("layout", "adapter_player_osd.xml")));
+            String dialog = read(sourcePath(flavor, "java").resolve(Path.of("com", "fongmi", "android", "tv", "ui", "dialog", "PlayerOsdDialog.java")));
+            assertTrue(flavor + " 屏显行必须使用主题化行背景", layout.contains("@drawable/selector_player_settings_row"));
+            assertTrue(flavor + " 屏显眼睛按钮必须使用主题化按钮背景", layout.contains("@drawable/selector_player_settings_switch"));
+            assertTrue(flavor + " 屏显眼睛图标必须使用主题化前景", layout.contains("@color/player_settings_icon_tint"));
+            assertFalse(flavor + " 屏显行不得回退到固定浅色卡片", layout.contains("selector_git_cloud_card"));
+            assertTrue(flavor + " 屏显对话框必须应用活动主题行颜色", dialog.contains("PlayerSettingsRowTheme.apply(holder.binding.root, holder.binding.name"));
+            assertTrue(flavor + " 屏显对话框必须应用活动主题图标颜色", dialog.contains("PlayerSettingsRowTheme.applySwitch(holder.binding.visible"));
+        }
+    }
+
+    @Test
     public void playerOsdControllerHonorsResolutionDisplayToggle() throws Exception {
         String source = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "custom", "PlayerOsdController.java")));
         int method = source.indexOf("private void setTopLeft(PlayerManager player)");
@@ -61,6 +75,32 @@ public class PlayerDisplaySettingSyncTest {
                         && source.indexOf("if (persistentSuppressed)", render) > render
                         && source.indexOf("hidePersistent();", render) > render
                         && source.indexOf("setDiagnosticsPanel(player);", render) > render);
+    }
+
+    /**
+     * 诊断面板的重缓冲计数必须按「有没有 Exo analytics 快照」分派，而不是按是否 MPV。
+     *
+     * <p>非 Exo 时 {@code snapshot} 是 {@code Snapshot.empty()}，重缓冲恒为 0；若只对 MPV 分支，
+     * IJK 会落到快照分支而永远读到 0，排查时会被误导。
+     */
+    @Test
+    public void playerOsdDiagnosticsReadRebufferCountPerEngine() throws Exception {
+        String source = read(mainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "custom", "PlayerOsdController.java")));
+
+        int count = source.indexOf("int rebufferCount =");
+        int total = source.indexOf("long rebufferTotalMs =");
+        assertTrue("the diagnostics must compute a re-buffer count and total", count >= 0 && total > count);
+        String countExpr = source.substring(count, source.indexOf(';', count));
+        String totalExpr = source.substring(total, source.indexOf(';', total));
+
+        assertTrue("re-buffer count must read the engine-agnostic tracker for every non-Exo engine, not only MPV",
+                countExpr.contains("player.isExo()")
+                        && countExpr.contains("snapshot.rebufferCount()")
+                        && countExpr.contains("player.getRebufferCount()"));
+        assertTrue("re-buffer total must read the engine-agnostic tracker for every non-Exo engine, not only MPV",
+                totalExpr.contains("player.isExo()")
+                        && totalExpr.contains("snapshot.rebufferTotalMs()")
+                        && totalExpr.contains("player.getRebufferTotalMs()"));
     }
 
     @Test

@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    电视版「视频层」字幕工具栏圆形按钮的按下态。宽度与 shape_subtitle_focused.xml 同源
+    （@dimen/webhtv_focus_ring_width），保证焦点↔按下切换不改变描边尺寸、不引起布局跳动。
+    环色同为与调色板无关的白色，理由见 shape_subtitle_focused.xml。
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
 
     <solid android:color="@color/white_20" />
 
     <stroke
-        android:width="1.5dp"
-        android:color="@color/white" />
+        android:width="@dimen/webhtv_focus_ring_width"
+        android:color="?attr/tvPlayerRing" />
 
 </shape>

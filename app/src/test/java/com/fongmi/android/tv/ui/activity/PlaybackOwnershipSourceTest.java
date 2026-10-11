@@ -335,6 +335,57 @@ public class PlaybackOwnershipSourceTest {
                 mobile.contains("mPendingPlayerResult = null;"));
     }
 
+    /**
+     * 退出播放页必须确定性停播。
+     *
+     * <p>旧实现只在「服务在且本页是归属方」时 shutdown，其余情况交给控制器。控制器是异步连上的，
+     * 播放又由服务侧直接起播，于是控制器未就绪时整次停播是空操作；播放器处于 IDLE（取流中退出）时
+     * 会被会话里的 stop 直接忽略；这条路径也从不撤销前台通知。用户看到的就是
+     * 「退回详情页后还有声音、通知栏还显示播放中」。
+     */
+    @Test
+    public void exitingThePlayerPageAlwaysStopsThroughTheService() throws Exception {
+        String source = read(PLAYBACK);
+
+        int stop = source.indexOf("protected void stopPlayback()");
+        assertTrue("stopPlayback must exist", stop > 0);
+        int end = source.indexOf("\n    }", stop);
+        assertTrue("stopPlayback must be readable", end > stop);
+        String body = source.substring(stop, end);
+
+        assertTrue("the owner must still shut the service down", body.contains("mService.shutdown();"));
+        assertTrue("a non-owner exit must stop through the service as well",
+                body.contains("mService.suspend();"));
+        assertTrue("the controller may only remain as the no-service fallback",
+                body.indexOf("mController.stop();") > body.indexOf("if (mService == null)"));
+        assertFalse("the non-owner stop must not stay gated on an asynchronous controller",
+                body.contains("else if (mController != null)"));
+    }
+
+    /**
+     * 已经决定退出的播放页不能再起播。
+     *
+     * <p>自动换源、换线路、取流结果这些链路最终都回到 startPlayer；迟到的一次起播会在服务里正常
+     * 播放并挂上前台通知，而页面已经退出，没有人再停它。
+     */
+    @Test
+    public void anExitingPlayerPageNeverStartsPlaybackAgain() throws Exception {
+        String source = read(PLAYBACK);
+
+        int startPlayer = source.indexOf("protected void startPlayer(String key, Result result, boolean useParse, long timeout,");
+        assertTrue("the six-argument startPlayer must exist", startPlayer > 0);
+        int body = source.indexOf("MediaMetadata metadata, long startPositionMs) {", startPlayer);
+        assertTrue("the six-argument startPlayer body must be readable", body > startPlayer);
+        int route = source.indexOf("NovelRouter.isReaderUrl(result)", body);
+        assertTrue("the reader route must still be the first dispatch", route > body);
+
+        String guard = source.substring(body, route);
+        assertTrue("startPlayer must refuse to start once the page is exiting",
+                guard.contains("isPlaybackExiting()"));
+        assertTrue("startPlayer must refuse to start once the page is finishing or destroyed",
+                guard.contains("isFinishing()") && guard.contains("isDestroyed()"));
+    }
+
     private static int countOccurrences(String text, String needle) {
         int count = 0;
         int index = 0;

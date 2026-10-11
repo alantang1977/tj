@@ -9,12 +9,47 @@
         <item name="tvFocusRing">@color/tv_item_focus_ring</item>
         <item name="tvCurrentRing">@color/tv_item_current_ring</item>
         <item name="tvNormalStroke">@color/tv_item_normal_stroke</item>
+        <!--
+            播放页（视频层）环色。不能直接用 ?attr/tvFocusRing：浅色表 FOCUS 深蓝在固定深靛
+            玻璃上仅 1.83:1。这里绑的是派生值：浅色表为 ThemeResolver 夹取到 ≥3:1 的结果
+            （#447BF5），深色表直接与应用表面焦点环同值（近白）——深色表两类宿主的底色都是
+            深色，近白对它们都可读，于是播放页只剩一种高亮色（主题改 FOCUS / playerCurrent
+            槽时同步派生）。
+        -->
+        <item name="tvPlayerRing">@color/tv_player_focus_ring</item>
+        <item name="tvPlayerCurrentRing">@color/tv_player_current_ring</item>
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.WebHTV.Dialog</item>
         <item name="android:windowBackground">?attr/colorSurface</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowTranslucentStatus">true</item>
         <item name="android:windowTranslucentNavigation">true</item>
         <item name="android:windowAnimationStyle">@style/NoAnim</item>
+    </style>
+
+    <!--
+        固定深色玻璃宿主（面板 = shape_quick_search_dialog，#E62F315E→#CC303463，两张表里
+        都是深色，见 ThemeBaseWiringTest 的 DARK_GLASS_SHEETS）的芯片环色覆盖层。
+
+        dialog_episode_list / dialog_quick_search 复用播放页那批芯片布局
+        （adapter_flag / adapter_array / adapter_episode / adapter_quick → selector_video_item）。
+        该 selector 的默认族是「应用表面」(?attr/tvFocusRing = 调色板 FOCUS 槽)，画在这块
+        深玻璃上只有 1.83:1（浅色表），焦点环会看不见。本覆盖层在**该对话框子树内**把
+        tvFocusRing / tvCurrentRing 重新绑到视频层派生色，使同一份芯片布局在两类宿主上
+        各自拿到可读的环色：
+
+          - 页面内容区（壁纸/磨砂底，调色板表面）→ 调色板 FOCUS 槽（默认族）
+          - 固定深色玻璃对话框 → 视频层派生色（本覆盖层）
+
+        实现方式：宿主布局根上写 android:theme，子视图（含 RecyclerView 的 item）
+        由带本覆盖层的 Context 填充，因此 ?attr 在该子树内解析成玻璃可读色，
+        而无需给共享的芯片布局再复制一份 drawable。
+
+        parent="" 是刻意留的：ContextThemeWrapper 会把本 style 叠加在既有主题之上，
+        只覆盖这两项，其余属性仍从 Theme.Base / Theme.WebHTV 继承。
+    -->
+    <style name="ThemeOverlay.WebHTV.GlassFocusRings" parent="">
+        <item name="tvFocusRing">@color/tv_player_focus_ring</item>
+        <item name="tvCurrentRing">@color/tv_player_current_ring</item>
     </style>
 
     <style name="Theme.Splash" parent="Theme.Base">

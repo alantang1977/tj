@@ -102,9 +102,74 @@ public class ThemeContractTest {
                 + "reading them crashes during inflation: " + unassigned, unassigned.isEmpty());
     }
 
+    /**
+     * 与 {@link #everyReferencedSemanticAttrIsAssignedByATheme} 同一类陷阱，但针对 {@code tv*} 焦点语义属性。
+     *
+     * <p>用户报告（2026-10-10）：「现在选中播放器看不出选中的效果，好像是黑色的边框」。
+     * 根因：{@code selector_control_sheet_button} 的焦点环从写死半透明白改成了
+     * {@code ?attr/tvPlayerRing}，而 {@code Theme.WebHTV.Dialog}（父主题
+     * {@code Theme.Material3.DayNight.Dialog.Alert}）与 BottomSheet 用的 Material 默认
+     * {@code bottomSheetDialogTheme} 都**不继承** {@code Theme.WebHTV}。
+     * 属性解析不到时，{@code ?attr/xxx} 会静默退化为黑色/透明，而且**不会崩溃**，
+     * 所以这种回归只有人眼才能发现。
+     *
+     * <p>本测试把「每个被引用的 {@code tv*} 属性必须被至少一个主题 style 赋值」钉死，
+     * 并额外要求基底主题 {@code Theme.WebHTV} 自带全部五项——因为对话框主题的父主题链
+     * 绕开了 flavour 的 {@code Theme.Base}，只有在基底上绑定才能覆盖所有入口。
+     */
+    @Test
+    public void everyReferencedTvFocusAttrIsAssignedByATheme() throws Exception {
+        Pattern reference = Pattern.compile("\\?attr/(tv[A-Za-z0-9_]+)");
+        java.util.Set<String> referenced = new java.util.TreeSet<>();
+        for (String sourceSet : new String[]{"main", "mobile", "leanback"}) {
+            Path base = Path.of("src/" + sourceSet + "/res");
+            if (!Files.exists(base)) continue;
+            try (java.util.stream.Stream<Path> paths = Files.walk(base)) {
+                for (Path path : paths.filter(p -> p.toString().endsWith(".xml")).toList()) {
+                    Matcher matcher = reference.matcher(Files.readString(path, StandardCharsets.UTF_8));
+                    while (matcher.find()) referenced.add(matcher.group(1));
+                }
+            }
+        }
+        assertFalse("必须真的扫到 tv* 属性引用，否则本测试是空断言", referenced.isEmpty());
+
+        // 赋值来源：全部 values 目录（含 values-night / 各 flavour 的 styles）。
+        StringBuilder assigned = new StringBuilder();
+        for (String sourceSet : new String[]{"main", "mobile", "leanback"}) {
+            Path values = Path.of("src/" + sourceSet + "/res/values");
+            if (!Files.exists(values)) continue;
+            try (java.util.stream.Stream<Path> paths = Files.walk(values)) {
+                for (Path path : paths.filter(p -> p.toString().endsWith(".xml")).toList()) {
+                    assigned.append(Files.readString(path, StandardCharsets.UTF_8));
+                }
+            }
+        }
+        String themes = assigned.toString();
+        java.util.List<String> unassigned = new java.util.ArrayList<>();
+        for (String attr : referenced) {
+            if (!themes.contains("name=\"" + attr + "\">")) unassigned.add(attr);
+        }
+        assertTrue("these tv* focus attrs are referenced but no theme assigns them, so ?attr/xxx "
+                + "silently degrades to black/transparent (measured defect): " + unassigned,
+                unassigned.isEmpty());
+
+        // 基底主题必须自带全部五项，覆盖那些父主题链绕开 Theme.Base 的对话框。
+        String base = Files.readString(Path.of("src/main/res/values/webhtv_styles.xml"), StandardCharsets.UTF_8);
+        Matcher baseTheme = Pattern.compile(
+                "<style name=\"Theme.WebHTV\"[^>]*>(.*?)\\n    </style>", Pattern.DOTALL).matcher(base);
+        assertTrue("必须能读到 Theme.WebHTV 定义", baseTheme.find());
+        String baseBody = baseTheme.group(1);
+        for (String attr : new String[]{"tvFocusRing", "tvCurrentRing", "tvNormalStroke",
+                "tvPlayerRing", "tvPlayerCurrentRing"}) {
+            assertTrue("Theme.WebHTV 必须绑定 " + attr
+                    + "（对话框/BottomSheet 的父主题链不经过 Theme.Base，未绑定会静默退化）",
+                    baseBody.contains("name=\"" + attr + "\">"));
+        }
+    }
+
     private static void assertResourceMapping(ThemeTokens tokens, Path path) throws Exception {
         Map<String, Integer> colors = colors(path);
-        assertEquals(49, colors.size());
+        assertEquals(51, colors.size());
         for (RecordComponent component : ThemeTokens.class.getRecordComponents()) {
             if (!component.getType().equals(int.class)) continue;
             String name = component.getName();

@@ -158,6 +158,49 @@ public class VideoActivityLayoutTest {
     }
 
     @Test
+    public void mobileVodControlOverlayShowsBatteryIconLikeFusionMode() throws Exception {
+        // 影视原生/详情直放模式播放器要像沉浸融合内联播放器一样显示「电池电量 + 当前时间」。
+        // 锁定四件事：布局里有 @+id/batteryInfo 竖排容器（含 battery 图标与 batteryTime 文本）、
+        // 可见性只由全屏/锁定/播放状态决定、图标档位与时间格式复用沉浸融合同一套工具
+        // （BatteryUtil / Formatters.TIME，不另造一份映射）。
+        Path controlLayout = findMobileResPath().resolve(Path.of("layout", "view_control_vod.xml"));
+        Set<String> ids = collectAndroidIds(controlLayout.toFile());
+        for (String requiredId : List.of("batteryInfo", "battery", "batteryTime")) {
+            assertTrue(controlLayout + " is missing @+id/" + requiredId, ids.contains(requiredId));
+        }
+        // 时间文本必须嵌在 batteryInfo 容器里（融合模式是同构的竖排块，不是两个并列控件）。
+        assertTrue("the clock text must live inside the batteryInfo container",
+                hasAncestorAndroidId(findAndroidId(controlLayout.toFile(), "batteryTime"), "batteryInfo"));
+        assertTrue("the battery icon must live inside the batteryInfo container",
+                hasAncestorAndroidId(findAndroidId(controlLayout.toFile(), "battery"), "batteryInfo"));
+        // view_widget_vod 已有 @id/time 且与 view_control_vod 同处 activity_video 视图树；
+        // 重名会让 ViewBinding 按 id 查找时命错控件。这里锁定本布局不得再引入 time。
+        assertFalse("view_control_vod must not redeclare @id/time (view_widget_vod already owns it)",
+                ids.contains("time"));
+
+        Path sourcePath = findMobileJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        int visibility = source.indexOf("mBinding.control.batteryInfo.setVisibility(");
+        assertTrue("missing battery visibility wiring in " + sourcePath, visibility >= 0);
+        String statement = source.substring(visibility, source.indexOf(';', visibility));
+        assertTrue("battery block must show only in fullscreen: " + statement,
+                statement.contains("isFullscreen()") && statement.contains("!isLock()") && statement.contains("mHistory != null"));
+        assertFalse("battery is an overlay icon, it must not follow PlayerButtonSetting: " + statement,
+                statement.contains("PlayerButtonSetting"));
+
+        String helper = methodBody(source, "private void updateBatteryInfo()", "private void setOrient()");
+        assertTrue("battery icon must reuse BatteryUtil level/icon mapping",
+                helper.contains("BatteryUtil.getLevel(this)") && helper.contains("BatteryUtil.getIcon(level)"));
+        assertTrue("the clock text must reuse the shared time formatter like fusion mode does",
+                helper.contains("LocalDateTime.now().format(Formatters.TIME)"));
+        assertTrue("an unreadable battery level must hide the whole block instead of showing a wrong bucket",
+                helper.contains("level < 0") && helper.contains("View.GONE"));
+        assertTrue("the clock tick must refresh the battery/time block while the control bar is up",
+                methodBody(source, "public void onTimeChanged(long time)", "private void updatePlaybackHistoryPosition()")
+                        .contains("updateBatteryInfo()"));
+    }
+
+    @Test
     public void mobileVodControlOverlayRoutesBlankTouchesToGestureDetector() throws Exception {
         Path sourcePath = findMobileJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "ui", "activity", "VideoActivity.java"));
         String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
@@ -1324,6 +1367,15 @@ public class VideoActivityLayoutTest {
                         && request.contains("mPlaybackPlayerStarted = false;"));
         assertTrue("the new player session must be marked started before startPlayer can synchronously emit READY",
                 markStarted >= 0 && startPlayer > markStarted);
+        // 取流请求被作废时 ViewModel 会向 PLAYER LiveData 写入 null（cancelPlayerContent）：那次回调
+        // 不会再有任何结果，守卫必须在这里释放，否则两条清除路径同样被永久挡下。
+        int nullResultReturn = setPlayer.indexOf("if (result == null)");
+        assertTrue("the null-result branch must exist", nullResultReturn >= 0);
+        String nullResultBranch = setPlayer.substring(nullResultReturn, setPlayer.indexOf("if (isFinishing()", nullResultReturn));
+        assertTrue("an invalidated request has no later result callback, so it must clear the guard itself",
+                nullResultBranch.contains("mPlaybackRequestActive = false;")
+                        && nullResultBranch.contains("mPlaybackPlayerStarted = false;")
+                        && nullResultBranch.contains("return;"));
         assertTrue("a stale READY callback must not hide the new episode loading spinner before startPlayer",
                 state.contains("if (mPlaybackRequestActive && !mPlaybackPlayerStarted) break;")
                         && state.indexOf("mPlaybackRequestActive = false;") > state.indexOf("if (mPlaybackRequestActive && !mPlaybackPlayerStarted) break;"));
@@ -1331,6 +1383,15 @@ public class VideoActivityLayoutTest {
                 error.contains("mPlaybackRequestActive = false;")
                         && error.contains("mPlaybackPlayerStarted = false;")
                         && error.contains("showError(msg);"));
+        // 未绑定详情就丢弃结果的分支同样必须释放守卫：本次不会走 startPlayer，没有新的 READY 回调，
+        // 守卫留下就等于「画面在动、圈不走」——与下面「同一结果已在播」分支同源。
+        int notReadyReturn = setPlayer.indexOf("if (!canApplyPlayerResult())");
+        assertTrue("the drop-before-detail-ready early return must exist", notReadyReturn >= 0);
+        String notReadyBranch = setPlayer.substring(notReadyReturn, setPlayer.indexOf("if (result == mAppliedPlayerResult", notReadyReturn));
+        assertTrue("a dropped result before detail binding has no later READY callback, so it must clear the guard itself",
+                notReadyBranch.contains("mPlaybackRequestActive = false;")
+                        && notReadyBranch.contains("mPlaybackPlayerStarted = false;")
+                        && notReadyBranch.contains("return;"));
         // 早退分支同样必须释放守卫：同一结果已在播时不会再走 startPlayer，没有新的 READY 回调，
         // 守卫留下就等于「画面在动、圈不走」——两个清除点都被它自己挡下。
         int duplicateResultReturn = setPlayer.indexOf("if (result == mAppliedPlayerResult && !player().isEmpty())");
@@ -1499,8 +1560,12 @@ public class VideoActivityLayoutTest {
                 && source.contains("mArrayAdapter.setSelectedPosition(position);")
                 && arrayAdapter.contains("setActivated(position == selectedPosition)")
                 && segmentSelector.contains("android:state_activated=\"true\"")
-                // 当前生效态的颜色已从主题 colorPrimary 收敛到统一语义 token，
-                // 取值集中在 app/src/main/res/values/colors.xml。
+                // 当前生效态的颜色收敛到**应用表面**统一语义 token：
+                // 2026-10-10 第三轮曾改为 ?attr/tvPlayerCurrentRing（当芯片当视频层宿主）；
+                // 2026-10-11 经实机复核修正宿主分层——分段落芯片叠在页面内容区（@+id/scroll）
+                // 而不是视频/固定玻璃上，所以回到 ?attr/tvCurrentRing，
+                // 与选集卡片（selector_episode_card）同一族；固定玻璃对话框由
+                // ThemeOverlay.WebHTV.GlassFocusRings 在子树内重绑回视频层派生色。
                 && segmentSelector.contains("android:color=\"?attr/tvCurrentRing\""));
     }
 
@@ -3286,7 +3351,7 @@ public class VideoActivityLayoutTest {
                 styleBody.contains("icon.setColorFilter(colors.secondary)"));
         assertTrue("focused direct detail external links must use the shared theme focus stroke",
                 styleBody.contains("boolean focused = row.hasFocus();")
-                        && styleBody.contains("background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP), focused ? focusStroke() : colors.line);"));
+                        && styleBody.contains("background.setStroke(focused ? focusRingWidthPx() : ResUtil.dp2px(CHIP_STROKE_DP), focused ? focusStroke() : colors.line);"));
     }
 
     @Test

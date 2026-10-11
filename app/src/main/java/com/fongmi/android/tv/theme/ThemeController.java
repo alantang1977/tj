@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.utils.Util;
 
 /** Read-only application entry point for future theme adoption. */
 public final class ThemeController {
@@ -37,14 +38,25 @@ public final class ThemeController {
     /**
      * Keeps AppCompat's DayNight configuration aligned with the persisted
      * appearance mode so the whole activity tree (mobile and leanback) shares
-     * one resolution order: explicit mode > system > product default.
+     * one resolution order: explicit mode > product default > system.
+     *
+     * <p>TV 的产品默认是**深色**（与上游一致，上游 TV 主题直接继承
+     * {@code Theme.Material3.Dark}）。理由与上游相同：电视多在暗环境观看，
+     * 浅色大面积亮底在夜间刺眼；而 TV 常见的深色底上，上游那套白色焦点环
+     * （18.5:1）才能成立（白环对浅色表 surface 只有 1.05:1，等于看不见）。
+     *
+     * <p>“跟随系统”对 TV 不再等于“跟随一个通常恒为浅色的系统默认”，否则电视上
+     * 会默认落到浅色表。用户仍可在外观设置里显式选择浅色/深色。
+     * mobile 保持既有的“跟随系统”语义不变。
      */
     public static void applyNightModeToApp() {
         int mode = com.fongmi.android.tv.setting.Setting.getThemeMode();
         int delegate = switch (mode) {
             case 0 -> AppCompatDelegate.MODE_NIGHT_NO;
             case 1 -> AppCompatDelegate.MODE_NIGHT_YES;
-            default -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
+            default -> Util.isLeanback()
+                    ? AppCompatDelegate.MODE_NIGHT_YES
+                    : AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
         };
         if (AppCompatDelegate.getDefaultNightMode() != delegate) {
             AppCompatDelegate.setDefaultNightMode(delegate);

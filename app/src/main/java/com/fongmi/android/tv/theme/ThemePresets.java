@@ -104,6 +104,8 @@ public final class ThemePresets {
             slots.onSurfaceVariant = hex(Hct.from(hue, neutralChroma / 2, dark ? 80 : 32).toInt());
             slots.outline = hex(Hct.from(hue, neutralChroma, dark ? 62 : 48).toInt());
             slots.success = semantic(success, dark);
+            // 播放页「当前播放」环色：默认沿用成功色的语义绿，但保持独立槽位可单独编辑。
+            slots.playerCurrent = slots.success;
             slots.warning = semantic(warning, dark);
             slots.error = semantic(0xFFBA1A1A, dark);
             return slots;

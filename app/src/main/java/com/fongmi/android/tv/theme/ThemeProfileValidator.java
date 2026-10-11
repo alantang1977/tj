@@ -56,6 +56,7 @@ public final class ThemeProfileValidator {
         slots.primaryContainer = color(slots.primaryContainer, errors, path + ".primaryContainer");
         slots.secondaryContainer = color(slots.secondaryContainer, errors, path + ".secondaryContainer");
         slots.focus = color(slots.focus, errors, path + ".focus");
+        slots.playerCurrent = color(slots.playerCurrent, errors, path + ".playerCurrent");
         slots.surface = color(slots.surface, errors, path + ".surface");
         slots.surfaceContainer = color(slots.surfaceContainer, errors, path + ".surfaceContainer");
         slots.surfaceContainerHigh = color(slots.surfaceContainerHigh, errors, path + ".surfaceContainerHigh");

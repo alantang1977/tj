@@ -935,6 +935,7 @@
     <string name="theme_editor_slot_primary_container">Primary container</string>
     <string name="theme_editor_slot_secondary_container">Secondary container</string>
     <string name="theme_editor_slot_focus">Focus</string>
+    <string name="theme_editor_slot_player_current">Playing ring</string>
     <string name="theme_editor_slot_surface">Surface</string>
     <string name="theme_editor_slot_surface_container">Card surface</string>
     <string name="theme_editor_slot_surface_container_high">Dialog surface</string>
@@ -974,6 +975,7 @@
     <string name="theme_editor_group_surfaces">Backgrounds &amp; surfaces</string>
     <string name="theme_editor_group_text">Text &amp; outlines</string>
     <string name="theme_editor_group_states">Status colors</string>
+    <string name="theme_editor_group_player">Player</string>
     <string name="theme_editor_group_layers">Opacity &amp; overlays</string>
     <string name="theme_import_title">Import palette</string>
     <string name="theme_import_input_hint">Paste TweakCN JSON or an HTTPS JSON link</string>

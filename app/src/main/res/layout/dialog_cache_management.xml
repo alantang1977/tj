@@ -62,10 +62,11 @@
                 style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="wrap_content"
                 android:layout_height="52dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="52dp"
                 android:nextFocusDown="@id/cleanupLight"
-                android:text="@string/cache_auto_button" />
+                android:text="@string/cache_auto_button"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/retention"
@@ -73,10 +74,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="52dp"
                 android:layout_marginStart="14dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="52dp"
                 android:nextFocusDown="@id/cleanupStandard"
-                android:text="@string/cache_retention_button" />
+                android:text="@string/cache_retention_button"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/totalLimit"
@@ -84,10 +86,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="52dp"
                 android:layout_marginStart="14dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="52dp"
                 android:nextFocusDown="@id/cleanupDeep"
-                android:text="@string/cache_total_limit_button" />
+                android:text="@string/cache_total_limit_button"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
         </androidx.appcompat.widget.LinearLayoutCompat>
 
         <androidx.appcompat.widget.LinearLayoutCompat
@@ -102,11 +105,12 @@
                 style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="wrap_content"
                 android:layout_height="52dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="52dp"
                 android:nextFocusDown="@id/refresh"
                 android:nextFocusUp="@id/autoCleanup"
-                android:text="@string/cache_cleanup_light" />
+                android:text="@string/cache_cleanup_light"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/cleanupStandard"
@@ -114,11 +118,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="52dp"
                 android:layout_marginStart="14dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="52dp"
                 android:nextFocusDown="@id/refresh"
                 android:nextFocusUp="@id/retention"
-                android:text="@string/cache_cleanup_standard" />
+                android:text="@string/cache_cleanup_standard"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/cleanupDeep"
@@ -126,11 +131,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="52dp"
                 android:layout_marginStart="14dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="52dp"
                 android:nextFocusDown="@id/close"
                 android:nextFocusUp="@id/totalLimit"
-                android:text="@string/cache_cleanup_deep" />
+                android:text="@string/cache_cleanup_deep"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
         </androidx.appcompat.widget.LinearLayoutCompat>
 
         <androidx.appcompat.widget.LinearLayoutCompat
@@ -145,22 +151,24 @@
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="56dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:nextFocusRight="@id/refresh"
                 android:nextFocusUp="@id/cleanupStandard"
                 android:text="@string/cache_cleanup_cancel"
-                android:visibility="gone" />
+                android:visibility="gone"
+                app:strokeColor="@color/focus_ring_primary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/refresh"
                 style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="wrap_content"
                 android:layout_height="56dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:nextFocusLeft="@id/cancel"
                 android:nextFocusRight="@id/close"
                 android:nextFocusUp="@id/cleanupStandard"
-                android:text="@string/cache_management_refresh" />
+                android:text="@string/cache_management_refresh"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/close"
@@ -168,10 +176,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="56dp"
                 android:layout_marginStart="14dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:nextFocusLeft="@id/refresh"
                 android:nextFocusUp="@id/cleanupDeep"
-                android:text="@string/dialog_positive" />
+                android:text="@string/dialog_positive"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
         </androidx.appcompat.widget.LinearLayoutCompat>
     </androidx.appcompat.widget.LinearLayoutCompat>
 </androidx.core.widget.NestedScrollView>

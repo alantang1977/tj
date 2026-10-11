@@ -51,6 +51,17 @@
     <color name="tv_item_current_ring">#2CC56F</color>
     <color name="tv_item_normal_stroke">#33FFFFFF</color>
     <!--
+        播放页（视频层）环色 = 叠在固定深色玻璃/视频上的控件（播控条、解析线路芯片、
+        字幕环、画面框）的高亮色。浅色表不能照搬调色板色：浅色 FOCUS 深蓝 #0B57D0
+        在固定深靛玻璃上只有 1.83:1（dev1 实机实测），所以浅色表取 ThemeResolver 在
+        固定玻璃背景上夹取到 ≥3:1（WCAG 2.2 SC 1.4.11 非文本门槛）后的派生值 #447BF5。
+        深色表不需要这层夹取，直接取与应用表面焦点环一致的近白：否则同一页会同时出现
+        「应用表面近白 + 视频层灰蓝」两种高亮（用户报告 2026-10-11）。主题改 FOCUS /
+        playerCurrent 槽时这两项跟着派生。
+    -->
+    <color name="tv_player_focus_ring">@color/webhtv_color_player_focus_ring</color>
+    <color name="tv_player_current_ring">@color/webhtv_color_player_current_ring</color>
+    <!--
         自带主题色填充的控件（关于弹窗按钮、齿轮、追更页按钮组）获得焦点时的边框环色。
         环色取控件**焦点态实际填充色**的配对 on-色，由主题解析器保证两者对比度，因此换任何
         主题都仍然可见；“焦点色 == 填充色”那类看不见焦点的写法从此不再需要。

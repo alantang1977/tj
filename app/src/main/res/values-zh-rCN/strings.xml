@@ -932,6 +932,7 @@
     <string name="theme_editor_slot_primary_container">主色容器</string>
     <string name="theme_editor_slot_secondary_container">次色容器</string>
     <string name="theme_editor_slot_focus">焦点色</string>
+    <string name="theme_editor_slot_player_current">播放中环色</string>
     <string name="theme_editor_slot_surface">表面色</string>
     <string name="theme_editor_slot_surface_container">卡片表面色</string>
     <string name="theme_editor_slot_surface_container_high">对话框表面色</string>
@@ -971,6 +972,7 @@
     <string name="theme_editor_group_surfaces">背景与表面</string>
     <string name="theme_editor_group_text">文字与轮廓</string>
     <string name="theme_editor_group_states">状态提示</string>
+    <string name="theme_editor_group_player">播放器</string>
     <string name="theme_editor_group_layers">透明度与浮层</string>
     <string name="theme_import_title">导入配色</string>
     <string name="theme_import_input_hint">粘贴 TweakCN JSON 或 HTTPS JSON 链接</string>

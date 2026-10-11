@@ -537,8 +537,7 @@ public class CacheManagementDialog extends DialogFragment {
         button.setMinWidth(ResUtil.dp2px(96));
         button.setMinimumHeight(ResUtil.dp2px(44));
         button.setTextSize(14);
-        button.setForeground(androidx.core.content.ContextCompat.getDrawable(requireContext(),
-                R.drawable.selector_cache_button_focus));
+        applyFocusRing(button, R.color.focus_ring_primary);
         button.setText(R.string.cache_limit_button);
         button.setEnabled(supportsLimit(id));
         if (supportsLimit(id)) {
@@ -574,6 +573,26 @@ public class CacheManagementDialog extends DialogFragment {
                 });
     }
 
+    /**
+     * 焦点环走 MaterialButton 自带的描边通道，而不是 foreground `<shape>`。
+     *
+     * <p>原因（2026-10-10 实测）：按钮的圆角由 {@code ShapeAppearance.M3.Comp.Button.Small.
+     * Container.Shape.Round} → {@code Corner.Full} 决定，是 <b>50%</b>（52dp 高按钮 = 26dp 胶囊），
+     * 而 foreground 环写的是固定 dp，两者在几何上无法对齐：实测 foreground 环的外边界
+     * （声明 28dp + w/2）画在按钮 padding 盒（72/30/72/30）上，而按钮填充又被 4dp inset，
+     * 圆角与盒位都不一致。改用 {@code app:strokeColor}/{@code app:strokeWidth} 后，Material
+     * 用同一个 {@code ShapeAppearanceModel} 同时画填充与描边，几何天然一致。
+     *
+     * <p>环色按仓库既有规则取「焦点态实际填充色的配对 on-色」：tonal（secondaryContainer）
+     * 用 {@code focus_ring_secondary}，outlined/text（无容器填充）用 {@code focus_ring_primary}。
+     * 两者都由主题解析器从用户 seed 生成并做过对比度校验（浅色表 primary 对 secondaryContainer
+     * 4.91:1、on_secondary_container 对 secondaryContainer 13.18:1；夜间表 5.44:1 / 7.24:1）。
+     */
+    private void applyFocusRing(MaterialButton button, int strokeColorRes) {
+        button.setStrokeColor(androidx.core.content.ContextCompat.getColorStateList(requireContext(), strokeColorRes));
+        button.setStrokeWidth(requireContext().getResources().getDimensionPixelSize(R.dimen.webhtv_focus_ring_width));
+    }
+
     private MaterialButton moduleButton(CacheModuleId id) {
         MaterialButton button = new MaterialButton(requireContext(), null,
                 com.google.android.material.R.attr.materialButtonTonalStyle);
@@ -581,8 +600,7 @@ public class CacheManagementDialog extends DialogFragment {
         button.setMinWidth(ResUtil.dp2px(112));
         button.setMinimumHeight(ResUtil.dp2px(44));
         button.setTextSize(14);
-        button.setForeground(androidx.core.content.ContextCompat.getDrawable(requireContext(),
-                R.drawable.selector_cache_button_focus));
+        applyFocusRing(button, R.color.focus_ring_secondary);
         // Read the restriction from the registry instead of hardcoding one module: an entry that
         // declares allowManualCleanup=false must not be offered as directly cleanable.
         boolean restricted = !CachePolicyEngine.manualCleanupAllowed(id, requireContext().getCacheDir());

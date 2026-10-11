@@ -57,6 +57,16 @@
         <item name="android:navigationBarColor">@color/webhtv_color_surface</item>
         <item name="android:statusBarColor">@color/webhtv_color_surface</item>
         <item name="materialAlertDialogTheme">@style/ThemeOverlay.WebHTV.Dialog</item>
+        <!--
+            TV 焦点语义属性必须在基底主题上就绑定：BottomSheet 用的是 Material 的
+            bottomSheetDialogTheme，Alert 对话框用的是 Theme.Material3.DayNight.Dialog.Alert，
+            两者都不继承本主题。属性解析不到时 ?attr/tvPlayerRing 会静默退化成黑色/透明。
+        -->
+        <item name="tvFocusRing">@color/tv_item_focus_ring</item>
+        <item name="tvCurrentRing">@color/tv_item_current_ring</item>
+        <item name="tvNormalStroke">@color/tv_item_normal_stroke</item>
+        <item name="tvPlayerRing">@color/tv_player_focus_ring</item>
+        <item name="tvPlayerCurrentRing">@color/tv_player_current_ring</item>
     </style>
 
     <style name="Theme.WebHTV.Mobile" parent="Theme.WebHTV" />
@@ -96,6 +106,18 @@
         <item name="colorOutlineVariant">@color/webhtv_color_outline_variant</item>
         <item name="colorControlNormal">@color/webhtv_color_on_surface_variant</item>
         <item name="colorControlActivated">@color/webhtv_color_primary</item>
+        <!--
+            对话框主题必须自带 tv* 焦点语义属性。
+            它们原本只在 Theme.Base（= Theme.App）里绑定，而 Theme.WebHTV.Dialog 的父主题是
+            Theme.Material3.DayNight.Dialog.Alert、BottomSheet 的父主题是 Material 默认 overlay，
+            都不继承 Theme.WebHTV。属性解析不到时 ?attr/tvPlayerRing 会静默退化为黑色/透明，
+            用户报告「选中播放器看不出效果，好像是黑色的边框」就是这么来的（实机 + Robolectric 均复现）。
+        -->
+        <item name="tvFocusRing">@color/tv_item_focus_ring</item>
+        <item name="tvCurrentRing">@color/tv_item_current_ring</item>
+        <item name="tvNormalStroke">@color/tv_item_normal_stroke</item>
+        <item name="tvPlayerRing">@color/tv_player_focus_ring</item>
+        <item name="tvPlayerCurrentRing">@color/tv_player_current_ring</item>
     </style>
 
     <style name="ThemeOverlay.WebHTV.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
@@ -124,6 +146,12 @@
         <item name="android:textColorHint">@color/webhtv_color_on_surface_variant</item>
         <item name="android:textCursorDrawable">@drawable/shape_cursor_dialog</item>
         <item name="alertDialogStyle">@style/MaterialAlertDialog.WebHTV.Rounded</item>
+        <!-- 同上：overlay 也要能解析 tv* 焦点语义属性。 -->
+        <item name="tvFocusRing">@color/tv_item_focus_ring</item>
+        <item name="tvCurrentRing">@color/tv_item_current_ring</item>
+        <item name="tvNormalStroke">@color/tv_item_normal_stroke</item>
+        <item name="tvPlayerRing">@color/tv_player_focus_ring</item>
+        <item name="tvPlayerCurrentRing">@color/tv_player_current_ring</item>
     </style>
 
     <style name="Widget.WebHTV.Label">

@@ -144,12 +144,25 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         finish();
     }
 
+    /**
+     * 退出播放页时的确定性停播。
+     *
+     * <p>归属令牌（{@link #activePlaybackKey()}）在一次会话里可能失配：换集、onNewIntent 换条目，
+     * 或 TMDB 富集改写 intent 的 id 之后 {@link #isOwner()} 会落到 false。旧实现此时退化成
+     * {@code mController.stop()}，而控制器是异步连上的、播放又是由服务侧直接起播的，于是留下两个
+     * 漏播窗口：控制器还没连上时整次调用是空操作；播放器处于 IDLE（取流中退出）时会被会话里的
+     * stop 直接忽略。两者都不撤销前台通知，用户看到的就是「退回详情页后还有声音、通知栏还显示播放中」。
+     *
+     * <p>所以只要服务还在，退出就必须由服务自己停播：归属方关停服务，非归属方也让服务停播并撤掉
+     * 前台通知，避免退出被迟到的会话状态吞掉。控制器只保留为「服务不可用」时的兜底。
+     */
     protected void stopPlayback() {
-        if (mService != null && isOwner()) {
-            mService.shutdown();
-        } else if (mController != null) {
-            mController.stop();
+        if (mService == null) {
+            if (mController != null) mController.stop();
+            return;
         }
+        if (isOwner()) mService.shutdown();
+        else mService.suspend();
     }
 
     protected void updateNavigationKey() {
@@ -489,6 +502,13 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
 
     protected void startPlayer(String key, Result result, boolean useParse, long timeout,
                                MediaMetadata metadata, long startPositionMs) {
+        // 已经决定退出的播放页不能再起播。自动换源、换线路、取流结果这些链路最终都回到这里，
+        // 迟到的一次起播会在服务里正常播放并挂上前台通知，而页面已经退出，没有人再停它——
+        // 用户看到的就是「退回详情页后还有声音、通知栏还显示播放中」。
+        if (isPlaybackExiting() || isFinishing() || isDestroyed()) {
+            if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-flow", "startPlayer skipped exiting=%s finishing=%s destroyed=%s key=%s", isPlaybackExiting(), isFinishing(), isDestroyed(), key);
+            return;
+        }
         // 小说/漫画阅读器路由（播放内核前的最后一道拦截）
         // novel:// / pics:// / manga:// 是「阅读内容协议」而非播放地址。
         // 正常情况下 ContentDispatcher 已在更早的汇聚点分流；这里兜底处理漏网的解析结果。

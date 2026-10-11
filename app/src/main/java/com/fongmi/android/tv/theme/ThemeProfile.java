@@ -82,6 +82,11 @@ public final class ThemeProfile {
         public String primaryContainer;
         public String secondaryContainer;
         public String focus;
+        /**
+         * 播放页「当前播放/当前生效」环色。与 focus 分开，因为这两个状态在播放页同时存在、
+         * 必须可区分；取值会在播放页固定玻璃面板上做可读性夹取（ThemeResolver）。
+         */
+        public String playerCurrent;
         public String surface;
         public String surfaceContainer;
         public String surfaceContainerHigh;
@@ -101,6 +106,7 @@ public final class ThemeProfile {
             copy.primaryContainer = primaryContainer;
             copy.secondaryContainer = secondaryContainer;
             copy.focus = focus;
+            copy.playerCurrent = playerCurrent;
             copy.surface = surface;
             copy.surfaceContainer = surfaceContainer;
             copy.surfaceContainerHigh = surfaceContainerHigh;

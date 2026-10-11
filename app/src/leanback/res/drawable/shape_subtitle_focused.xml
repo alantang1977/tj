@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    电视版「视频层」字幕工具栏圆形按钮的焦点环（dialog_subtitle 的放大/缩小/上移/下移/重置/搜索）。
+
+    只统一宽度：@dimen/webhtv_focus_ring_width（此前是 1.5dp）。环色保持与调色板无关的
+    白色：该工具栏叠在视频画面上（宿主 shape_dialog_glass_toolbar 是固定深色玻璃），
+    浅色表的 FOCUS 槽（深蓝）在此没有可用对比度。见 shape_chip_focused.xml 的同一判据。
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
 
     <stroke
-        android:width="1.5dp"
-        android:color="@color/white" />
+        android:width="@dimen/webhtv_focus_ring_width"
+        android:color="?attr/tvPlayerRing" />
 
 </shape>

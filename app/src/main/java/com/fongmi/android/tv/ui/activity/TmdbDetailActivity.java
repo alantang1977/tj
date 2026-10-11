@@ -280,7 +280,6 @@ import java.util.regex.Pattern;
 public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.Listener, Clock.Callback, PlayerGesture.Listener, SubtitlePlaybackSession.Host, TmdbDetailHost {
 
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.getDefault());
-    private static final int FOCUS_STROKE_DP = 3;
     private static final int CHIP_STROKE_DP = 1;
     private static final int CHIP_MAX_WIDTH_DP = 240;
     private static final int PHOTO_PRELOAD_RADIUS = 2;
@@ -394,6 +393,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private boolean useParse;
     private boolean inlineStarted;
     private boolean inlinePlaybackPending;
+    /** 置位 {@link #inlinePlaybackPending} 的请求代际；0 表示当前没有待定请求。 */
+    private int inlinePlaybackPendingGeneration;
     private final Runnable inlineLoadingSpeedRefresh = new Runnable() {
         @Override
         public void run() {
@@ -2289,7 +2290,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         }
         boolean focused = binding.playerPanel.hasFocus() && !hasFocusedChild(inlineControlsView());
         binding.playerPanel.setStrokeColor(focused ? focusStroke() : colors.line);
-        binding.playerPanel.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP));
+        binding.playerPanel.setStrokeWidth(focused ? focusRingWidthPx() : ResUtil.dp2px(CHIP_STROKE_DP));
     }
 
     private boolean isLeanbackInlinePlayerPanel() {
@@ -2337,8 +2338,19 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private void applyButtonFocus(MaterialButton button, int stroke, boolean focused) {
-        button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP));
+        button.setStrokeWidth(focused ? focusRingWidthPx() : ResUtil.dp2px(CHIP_STROKE_DP));
         button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : stroke));
+    }
+
+    /**
+     * 焦点环宽度（px）：唯一来源 {@code @dimen/webhtv_focus_ring_width}。
+     *
+     * <p>详情页有一批控件是代码挂环（{@code setStrokeWidth}/{@code GradientDrawable.setStroke}），
+     * 不走 drawable 层。此前它们写死 {@code FOCUS_STROKE_DP = 3}，于是前几轮统一 drawable
+     * 宽度时漏掉了这批控件（用户报告「个性推荐等卡片的边框粗细没有改小没有统一」）。
+     */
+    private int focusRingWidthPx() {
+        return getResources().getDimensionPixelSize(R.dimen.webhtv_focus_ring_width);
     }
 
     /** TV 焦点环的唯一代码来源：与 {@code ?attr/tvFocusRing} 同一取值，跟随主题 FOCUS 槽。 */
@@ -2384,7 +2396,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         button.setBackgroundTintList(ColorStateList.valueOf(focused ? colors.control : episodeTitleRestingColor(lightCinemaPlate, colors)));
         button.setTextColor(colors.primary);
         button.setIconTint(ColorStateList.valueOf(colors.primary));
-        button.setStrokeWidth(focused ? ResUtil.dp2px(FOCUS_STROKE_DP) : (lightCinemaPlate ? ResUtil.dp2px(CHIP_STROKE_DP) : 0));
+        button.setStrokeWidth(focused ? focusRingWidthPx() : (lightCinemaPlate ? ResUtil.dp2px(CHIP_STROKE_DP) : 0));
         button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : (lightCinemaPlate ? colors.line : Color.TRANSPARENT)));
     }
 
@@ -2399,7 +2411,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         button.setBackgroundTintList(ColorStateList.valueOf(colors.control));
         button.setTextColor(colors.primary);
         button.setIconTint(ColorStateList.valueOf(colors.primary));
-        button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP));
+        button.setStrokeWidth(focused ? focusRingWidthPx() : ResUtil.dp2px(CHIP_STROKE_DP));
         button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : colors.lineStrong));
     }
 
@@ -4438,7 +4450,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         GradientDrawable background = new GradientDrawable();
         background.setColor(modeController.isCinemaStyle() ? TmdbCinemaTheme.palette(lightTheme).ratingChip() : colors.chip);
         background.setCornerRadius(ResUtil.dp2px(10));
-        background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP), focused ? focusStroke() : colors.line);
+        background.setStroke(focused ? focusRingWidthPx() : ResUtil.dp2px(CHIP_STROKE_DP), focused ? focusStroke() : colors.line);
         row.setBackground(background);
         for (int i = 0; i < row.getChildCount(); i++) {
             View child = row.getChildAt(i);
@@ -7160,7 +7172,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void applyPhotoButtonFocus(MaterialButton button, boolean focused) {
         button.setBackgroundTintList(ColorStateList.valueOf(focused ? 0x33FFFFFF : 0x18FFFFFF));
-        button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : CHIP_STROKE_DP));
+        button.setStrokeWidth(focused ? focusRingWidthPx() : ResUtil.dp2px(CHIP_STROKE_DP));
         button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : 0x4DFFFFFF));
     }
 
@@ -7600,6 +7612,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         inlinePlaybackPending = true;
         updateInlineLoading();
         int generation = ++inlinePlaybackGeneration;
+        inlinePlaybackPendingGeneration = generation;
         String key = getKeyText();
         String flag = selectedFlag.getFlag();
         String episodeUrl = selectedEpisode.getUrl();
@@ -7609,7 +7622,12 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             try {
                 Result result = SiteApi.playerContent(key, flag, episodeUrl, playerKernel);
                 runOnAliveUi(() -> {
-                    if (!isInlinePlaybackRequestCurrent(generation, key, flag, episodeUrl)) return;
+                    if (!isInlinePlaybackRequestCurrent(generation, key, flag, episodeUrl)) {
+                        // 请求已被作废（换集/换源/详情重载/外部播放等）：不会再有结果来收圈，
+                        // 由置位它的这个代际负责释放。
+                        releaseInlinePlaybackPending(generation);
+                        return;
+                    }
                     inlinePlaybackPending = false;
                     String resolvedUrl = result.getUrl() == null ? "" : result.getUrl().v();
                     if (!TextUtils.isEmpty(failedUrl) && TextUtils.equals(failedUrl, resolvedUrl)) {
@@ -7622,7 +7640,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             } catch (Throwable e) {
                 String message = e.getMessage();
                 runOnAliveUi(() -> {
-                    if (!isInlinePlaybackRequestCurrent(generation, key, flag, episodeUrl)) return;
+                    if (!isInlinePlaybackRequestCurrent(generation, key, flag, episodeUrl)) {
+                        releaseInlinePlaybackPending(generation);
+                        return;
+                    }
                     inlinePlaybackPending = false;
                     String fallback = TextUtils.isEmpty(failureMessage) ? getString(R.string.error_play_url) : failureMessage;
                     showInlineError(TextUtils.isEmpty(message) ? fallback : message);
@@ -9004,6 +9025,11 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         String episodeUrl = selectedEpisode.getUrl();
         if (TextUtils.isEmpty(flag) || TextUtils.isEmpty(episodeUrl)) return false;
         int generation = ++inlinePlaybackGeneration;
+        // 只自增代际、不接替请求：在途的取址回调会因“不再是最新请求”直接返回，
+        // 它留下的加载标记必须在这里释放，否则圈永久留在屏上，且同一集会因
+        // isSamePendingInlinePlayback 恒真而无法再次起播。切内核自身的缓冲显示由
+        // updateInlineLoading 的引擎条件兜住，不依赖这个标记。
+        releaseInlinePlaybackPending();
         long position = player().getPosition();
         float speed = player().getSpeed();
         boolean repeat = player().isRepeatOne();
@@ -9040,7 +9066,8 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void cancelPendingInlinePlayerSwitch() {
         inlinePlaybackGeneration++;
-        updateInlineDisplayPanel();
+        // 同 refreshAndSwitchInlinePlayer：作废在途取址请求时必须一并释放它留下的加载标记。
+        releaseInlinePlaybackPending();
     }
 
     private boolean isInlinePlayerSwitchRequestCurrent(int generation, String key, String flag, String episodeUrl) {
@@ -9656,7 +9683,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         GradientDrawable background = new GradientDrawable();
         background.setCornerRadius(ResUtil.dp2px(4));
         background.setColor(focused ? colors.control : selected ? colors.chipActive : colors.chip);
-        background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : selected ? 2 : CHIP_STROKE_DP), focused ? focusStroke() : selected ? colors.accent : colors.line);
+        background.setStroke(focused ? focusRingWidthPx() : ResUtil.dp2px(selected ? 2 : CHIP_STROKE_DP), focused ? focusStroke() : selected ? colors.accent : colors.line);
         button.setSelected(selected);
         button.setActivated(selected);
         button.setTextColor(colors.primary);
@@ -9839,7 +9866,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         background.setCornerRadius(ResUtil.dp2px(6));
         if (focused) {
             background.setColor(ThemeController.focusRingColor(this, lightTheme ? 0.10f : 0.33f));
-            background.setStroke(ResUtil.dp2px(FOCUS_STROKE_DP), focusStroke());
+            background.setStroke(focusRingWidthPx(), focusStroke());
             button.setTextColor(lightTheme ? colors.primary : 0xFFFFFFFF);
         } else if (selected) {
             background.setColor(lightTheme ? 0x1F20B866 : 0x332CC56F);
@@ -9858,7 +9885,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         background.setCornerRadius(ResUtil.dp2px(6));
         if (focused) {
             background.setColor(ThemeController.focusRingColor(this, 0.33f));
-            background.setStroke(ResUtil.dp2px(FOCUS_STROKE_DP), focusStroke());
+            background.setStroke(focusRingWidthPx(), focusStroke());
         } else {
             background.setColor(0x00000000);
         }
@@ -9903,7 +9930,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         button.setIconTint(ColorStateList.valueOf(text));
         button.setBackgroundTintList(ColorStateList.valueOf(focused ? ThemeController.focusRingColor(this, lightTheme ? 0.10f : 0.33f) : colors.control));
         button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : colors.lineStrong));
-        button.setStrokeWidth(ResUtil.dp2px(focused ? 2 : 1));
+        button.setStrokeWidth(focused ? focusRingWidthPx() : ResUtil.dp2px(1));
     }
 
     private void updateInlineEpisodeModeIcon(ImageView icon) {
@@ -9990,6 +10017,26 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         if (width >= ResUtil.dp2px(1200)) return 5;
         if (width >= ResUtil.dp2px(720)) return 4;
         return 3;
+    }
+
+    /**
+     * 释放被作废的取流请求留下的加载标记。
+     *
+     * <p>没有结果回调会再来收圈（回调要么随任务被取消而不执行，要么因请求失效直接返回），
+     * 标记残留会让加载圈永久留在屏上，并让 {@link #isSamePendingInlinePlayback} 恒真、
+     * 同一集无法再次起播。
+     */
+    private void releaseInlinePlaybackPending() {
+        if (!inlinePlaybackPending) return;
+        inlinePlaybackPending = false;
+        inlinePlaybackPendingGeneration = 0;
+        updateInlineDisplayPanel();
+    }
+
+    /** 只有置位该标记的那个请求才有权释放它，避免旧回调清掉新请求的标记。 */
+    private void releaseInlinePlaybackPending(int generation) {
+        if (inlinePlaybackPendingGeneration != generation) return;
+        releaseInlinePlaybackPending();
     }
 
     private boolean isSamePendingInlinePlayback(Episode episode) {
@@ -13130,7 +13177,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private void applyChipFocus(MaterialButton button, boolean selected, boolean focused, ThemeColors colors) {
         button.setSelected(!Util.isLeanback() || selected || focused);
-        button.setStrokeWidth(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : (selected ? 2 : CHIP_STROKE_DP)));
+        button.setStrokeWidth(focused ? focusRingWidthPx() : ResUtil.dp2px(selected ? 2 : CHIP_STROKE_DP));
         button.setStrokeColor(ColorStateList.valueOf(focused ? focusStroke() : (selected ? colors.accent : colors.line)));
     }
 

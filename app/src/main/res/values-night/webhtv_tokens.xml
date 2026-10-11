@@ -43,8 +43,35 @@
     <color name="webhtv_color_inverse_on_surface">#2F3033</color>
     <color name="webhtv_color_inverse_primary">#0B57D0</color>
     <color name="webhtv_color_scrim">#8A000000</color>
+    <!--
+        播放页（视频层）环色 = 与应用表面焦点环同值（近白）。
+
+        用户报告（2026-10-11，dev1 实机）：「播放页存在多个不同颜色的高亮效果」——同一页里
+        应用表面元素是近白环 #F5F7FF、视频层元素（分段/排序芯片、控制条、画面框）是灰蓝环
+        #7695C5。深色表下这两类宿主的底色全部是深色（深色 surface、固定深靛玻璃、多数视频
+        画面），近白环对它们都可读，所以深色表不需要为可读性保留第二种高亮色，统一取近白
+        （与上游「默认选中边框是白色」的观感一致）。
+
+        浅色表不能同值：浅色 FOCUS 深蓝 #0B57D0 画在固定玻璃上只有 1.83:1，必须保留派生
+        夹取（见 values/webhtv_tokens.xml 与 ThemeResolver.PLAYER_RING_BACKDROPS）。
+
+        已知取舍：近白环画在**纯白视频**上对比度不足（≈1.0:1）。该场景只在视频亮场景
+        （雪/白墙）且焦点落在画面框或播控条上时出现，而深色表选近白正是用户明确要求的
+        「默认选中边框是白色」；浅色表仍由夹取保证 ≥3:1。
+    -->
+    <color name="webhtv_color_player_focus_ring">#F5F7FF</color>
+    <color name="webhtv_color_player_current_ring">#00A95A</color>
     <color name="webhtv_color_shadow">#000000</color>
-    <color name="webhtv_color_focus">#A8C7FA</color>
+    <!--
+        深色表焦点环 = 近白（与上游的“白色焦点环”观感一致）。
+
+        为什么不是纯 #FFFFFF：本仓库有 ThemeBinder 运行时改写通道，它按“颜色→语义角色”
+        精确匹配；而 webhtv_on_wallpaper 两张表恒为 #FFFFFF。若焦点也取 #FFFFFF，
+        ThemeColorIndex 会把 #FFFFFF 映射到 FOCUS 角色，用户切换/自定义主题时
+        壁纸上的白色文字会被改写成焦点色（ThemeBaseWiringTest 钉住了这条不变量）。
+        #F5F7FF 与纯白视觉上无法区分，对深色 surface 仍有 17.3:1。
+    -->
+    <color name="webhtv_color_focus">#F5F7FF</color>
     <color name="webhtv_color_player_control">#FFFFFF</color>
     <color name="webhtv_color_player_control_muted">#CCFFFFFF</color>
     <color name="webhtv_color_player_control_active">#FFD35C</color>

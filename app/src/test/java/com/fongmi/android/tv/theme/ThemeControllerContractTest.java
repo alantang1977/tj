@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -128,6 +129,83 @@ public class ThemeControllerContractTest {
         String chrome = read("src/mobile/java/com/fongmi/android/tv/ui/activity/WebHomeChromeController.java");
         assertTrue(chrome.contains("ThemeController.isNight(activity)"));
         assertFalse(chrome.contains("UI_MODE_NIGHT_MASK"));
+    }
+
+    /**
+     * TV 产品默认深色（与上游一致：上游 TV 主题直接继承 {@code Theme.Material3.Dark}）。
+     *
+     * <p>理由：电视多在暗环境观看，大面积浅色亮底在夜间刺眼；而且 TV 常见的深色底上，
+     * 上游那套**白色焦点环**（对深色 surface 17–18:1）才能成立——
+     * 白环对浅色表 surface 只有 1.05:1，等于看不见。
+     *
+     * <p>“跟随系统”对 TV 不再等于“跟随一个通常恒为浅色的系统默认”，否则电视上会默认落到
+     * 浅色表。用户仍可在外观设置里显式选浅色/深色；mobile 保持“跟随系统”不变。
+     */
+    @Test
+    public void tvDefaultsToDarkWhileMobileKeepsFollowingTheSystem() throws Exception {
+        String controller = read("src/main/java/com/fongmi/android/tv/theme/ThemeController.java");
+        assertTrue("TV 默认必须落到深色：follow-system 分支要按 flavour 分流",
+                controller.contains("Util.isLeanback()")
+                        && controller.contains("AppCompatDelegate.MODE_NIGHT_YES")
+                        && controller.contains("AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM"));
+        // 显式选择仍然优先（浅色/深色都能生效）
+        assertTrue("显式浅色/深色必须仍然优先",
+                controller.contains("case 0 -> AppCompatDelegate.MODE_NIGHT_NO;")
+                        && controller.contains("case 1 -> AppCompatDelegate.MODE_NIGHT_YES;"));
+    }
+
+    /**
+     * 深色表焦点环是「近白」（与上游的白色焦点环观感一致），但不能是纯白。
+     *
+     * <p>本仓库有 {@link ThemeBinder} 运行时改写通道，它按「颜色 → 语义角色」精确匹配；
+     * 而 {@code webhtv_on_wallpaper} 两张表恒为 {@code #FFFFFF}。若焦点也取纯白，
+     * {@code ThemeColorIndex} 会把纯白映射到 FOCUS 角色，用户切换/自定义主题时
+     * 壁纸上的白色文字会被改写成焦点色（{@code ThemeBaseWiringTest} 钉住该不变量）。
+     * 所以这里断言：深色焦点必须亮（对 surface 高对比）且**不等于**纯白。
+     */
+    @Test
+    public void darkFocusRingIsNearWhiteButNeverPureWhite() throws Exception {
+        String night = read("src/main/res/values-night/webhtv_tokens.xml");
+        Matcher matcher = java.util.regex.Pattern
+                .compile("<color name=\"webhtv_color_focus\">#([0-9A-Fa-f]{6})</color>")
+                .matcher(night);
+        assertTrue("深色表必须声明 webhtv_color_focus", matcher.find());
+        int focus = (int) Long.parseLong(matcher.group(1), 16);
+
+        assertFalse("深色焦点环不得为纯白：会与 webhtv_on_wallpaper 碰撞，binder 会把壁纸白字改写成焦点色",
+                focus == 0xFFFFFF);
+        double ratio = ThemeContrast.ratio(0xFF000000 | focus, ThemeTokens.dark().colorSurface());
+        assertTrue("深色焦点环必须对 surface 保持高对比（实测 " + String.format("%.2f", ratio) + ":1）",
+                ratio >= 10.0);
+        // 与 ThemeTokens.dark() 的字面量保持一致
+        assertEquals("深色表资源必须与 ThemeTokens.dark().colorFocus() 同值",
+                0xFF000000 | focus, ThemeTokens.dark().colorFocus());
+    }
+
+    /**
+     * 追更页按钮的「填充 ↔ 文本」必须始终配对。
+     *
+     * <p>这两个按钮的 backgroundTint 在 focused/pressed 时会换成
+     * {@code following_button_focus}（= {@code webhtv_color_focus}）。此前文本写死
+     * {@code @android:color/white}，在浅色表下凑巧可读，但深色表下填充是浅色而文本仍为白
+     * （1.00:1，完全不可读）；TV 默认改深色后该缺陷会直接显形。
+     */
+    @Test
+    public void followingButtonTextPairsWithItsFocusFill() throws Exception {
+        for (String file : new String[]{"following_button_primary_text.xml", "following_button_secondary_text.xml"}) {
+            // 去注释后再断言：注释里会引用历史值作说明，不是实际取值。
+            String body = read("src/main/res/color/" + file).replaceAll("(?s)<!--.*?-->", "");
+            assertFalse(file + " 不得再用写死白色文本（深色表下与浅色填充 1.00:1 不可读）",
+                    body.contains("@android:color/white"));
+            assertTrue(file + " 的焦点/按下文本必须取与填充配对的 on-色",
+                    body.contains("@color/webhtv_color_on_primary"));
+        }
+        // 两张表的配对都必须过对比度门（文本 4.5:1）
+        for (ThemeTokens tokens : new ThemeTokens[]{ThemeTokens.light(), ThemeTokens.dark()}) {
+            double ratio = ThemeContrast.ratio(tokens.colorOnPrimary(), tokens.colorFocus());
+            assertTrue("焦点填充配 on-色文本必须 ≥4.5:1（实测 " + String.format("%.2f", ratio) + ":1）",
+                    ratio >= 4.5);
+        }
     }
 
     private static String read(String path) throws Exception {

@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="10dp"
-    android:background="@drawable/selector_custom_csp_item"
+    android:background="@drawable/selector_dialog_surface_row"
     android:orientation="vertical"
     android:padding="12dp">
 

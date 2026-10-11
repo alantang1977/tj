@@ -11,6 +11,35 @@ public final class ThemeResolver {
     /** Material's own baseline scheme keeps primary at or above this on every surface role. */
     private static final double MIN_ACCENT_CONTRAST = 4.5;
 
+    /**
+     * 播放页（视频层）环色必须可读的背景。
+     *
+     * <p>视频层环色的宿主是**固定深色玻璃**：控制面板
+     * ({@code shape_dialog_control_glass_panel})、快捷搜索/选集面板
+     * ({@code shape_quick_search_dialog})、播放器底部抽屉，三档渐变都是
+     * {@code #E62F315E → #D6282955 → #CC303463}，叠在任何画面上都保持深色。
+     * 浅色表的 FOCUS 深蓝 #0B57D0 在它们上面只有 1.83:1（dev1 实机实测），
+     * 所以浅色表必须夹取到 ≥3:1（派生结果 #447BF5）——这正是本方法存在的理由。
+     *
+     * <p><b>纯白视频（雪/白墙）刻意不在列表里。</b>用户报告（2026-10-11）
+     * 「播放页存在多个不同颜色的高亮效果」：把纯白视频也作为约束，会把深色表的
+     * 近白环压成灰蓝 #7695C5，于是同一页出现「应用表面近白 + 视频层灰蓝」两种高亮。
+     * 深色表两类宿主的实际底色都是深色，近白环对它们全部可读，所以深色表统一取近白
+     * （与应用表面焦点环同值），只有浅色表保留夹取。
+     * 已知取舍：近白环在纯白视频上对比度不足，仅在「亮场景视频 + 焦点落在画面框/播控条」
+     * 时出现，而绝大多数播放页宿主的局部底色是深玻璃。
+     */
+    private static final int[] PLAYER_RING_BACKDROPS = {
+            0xFF2F315E, 0xFF282955, 0xFF303463,   // 控制面板固定玻璃渐变的三档
+    };
+
+    /**
+     * 播放页环色的对比度门槛。取 WCAG 2.2 SC 1.4.11「非文本对比度」的 3:1（与
+     * {@code outline}/{@code focus} 的 {@code ensureContrast(..., 3.0)} 同一口径）；
+     * 4.5:1 是正文文本的档位，用在环上会把浅色表的蓝压得过暗。
+     */
+    private static final double MIN_PLAYER_RING_CONTRAST = 3.0;
+
     private ThemeResolver() {
     }
 
@@ -170,6 +199,24 @@ public final class ThemeResolver {
 
         int surfaceDim = hasSurface ? mix(surface, 0xFF000000, dark ? 0.06 : 0.10) : base.colorSurfaceDim();
         int surfaceBright = hasSurface ? mix(surface, 0xFFFFFFFF, dark ? 0.14 : 0.08) : base.colorSurfaceBright();
+
+        // ---------------------------------------------------------------- 播放页（视频层）环色
+        // 视频层环色的宿主是固定深色玻璃与深色视频画面，与应用表面无关，所以不能直接用
+        // focus：浅色表的 focus #0B57D0 在固定深靛玻璃上只有 1.83:1（实机 dev1 复核），
+        // 焦点不可见。因此用仓库已有的 readableAccent：保持用户 FOCUS 槽的色相与彩度、
+        // 只走明度，直到在固定玻璃上达到 MIN_PLAYER_RING_CONTRAST(3.0)。
+        // 深色表的 focus 本身就是近白 #F5F7FF，对深玻璃与深色 video 都远远达标，夹取是
+        // 恒等变换——这正是用户要的「播放页只有一种高亮色」：深色表下视频层环 = 应用表面环。
+        int playerFocusRing = hasFocus
+                ? readableAccent(focus, MIN_PLAYER_RING_CONTRAST, PLAYER_RING_BACKDROPS)
+                : base.colorPlayerFocusRing();
+        // 「当前播放」有独立的用户槽位（默认绿）；同样做固定玻璃上的可读性夹取。
+        boolean hasPlayerCurrent = slots.playerCurrent != null;
+        int playerCurrentRing = hasPlayerCurrent
+                ? readableAccent(color(slots.playerCurrent, base.colorPlayerCurrentRing()),
+                        MIN_PLAYER_RING_CONTRAST, PLAYER_RING_BACKDROPS)
+                : base.colorPlayerCurrentRing();
+
         float scrimOpacity = slots.scrimOpacity == null ? (base.colorScrim() >>> 24) / 255f : slots.scrimOpacity;
         float dialogOpacity = slots.dialogOpacity == null ? base.dialogOpacity() : slots.dialogOpacity;
         float overlayOpacity = slots.overlayOpacity == null ? (base.colorOverlayLight() >>> 24) / 255f : slots.overlayOpacity;
@@ -186,7 +233,8 @@ public final class ThemeResolver {
                 base.colorSurfaceContainerLow(), surfaceContainer, surfaceContainerHigh, surfaceContainerHighest,
                 onSurface, onSurfaceVariant, outline, base.colorOutlineVariant(),
                 base.colorInverseSurface(), base.colorInverseOnSurface(), base.colorInversePrimary(),
-                withAlpha(base.colorScrim(), scrimOpacity), base.colorShadow(), focus, base.focusScale(), dialogOpacity,
+                withAlpha(base.colorScrim(), scrimOpacity), base.colorShadow(), focus, base.focusScale(),
+                playerFocusRing, playerCurrentRing, dialogOpacity,
                 base.colorPlayerControl(), base.colorPlayerControlMuted(), base.colorPlayerControlActive(), base.colorPlayerScrim(),
                 base.colorHealthGood(), base.colorHealthWarn(), base.colorHealthBad(),
                 withAlpha(base.colorOverlayLight(), overlayOpacity), base.colorOverlayDark()
@@ -220,7 +268,17 @@ public final class ThemeResolver {
      * hue - the same thing Material's tonal palette does when it assigns primary.
      */
     private static int readableAccent(int color, int... backdrops) {
-        if (clearsContrast(color, backdrops)) return color;
+        return readableAccent(color, MIN_ACCENT_CONTRAST, backdrops);
+    }
+
+    /**
+     * Same walk, with an explicit threshold. The player ring uses
+     * {@link #MIN_PLAYER_RING_CONTRAST} (3:1, the WCAG non-text state bar) because
+     * 4.5:1 would drag the light-table blue far too dark for a ring that sits on
+     * fixed dark glass.
+     */
+    private static int readableAccent(int color, double minimum, int... backdrops) {
+        if (clearsContrast(color, minimum, backdrops)) return color;
         Hct source = Hct.fromInt(color);
         double hue = source.getHue();
         double chroma = source.getChroma();
@@ -229,7 +287,7 @@ public final class ThemeResolver {
         double bestDistance = Double.MAX_VALUE;
         for (int tone = 0; tone <= 100; tone++) {
             int candidate = Hct.from(hue, chroma, tone).toInt();
-            if (!clearsContrast(candidate, backdrops)) continue;
+            if (!clearsContrast(candidate, minimum, backdrops)) continue;
             double distance = Math.abs(tone - original);
             if (distance < bestDistance) {
                 bestDistance = distance;
@@ -239,14 +297,18 @@ public final class ThemeResolver {
         if (bestDistance != Double.MAX_VALUE) return best;
         // Unreachable for real surfaces (tone 0 / 100 always bracket), but never return
         // an unreadable colour if a future call site passes something degenerate.
-        int fallback = ensureContrast(color, backdrops[0], MIN_ACCENT_CONTRAST);
-        for (int backdrop : backdrops) fallback = ensureContrast(fallback, backdrop, MIN_ACCENT_CONTRAST);
+        int fallback = ensureContrast(color, backdrops[0], minimum);
+        for (int backdrop : backdrops) fallback = ensureContrast(fallback, backdrop, minimum);
         return fallback;
     }
 
     private static boolean clearsContrast(int color, int... backdrops) {
+        return clearsContrast(color, MIN_ACCENT_CONTRAST, backdrops);
+    }
+
+    private static boolean clearsContrast(int color, double minimum, int... backdrops) {
         for (int backdrop : backdrops) {
-            if (ThemeContrast.ratio(color, backdrop) + 0.0001 < MIN_ACCENT_CONTRAST) return false;
+            if (ThemeContrast.ratio(color, backdrop) + 0.0001 < minimum) return false;
         }
         return true;
     }
@@ -298,7 +360,8 @@ public final class ThemeResolver {
                 scheme.getSurfaceContainerLow(), scheme.getSurfaceContainer(), scheme.getSurfaceContainerHigh(), scheme.getSurfaceContainerHighest(),
                 scheme.getOnSurface(), scheme.getOnSurfaceVariant(), scheme.getOutline(), scheme.getOutlineVariant(),
                 scheme.getInverseSurface(), scheme.getInverseOnSurface(), scheme.getInversePrimary(), scheme.getScrim(),
-                scheme.getShadow(), scheme.getPrimary(), fallback.focusScale(), fallback.dialogOpacity(), fallback.colorPlayerControl(),
+                scheme.getShadow(), scheme.getPrimary(), fallback.focusScale(),
+                fallback.colorPlayerFocusRing(), fallback.colorPlayerCurrentRing(), fallback.dialogOpacity(), fallback.colorPlayerControl(),
                 fallback.colorPlayerControlMuted(), fallback.colorPlayerControlActive(), fallback.colorPlayerScrim(),
                 fallback.colorHealthGood(), fallback.colorHealthWarn(), fallback.colorHealthBad(), fallback.colorOverlayLight(), fallback.colorOverlayDark()
         );

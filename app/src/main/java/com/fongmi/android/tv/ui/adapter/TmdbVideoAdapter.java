@@ -111,7 +111,10 @@ public class TmdbVideoAdapter extends RecyclerView.Adapter<TmdbVideoAdapter.View
             itemView.setOnFocusChangeListener((view, focused) -> {
                 float scale = focused ? 1.04f : 1.0f;
                 view.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
-                card.setStrokeWidth(ResUtil.dp2px(focused ? 2 : 1));
+                // 焦点环宽度必须走唯一 token（此前写死 2dp，前几轮统一时漏掉）。
+                card.setStrokeWidth(focused
+                        ? view.getContext().getResources().getDimensionPixelSize(com.fongmi.android.tv.R.dimen.webhtv_focus_ring_width)
+                        : ResUtil.dp2px(1));
                 card.setStrokeColor(focused ? ThemeController.focusRingColor(view.getContext()) : 0x33FFFFFF);
             });
         }

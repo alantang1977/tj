@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    电视版搜索范围下拉菜单项（SearchActivity / CollectActivity 的范围选择弹窗）的焦点态。
+
+    只统一**宽度**：@dimen/webhtv_focus_ring_width（此前写死 2dp），与电视端其余焦点环
+    一致。环色保持与调色板无关的白色：宿主 shape_search_scope_popup 是固定深色玻璃
+    （两张表相同），浅色表的 FOCUS 槽（深蓝）在该底上只有约 1.9:1，
+    白色约 12:1。见 shape_chip_focused.xml 的同一判据。
+-->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
 
     <item android:state_pressed="true">
@@ -6,7 +14,7 @@
             <solid android:color="@color/white_90" />
             <corners android:radius="6dp" />
             <stroke
-                android:width="2dp"
+                android:width="@dimen/webhtv_focus_ring_width"
                 android:color="@color/white" />
         </shape>
     </item>
@@ -16,7 +24,7 @@
             <solid android:color="@color/white_90" />
             <corners android:radius="6dp" />
             <stroke
-                android:width="2dp"
+                android:width="@dimen/webhtv_focus_ring_width"
                 android:color="@color/white" />
         </shape>
     </item>

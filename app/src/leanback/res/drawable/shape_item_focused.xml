@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    电视版「应用表面」列表项/按钮的统一焦点环。统一规范见 selector_video_item.xml 与
+    docs/TV-FOCUS-RING-20261004-unified-theme-ring.md：
+    - 环宽唯一来源：@dimen/webhtv_focus_ring_width，禁止写死 1.5dp/2dp；
+    - 环色唯一来源：?attr/tvFocusRing（= @color/tv_item_focus_ring = 主题 FOCUS 用户槽）。
+
+    此前这里写的是 `1.5dp ?attr/colorPrimary`，于是同一个电视首页上出现了两套焦点边框：
+    搜索/历史等功能按钮是 1.5dp 蓝色（colorPrimary），最近观看/搜索结果是 1.5dp 白色
+    （shape_vod_focused 写死 @color/white），用户报告「上面两行按钮是蓝色边框，下面的是白色
+    边框，边框粗细也貌似不一样」。colorPrimary 在 TV 上还同时驱动着约 100 个布局的聚焦文字色，
+    不能兼作焦点环语义；白色则完全不随主题走。两者统一到 tvFocusRing 后，用户改主题的
+    「焦点色」槽即可同时改变全部应用表面焦点环。
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
 
@@ -13,7 +26,7 @@
         android:top="8dp" />
 
     <stroke
-        android:width="1.5dp"
-        android:color="?attr/colorPrimary" />
+        android:width="@dimen/webhtv_focus_ring_width"
+        android:color="?attr/tvFocusRing" />
 
 </shape>

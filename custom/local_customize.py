@@ -6,8 +6,8 @@
 ================================================================================
 在【本地克隆下来的项目根目录】运行：
 
-    python3 local_customize.py        （或 python local_customize.py）
-    python3 local_customize.py --force  # 强制模式：跳过幂等判断，全部重写
+    python local_customize.py        （或 python local_customize.py）
+    python custom/local_customize.py --force  # 强制模式：跳过幂等判断，全部重写
 
 脚本会直接修改你本地项目文件，自动完成以下全部自定义：
 
@@ -74,18 +74,35 @@ except Exception:
 import shutil
 import sys
 import subprocess
+# numpy 用于图标「填满适配」的轮廓采样与图标一致性像素比对。
+# 注意：这里只尝试导入，不再在「模块导入阶段」自动 pip install ——
+#   · 导入即联网安装会拖慢 CI，且离线/受限网络环境会直接崩在 import 上；
+#   · 只跑纯文本改写（--force 之外的名/包名/链接等）时其实根本用不到 numpy。
+# 真正需要时由 _ensure_numpy() 按需兜底安装。
 try:
     import numpy as np
 except ImportError:
-    # numpy 缺失时自动安装（图标填满适配需要），避免用户手动 pip 报错
-    print("[INFO] 首次运行需要 numpy，正在自动安装 ...")
+    np = None
+
+
+def _ensure_numpy():
+    """按需导入 numpy，缺失时自动安装一次。成功返回 True，失败返回 False（不在此处退出）。"""
+    global np
+    if np is not None:
+        return True
+    print("[INFO] 图标生成/校验需要 numpy，正在自动安装 ...")
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "numpy"])
-        import numpy as np
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "numpy"],
+            stdout=subprocess.DEVNULL)
+        import numpy as np  # noqa: F401  （global 声明下此处重新绑定模块级 np）
     except Exception:
         print("[ERROR] numpy 自动安装失败，请手动运行后重试:")
         print('        python -m pip install --upgrade numpy pillow')
-        sys.exit(1)
+        return False
+    return np is not None
+
+
 import xml.etree.ElementTree as ET
 
 # Windows 控制台即时刷新输出，避免日志"卡住不动"的假象（每行 print 立即显示）
@@ -93,6 +110,23 @@ try:
     sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
 except Exception:
     pass
+
+# ==============================================================================
+# 失败登记表：把「无需修改（SKIP）」和「真的处理失败」区分开
+# ------------------------------------------------------------------------------
+# 原实现里各步骤的返回值含义偏窄：False 既可能是「本来就是目标状态、无需改动」，
+# 也可能是「处理失败」。于是 main() 里除了图标那一步，其它步骤的失败
+#（Java 写回校验不过、YAML 被破坏、XML 解析失败…）都只是打印一行 [ERROR]
+# 就继续往下走，最终仍以 0 退出 —— 一份坏文件照样会被提交、被 CI 拿去打包。
+# 这里用一张全局登记表把真失败收上来，main() 结尾据此以非零码退出。
+FAILURES = []
+
+
+def _fail(msg):
+    """登记一条真实失败（main() 结尾汇总并以非零码退出）。返回 False 便于 return _fail(...)。"""
+    FAILURES.append(str(msg))
+    return False
+
 
 # ==============================================================================
 # ★★★ 配置区：按你的需要修改下面的值 ★★★
@@ -174,6 +208,9 @@ GRAD_B_HEX = "#F472B6"
 WHITE = (255, 255, 255, 255)
 HOLE = (0, 0, 0, 0)
 SS = 5          # 超采样倍率，先大图绘制再降采样得到干净边缘（5x 比 4x 边缘更锐利）
+# [LEGACY] 下面 5 个缩放系数是「旧版：先按固定倍数放大再裁切」时代的产物。
+# 现在猫的填满适配统一由 place_cat_fill() 二分求解，这几个常量已不再被任何代码引用，
+# 只是保留数值供调参对照；确认无参考价值后可整块删除。
 CAT_ZOOM = 1.24  # 圆形用：配合下移使耳尖到圆弧=15px、绿项圈底到底边=15px（512尺寸）
 CAT_ZOOM_ROUNDED = 1.43  # 圆角(0.22)用：配合下移使耳尖到圆角弧=15px、绿项圈底到底边=15px
 CAT_ZOOM_SQUIRCLE = 1.357  # 自适应圆角(0.30)用：配合下移使耳尖到圆角弧≈15px、绿项圈底到底边≈15px
@@ -188,12 +225,12 @@ LAUNCHER_LIFT_CIRCLE = 40 / 512    # 圆形 launcher：@512 上移 40px（项圈
 # 关键：现代 Android 优先用自适应图标而非 legacy 位图，前景猫必须放大填满并居中，
 # 否则真机要么偏下、要么偏小。
 #   头部放大 ADAPTIVE_HEAD_K=1.12（与手机 legacy launcher 一致，脸/头饱满）；
-#   安全圆半径比 ADAPTIVE_SAFE_RATIO=0.42（默认保守的1/3会偏小；放大到0.42，
-#     圆角方形设备0裁切，圆形启动器仅耳尖/铃铛极轻微约0.5%）；
+#   安全圆半径比 ADAPTIVE_SAFE_RATIO=0.41（猫占比约60.9%：耳尖留安全缝、
+#     绿项圈在任何裁切形状下都完整不被切；1/3 偏小、0.42/62.5% 过满会触边/切项圈）；
 #   整体上移 ADAPTIVE_FOREGROUND_LIFT=20/432（视觉重心居中）。
 # TV Banner 前景为横版，保持原版：head_k=1.0、safe_ratio=1/3、lift=0。
 ADAPTIVE_HEAD_K = 1.12
-ADAPTIVE_SAFE_RATIO = 0.42
+ADAPTIVE_SAFE_RATIO = 0.41
 ADAPTIVE_FOREGROUND_LIFT = 20 / 432
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
@@ -215,6 +252,7 @@ FILL_CIRCLE = 0.64
 FILL_NOTIFY = 0.88
 # 小尺寸降级阈值
 WORDMARK_MIN_PX = 32
+# [LEGACY/未引用] 小尺寸降级现在只用 WORDMARK_MIN_PX 判定，FILL_BADGE 已无引用点
 FILL_BADGE = 0.68
 # 3D 立体参数（已提高厚度强化立体感）
 THICK_RATIO = 0.18      # 微小厚度 / h
@@ -1197,16 +1235,45 @@ def _place_bottom_gap(tile, W, H, gap_frac=0.03, safe_r_frac=None, thr=CAT_KEEP_
 
 
 _FU_FONT_CACHE = {}
+_FU_FONT_WARNED = False
+# 中文粗体候选字体：按平台依次尝试，取第一个可用的。
+# 原实现只写死一个 Linux 路径，在 Windows / macOS 上 truetype 必然抛异常被吞掉，
+# 结果是项圈上的「福」字静默消失、且一句提示都没有，排查起来很费劲。
+_FU_FONT_CANDIDATES = (
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",       # Linux (Noto CJK)
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf",
+    "/System/Library/Fonts/PingFang.ttc",                        # macOS
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "C:/Windows/Fonts/msyhbd.ttc",                               # Windows 微软雅黑 Bold
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/simhei.ttf",                               # Windows 黑体
+)
+
+
 def _get_fu_font(size):
     """返回指定字号的中文粗体字体（用于项圈「福」字），按字号缓存；不可用时返回 None。"""
+    global _FU_FONT_WARNED
     size = max(8, int(size))
     if size in _FU_FONT_CACHE:
         return _FU_FONT_CACHE[size]
+    f = None
     try:
         from PIL import ImageFont
-        f = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", size)
+        for _path in _FU_FONT_CANDIDATES:
+            if not os.path.exists(_path):
+                continue
+            try:
+                f = ImageFont.truetype(_path, size)
+                break
+            except Exception:
+                continue
     except Exception:
         f = None
+    if f is None and not _FU_FONT_WARNED:
+        _FU_FONT_WARNED = True
+        print("[WARN] 未找到可用的中文粗体字体，项圈「福」字将省略；"
+              "可安装 Noto Sans CJK（Linux: fonts-noto-cjk）或手动补充字体路径。")
     _FU_FONT_CACHE[size] = f
     return f
 
@@ -1479,9 +1546,9 @@ def render_cat_foreground(size, head_k=None, lift_frac=None, safe_ratio=None):
 
     默认即“真机 launcher 自适应前景”参数（饱满且居中）：
       head_k=ADAPTIVE_HEAD_K(1.12) 头部放大；
-      safe_ratio=ADAPTIVE_SAFE_RATIO(0.42) 目标安全圆半径比（1/3 保守会偏小）；
+      safe_ratio=ADAPTIVE_SAFE_RATIO(0.41) 目标安全圆半径比（占比约60.9%）；
       lift_frac=ADAPTIVE_FOREGROUND_LIFT 整体上移使视觉重心居中。
-    SS=5 超采样再 LANCZOS 缩小，边缘锐利、不变形；耳尖/铃铛不超出圆角方形画布。
+    SS=5 超采样再 LANCZOS 缩小，边缘锐利、不变形；耳尖留缝、绿项圈不被裁切。
 
     TV Banner 前景为横版，应显式传 head_k=1.0, safe_ratio=1/3, lift_frac=0.0。
     """
@@ -2195,6 +2262,7 @@ def modify_build_gradle(config):
             # 写回前花括号平衡校验：viewBinding 插入若错位会破坏 android{} 块
             if not _brace_balance(filename, content):
                 print(f"[FATAL] {filename}: 因花括号不平衡，放弃写回（保留原文件，避免 Gradle 解析失败）")
+                _fail(f"{filename}: 花括号不平衡，已放弃写回")
                 continue
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
@@ -2220,7 +2288,7 @@ def modify_strings_xml(rel_path, app_name):
         root = tree.getroot()
     except ET.ParseError as e:
         print(f"[ERROR] 解析 XML 失败 {rel_path}: {e}")
-        return False
+        return _fail(f"XML 解析失败 {rel_path}: {e}")
 
     changed = False
     targets = ["app_name", "app_name_tv", "app_name_short", "app_name_long"]
@@ -2269,10 +2337,11 @@ def generate_app_icons(config):
         style = "cat"
     try:
         import PIL  # noqa: F401
-        import numpy  # noqa: F401
     except Exception:
-        print("[ERROR] 未安装 Pillow/numpy，无法生成图标。请先运行: pip install pillow numpy")
-        return False
+        print("[ERROR] 未安装 Pillow，无法生成图标。请先运行: pip install pillow numpy")
+        return _fail("图标生成：缺少 Pillow")
+    if not _ensure_numpy():
+        return _fail("图标生成：numpy 不可用")
     print(f"[INFO] 正在生成图标（风格: {style}）...")
     try:
         do_write(style)
@@ -2328,8 +2397,9 @@ def modify_android_manifest(config):
     try:
         tree = ET.parse(manifest_path)
         root = tree.getroot()
-    except ET.ParseError:
-        return False
+    except ET.ParseError as e:
+        print(f"[ERROR] 解析 AndroidManifest.xml 失败: {e}")
+        return _fail(f"AndroidManifest.xml 解析失败: {e}")
     changed = False
     application = root.find("application")
     if application is not None:
@@ -2353,9 +2423,9 @@ def _patch_manifest_banner(manifest_path, banner_ref, TOOLS_NS, ANDROID_URI):
     try:
         tree = ET.parse(manifest_path)
         root = tree.getroot()
-    except ET.ParseError:
-        print(f"[SKIP] {os.path.relpath(manifest_path, REPO_ROOT)} 解析失败")
-        return False
+    except ET.ParseError as e:
+        print(f"[ERROR] {os.path.relpath(manifest_path, REPO_ROOT)} 解析失败: {e}")
+        return _fail(f"{os.path.relpath(manifest_path, REPO_ROOT)} 解析失败")
 
     TOOLS_REPLACE_KEY = f"{{{TOOLS_NS}}}replace"
     changed = False
@@ -2728,7 +2798,7 @@ def _yaml_looks_ok(label, content):
         except Exception as e:
             print(f"[FATAL] {label}: YAML 改完后无法解析 —— {e}")
             print("        这会导致 GitHub Actions 直接报 Invalid workflow file，请检查行级手术逻辑。")
-            return False
+            return _fail(f"{label}: YAML 改完后无法解析 —— {e}")
     # 降级：必须有 on/jobs 顶层键（未装 pyyaml 时的粗检）
     if not (("on:" in content or "name:" in content) and "jobs:" in content):
         print(f"[WARN] {label}: 未发现 on:/jobs: 结构，疑似 YAML 被破坏（未装 pyyaml，仅粗检）")
@@ -3105,6 +3175,11 @@ def modify_update_order(config):
                 print(f"[VERIFY] {rel_path}: 写回验证通过（CNB 优先在 GitHub 之前 + parseDownloads CNB 直链）")
             else:
                 print(f"[ERROR] {rel_path}: 写回验证失败！cnbMirror={v1}, apkField={v2}, cnbFirst={v3}")
+                _fail(f"{rel_path}: 写回验证失败（CNB 优先 / CNB 直链未落地）")
+                if AUTO_ROLLBACK:
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(original)
+                    print(f"[ROLLBACK] {rel_path}: 已自动还原为修改前内容（不影响构建）")
                 changed_any = False
         elif changed_any:
             # 内部状态不一致：标记了修改但内容未变（不应该发生）
@@ -3273,6 +3348,11 @@ def modify_update_order(config):
                 print(f"[VERIFY] {github_rel}: 写回验证通过（CNB_MANIFEST + CNB_RELEASE_DOWNLOAD + getCnbReleaseAsset）")
             else:
                 print(f"[ERROR] {github_rel}: 写回验证失败！CNB_MANIFEST={v1}, CNB_RELEASE_DOWNLOAD={v2}, getCnbReleaseAsset={v3}")
+                _fail(f"{github_rel}: 写回验证失败（CNB_MANIFEST / CNB_RELEASE_DOWNLOAD 未落地）")
+                if AUTO_ROLLBACK:
+                    with open(github_path, "w", encoding="utf-8") as f:
+                        f.write(g_original)
+                    print(f"[ROLLBACK] {github_rel}: 已自动还原为修改前内容（不影响构建）")
 
     if changed_any:
         return True
@@ -3420,6 +3500,11 @@ def ensure_gradle_properties(config=None):
                 print(f"[VERIFY] {gp_rel}: 写回验证通过（内存参数已固化）")
                 return True
             print(f"[ERROR] {gp_rel}: 写回验证失败！请检查文件内容")
+            _fail(f"{gp_rel}: 写回验证失败（内存参数未落地）")
+            if AUTO_ROLLBACK:
+                with open(gp_path, "w", encoding="utf-8") as f:
+                    f.write(original)
+                print(f"[ROLLBACK] {gp_rel}: 已自动还原为修改前内容（不影响构建）")
             return False
     return False
 
@@ -3727,6 +3812,7 @@ def modify_workflow_files(config):
                 print(f"[VERIFY] {rel_path}: 写回验证通过（CNB slug 已替换 + chmod + setup-android）{sa_note}")
             else:
                 print(f"[ERROR] {rel_path}: 写回验证失败！CNB已替换={v_cnb}, chmod={v_chmod}, GRADLE_OPTS={v_grace}")
+                _fail(f"{rel_path}: 写回验证失败（CNB/chmod/GRADLE_OPTS 未全部落地）")
                 if AUTO_ROLLBACK:
                     with open(full_path, "w", encoding="utf-8") as f:
                         f.write(original)
@@ -3857,7 +3943,7 @@ def customize_default_wallpapers(config):
                     with open(full, "w", encoding="utf-8", newline="\n") as f:
                         f.write(original)
                     print(f"[ROLLBACK] 已还原 {rel}")
-                return False
+                return _fail(f"{rel}: 未找到锚点（{ok_desc}）")
             content = content.replace(old, new, 1)
             applied += 1
             print(f"[OK] {os.path.basename(rel)}: {ok_desc}")
@@ -3867,7 +3953,7 @@ def customize_default_wallpapers(config):
                 if AUTO_ROLLBACK:
                     with open(full, "w", encoding="utf-8", newline="\n") as f:
                         f.write(original)
-                return False
+                return _fail(f"{rel}: 花括号不平衡，已放弃写回")
             with open(full, "w", encoding="utf-8", newline="\n") as f:
                 f.write(content)
             # 读盘回验
@@ -3876,7 +3962,7 @@ def customize_default_wallpapers(config):
             for marker, _old, _new, _desc in edits:
                 if marker not in reread:
                     print(f"[FATAL] {rel}: 写盘后回验缺少 {marker.strip()}")
-                    return False
+                    return _fail(f"{rel}: 写盘后回验缺少 {marker.strip()}")
             changed_any = True
         return True
 
@@ -4039,26 +4125,33 @@ def cleanup_duplicate_scripts():
     except Exception:
         self_name = "local_customize.py"
     keep = {self_name, "local_customize.py"}
+    # 只做「移走备份」而不是 os.remove：万一 custom/ 里放着自己写的辅助脚本，直接删不可恢复；
+    # 移进备份目录既能保持「custom/ 下只有一个脚本」的初衷，又能随时取回。
+    backup_dir = os.path.join(CUSTOM_DIR, ".removed-backup", time.strftime("%Y%m%d-%H%M%S"))
+    moved = []
     removed = []
     if os.path.isdir(CUSTOM_DIR):
         for name in os.listdir(CUSTOM_DIR):
             full = os.path.join(CUSTOM_DIR, name)
             if name.endswith(".py") and os.path.isfile(full) and name not in keep:
                 try:
-                    os.remove(full); removed.append(name)
-                except Exception:
-                    pass
+                    os.makedirs(backup_dir, exist_ok=True)
+                    shutil.move(full, os.path.join(backup_dir, name))
+                    moved.append(name)
+                except Exception as e:
+                    print(f"[WARN] 无法移走多余脚本 {name}: {e}")
         pycache = os.path.join(CUSTOM_DIR, "__pycache__")
         if os.path.isdir(pycache):
-            import shutil
             try:
                 shutil.rmtree(pycache, ignore_errors=True); removed.append("__pycache__")
             except Exception:
                 pass
+    if moved:
+        print("[OK] 已把多余脚本移入备份目录（未删除）：%s" % "、".join(moved))
+        print(f"     备份位置：{os.path.relpath(backup_dir, CUSTOM_DIR)}（需要时可直接取回）")
     if removed:
-        print("[OK] 已删除多余脚本/缓存，custom/ 仅保留唯一脚本 local_customize.py：%s"
-              % "、".join(removed))
-    else:
+        print("[OK] 已清理缓存目录：%s" % "、".join(removed))
+    if not moved and not removed:
         print("[SKIP] custom/ 下无多余脚本（仅 local_customize.py 一个）")
 
 
@@ -4083,6 +4176,9 @@ def main():
     load_config_env()
     config = CONFIG
 
+    # 图标相关依赖（numpy）按需准备：纯文本改写步骤（名称/包名/链接/内存参数）不依赖它
+    _ensure_numpy()
+
     if not os.path.isdir(CUSTOM_DIR):
         os.makedirs(CUSTOM_DIR, exist_ok=True)
         print(f"[INFO] 已创建 custom/ 目录：{CUSTOM_DIR}")
@@ -4091,39 +4187,39 @@ def main():
 
     results = []
 
-    print("\n--- [1/11] app/build.gradle（applicationId + viewBinding）---")
+    print("\n--- [1/12] app/build.gradle（applicationId + viewBinding）---")
     results.append(modify_build_gradle(config))
 
-    print("\n--- [2/11] 多语言 app 名称（values / values-zh-rCN / values-zh-rTW）---")
+    print("\n--- [2/12] 多语言 app 名称（values / values-zh-rCN / values-zh-rTW）---")
     results.append(modify_all_strings(config))
 
-    print("\n--- [3/11] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
+    print("\n--- [3/12] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
     icon_ok = generate_app_icons(config)
     results.append(icon_ok)
 
-    print("\n--- [4/11] 启动图（startup_logo / mobile_startup）---")
+    print("\n--- [4/12] 启动图（startup_logo / mobile_startup）---")
     results.append(replace_startup_images(config))
 
-    print("\n--- [5/11] AndroidManifest.xml（android:label）---")
+    print("\n--- [5/12] AndroidManifest.xml（android:label）---")
     results.append(modify_android_manifest(config))
 
-    print("\n--- [5b/11] TV banner 接线（android:banner 指向 320x180 PNG，当贝桌面长方形）---")
+    print("\n--- [5b/12] TV banner 接线（android:banner 指向 320x180 PNG，当贝桌面长方形）---")
     results.append(modify_manifest_banner(config))
 
-    print("\n--- [5c/11] 默认内置壁纸（经典 wallpaper_1/2/3 置顶 + 中文名，TV:1-3-2 / 手机:1-2-3）---")
+    print("\n--- [5c/12] 默认内置壁纸（经典 wallpaper_1/2/3 置顶 + 中文名，TV:1-3-2 / 手机:1-2-3）---")
     results.append(customize_default_wallpapers(config))
     results.append(sync_mobile_wallpaper_from_tv(config))
 
-    print("\n--- [6/11] 设置页作者链接（URL_GITHUB / URL_CNB）---")
+    print("\n--- [6/12] 设置页作者链接（URL_GITHUB / URL_CNB）---")
     results.append(modify_author_links(config))
 
-    print("\n--- [7/11] 检查更新链接（Github.java / GithubProxy.java / CI 测试）---")
+    print("\n--- [7/12] 检查更新链接（Github.java / GithubProxy.java / CI 测试）---")
     results.append(modify_update_urls(config))
 
-    print("\n--- [8/11] 更新机制（CNB 优先 manifest + CNB 直连下载 APK + GitHub 兜底路由）---")
+    print("\n--- [8/12] 更新机制（CNB 优先 manifest + CNB 直连下载 APK + GitHub 兜底路由）---")
     results.append(modify_update_order(config))
 
-    print("\n--- [9/11] sync-cnb-release.sh（CNB_REPO_SLUG）---")
+    print("\n--- [9/12] sync-cnb-release.sh（CNB_REPO_SLUG）---")
     results.append(modify_cnb_release_script(config))
 
     print("\n--- [10/12] 工作流 yml（CNB 地址 + chmod +x 权限 + GRADLE_OPTS 清理 + publish_oci 默认关闭）---")
@@ -4178,11 +4274,18 @@ def main():
             sign_ok = False
     results.append(sign_ok)
 
-    # 图标生成失败 / 一致性校验未通过，必须以非零码退出，阻断提交与 CI 打包
-    if not icon_ok:
+    # 任何一步「真失败」都必须以非零码退出，阻断提交与 CI 打包：
+    #   · 图标生成失败 / 一致性校验未通过
+    #   · Java 写回校验不过、YAML 被破坏、XML 解析失败等已登记进 FAILURES 的问题
+    if not icon_ok or FAILURES:
         print("\n" + "=" * 72)
-        print("  [ERROR] 图标生成失败或一致性校验未通过（实际图标与预览不一致）。")
-        print("  本次运行以非零码退出，请勿提交；请按上方 [verify] 的 FAIL 项排查后重跑。")
+        if not icon_ok:
+            print("  [ERROR] 图标生成失败或一致性校验未通过（实际图标与预览不一致）。")
+        if FAILURES:
+            print(f"  [ERROR] 共 {len(FAILURES)} 项处理失败：")
+            for _msg in FAILURES:
+                print(f"    · {_msg}")
+        print("  本次运行以非零码退出，请勿提交；请按上方 [ERROR]/[verify] 的 FAIL 项排查后重跑。")
         print("=" * 72)
         sys.exit(1)
 
@@ -4215,11 +4318,13 @@ if __name__ == "__main__":
     # --verify：仅校验已写入图标是否与预览/渲染来源一致，不修改项目（一致退出0，否则1）
     if "--verify" in sys.argv:
         load_config_env()
+        _ensure_numpy()
         _ok, _ = verify_icons(CONFIG.get("ICON_STYLE", "cat"), verbose=True)
         sys.exit(0 if _ok else 1)
     # --export：仅导出全部图标到 build/icon-export/（手机版/电视版分文件夹），不修改项目
     elif "--export" in sys.argv:
         load_config_env()
+        _ensure_numpy()
         do_export(CONFIG.get("ICON_STYLE", "cat"))
     else:
         main()

@@ -10,6 +10,9 @@
         <item name="tvFocusRing">@color/tv_item_focus_ring</item>
         <item name="tvCurrentRing">@color/tv_item_current_ring</item>
         <item name="tvNormalStroke">@color/tv_item_normal_stroke</item>
+        <!-- 与 leanback 共用同一批 drawable，必须绑定同一组属性（见 attrs.xml）。 -->
+        <item name="tvPlayerRing">@color/tv_player_focus_ring</item>
+        <item name="tvPlayerCurrentRing">@color/tv_player_current_ring</item>
         <item name="android:statusBarColor">@color/transparent</item>
         <item name="android:navigationBarColor">@color/transparent</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>

@@ -40,6 +40,12 @@
     <attr name="webhtvColorShadow" format="color" />
     <attr name="webhtvColorFocus" format="color" />
     <attr name="webhtvColorPlayerControl" format="color" />
+    <!-- 播放页（视频层）环色：由 ThemeResolver 在控制面板/快捷搜索/选集面板的**固定深靛玻璃**
+         （#E62F315E→#D6282955→#CC303463）上夹取到 ≥3:1 后的派生值，不能直接用 colorFocus
+         （浅色表在玻璃上仅 1.83:1）。纯白视频刻意不作为约束背景，取舍见
+         ThemeResolver.PLAYER_RING_BACKDROPS。 -->
+    <attr name="webhtvColorPlayerFocusRing" format="color" />
+    <attr name="webhtvColorPlayerCurrentRing" format="color" />
     <attr name="webhtvColorPlayerControlMuted" format="color" />
     <attr name="webhtvColorPlayerControlActive" format="color" />
     <attr name="webhtvColorPlayerScrim" format="color" />

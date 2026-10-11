@@ -1827,7 +1827,7 @@ public class TmdbDetailActivityLayoutTest {
         assertTrue("unfocused season action keeps a light-cinema chip and stays transparent in other themes",
                 activity.contains("boolean lightCinemaPlate = lightTheme && isCinemaStyle();")
                         && activity.contains("return lightCinemaPlate ? colors.chip : Color.TRANSPARENT;")
-                        && activity.contains("button.setStrokeWidth(focused ? ResUtil.dp2px(FOCUS_STROKE_DP) : (lightCinemaPlate ? ResUtil.dp2px(CHIP_STROKE_DP) : 0));"));
+                        && activity.contains("button.setStrokeWidth(focused ? focusRingWidthPx() : (lightCinemaPlate ? ResUtil.dp2px(CHIP_STROKE_DP) : 0));"));
         assertTrue("season action must show only a short season label instead of combining it with the episode heading",
                 activity.contains("binding.episodeTitle.setText(detailSeasonButtonLabel());")
                         && activity.contains("private String detailSeasonButtonLabel()")
@@ -1909,7 +1909,7 @@ public class TmdbDetailActivityLayoutTest {
                         && activity.contains("button.setMinWidth(ResUtil.dp2px(64));")
                         && activity.contains("ThemeColors colors = currentThemeColors();")
                         && activity.contains("background.setColor(focused ? colors.control : selected ? colors.chipActive : colors.chip);")
-                        && activity.contains("background.setStroke(ResUtil.dp2px(focused ? FOCUS_STROKE_DP : selected ? 2 : CHIP_STROKE_DP), focused ? focusStroke() : selected ? colors.accent : colors.line);")
+                        && activity.contains("background.setStroke(focused ? focusRingWidthPx() : ResUtil.dp2px(selected ? 2 : CHIP_STROKE_DP), focused ? focusStroke() : selected ? colors.accent : colors.line);")
                         && activity.contains("button.setTextColor(colors.primary);")
                         && activity.contains("button.setBackground(background);")
                         && activity.contains("button.setActivated(selected);")
@@ -2331,10 +2331,14 @@ public class TmdbDetailActivityLayoutTest {
                         && helper.contains("card.setForeground(null);")
                         && helper.contains("card.setRippleColor(ColorStateList.valueOf(0x00000000));"));
         assertTrue("shared TMDB card focus helper should draw a transparent foreground border above card content",
-                helper.contains("private static final int FOCUS_STROKE_DP = 3;")
+                // 2026-10-10：焦点环宽度改为从 @dimen/webhtv_focus_ring_width 读，
+                // 此前写死 3dp 常量导致「个性推荐等卡片边框粗细没统一」。
+                // 断言「代码里没有宽度常量声明」，而不是「全文不含该字样」（注释里会提到它）。
+                helper.contains("R.dimen.webhtv_focus_ring_width")
+                        && !helper.contains("private static final int FOCUS_STROKE_DP")
                         && helper.contains("int focus = ThemeController.focusRingColor(card.getContext());")
                         && helper.contains("card.setStrokeColor(focused ? focus : strokeColor);")
-                        && helper.contains("card.setForeground(focused ? foregroundBorder(card, focus, FOCUS_STROKE_DP) : null);")
+                        && helper.contains("card.setForeground(focused ? foregroundBorder(card, focus, focusWidth) : null);")
                         && helper.contains("drawable.setColor(Color.TRANSPARENT);")
                         && !helper.contains("FOCUS_SCALE")
                         && !helper.contains("scaleX(")
@@ -3165,7 +3169,8 @@ public class TmdbDetailActivityLayoutTest {
                 adapter.contains("int focusStroke = ThemeController.focusRingColor(holder.binding.getRoot().getContext());")
                         && adapter.indexOf("holder.binding.getRoot().setStrokeColor(focused ? focusStroke : activated ? activeStrokeColor : 0x00000000);", method) > method
                         && adapter.indexOf("Drawable foreground = focused", method) > method
-                        && adapter.indexOf("TmdbCardFocusHelper.foregroundBorder(holder.binding.getRoot(), focusStroke, FOCUS_STROKE_DP)", method) > method
+                        && adapter.indexOf("TmdbCardFocusHelper.foregroundBorder(holder.binding.getRoot(), focusStroke, focusWidth)", method) > method
+                        && !adapter.contains("private static final int FOCUS_STROKE_DP")
                         && adapter.indexOf("holder.binding.getRoot().setForeground(foreground);", method) > method);
         assertTrue("currently playing episode cards must keep the green active border when not focused",
                 adapter.contains("private int activeStrokeColor = 0xFF2CC56F;")

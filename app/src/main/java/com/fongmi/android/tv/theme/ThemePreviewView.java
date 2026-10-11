@@ -43,6 +43,10 @@ public final class ThemePreviewView extends LinearLayout {
                         ThemeEditor.Slot.PRIMARY_CONTAINER, ThemeEditor.Slot.SECONDARY_CONTAINER, ThemeEditor.Slot.FOCUS),
                 colorGroup(R.string.theme_editor_group_surfaces, ThemeEditor.Slot.SURFACE,
                         ThemeEditor.Slot.SURFACE_CONTAINER, ThemeEditor.Slot.SURFACE_CONTAINER_HIGH));
+        // 「当前播放环色」单独一组：它不是页面角色，而是播放页叠在视频上的状态色，
+        // 解析时会在固定玻璃面板上做可读性夹取。
+        addView(colorGroup(R.string.theme_editor_group_player, ThemeEditor.Slot.PLAYER_CURRENT).view,
+                ThemeEditorUi.fullWidth(context, 12));
         addGroups(wide,
                 colorGroup(R.string.theme_editor_group_text, ThemeEditor.Slot.ON_SURFACE,
                         ThemeEditor.Slot.ON_SURFACE_VARIANT, ThemeEditor.Slot.OUTLINE),
@@ -262,6 +266,7 @@ public final class ThemePreviewView extends LinearLayout {
             case SUCCESS -> "✓";
             case WARNING -> "!";
             case ERROR -> "×";
+            case PLAYER_CURRENT -> "▶";
             default -> "";
         };
     }
@@ -272,6 +277,7 @@ public final class ThemePreviewView extends LinearLayout {
             case PRIMARY_CONTAINER -> tokens.colorPrimaryContainer();
             case SECONDARY_CONTAINER -> tokens.colorSecondaryContainer();
             case FOCUS -> tokens.colorFocus();
+            case PLAYER_CURRENT -> tokens.colorPlayerCurrentRing();
             case SURFACE -> tokens.colorSurface();
             case SURFACE_CONTAINER -> tokens.colorSurfaceContainer();
             case SURFACE_CONTAINER_HIGH -> tokens.colorSurfaceContainerHigh();
@@ -307,6 +313,7 @@ public final class ThemePreviewView extends LinearLayout {
             case PRIMARY_CONTAINER -> R.string.theme_editor_slot_primary_container;
             case SECONDARY_CONTAINER -> R.string.theme_editor_slot_secondary_container;
             case FOCUS -> R.string.theme_editor_slot_focus;
+            case PLAYER_CURRENT -> R.string.theme_editor_slot_player_current;
             case SURFACE -> R.string.theme_editor_slot_surface;
             case SURFACE_CONTAINER -> R.string.theme_editor_slot_surface_container;
             case SURFACE_CONTAINER_HIGH -> R.string.theme_editor_slot_surface_container_high;

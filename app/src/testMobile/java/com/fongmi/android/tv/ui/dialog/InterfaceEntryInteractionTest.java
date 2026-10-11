@@ -78,7 +78,9 @@ public class InterfaceEntryInteractionTest {
         assertTrue(layout.contains("android:contentDescription=\"@string/setting_delete\""));
         assertTrue(icon.contains("?attr/colorOnPrimary"));
         assertTrue(normal.contains("?attr/colorOutline"));
-        assertTrue(focused.contains("android:width=\"2dp\""));
+        // 焦点环宽度必须走唯一来源 token，不能再写死 2dp：电视端统一焦点环宽度是 3dp
+        // （@dimen/webhtv_focus_ring_width），写死宽度正是用户报告「边框粗细也貌似不一样」的成因。
+        assertTrue(focused.contains("android:width=\"@dimen/webhtv_focus_ring_width\""));
         assertTrue(focused.contains("?attr/colorOnPrimary"));
     }
 

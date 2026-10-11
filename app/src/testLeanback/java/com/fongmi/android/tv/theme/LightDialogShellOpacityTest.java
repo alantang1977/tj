@@ -67,7 +67,10 @@ public class LightDialogShellOpacityTest {
     @Test
     public void dialogOpacityReachesTheShellExactlyOnce() {
         ThemeProfile profile = ThemeProfile.defaultProfile();
+        // 两份表都设：TV 现在产品默认深色（与上游一致），而 mobile/显式浅色会解析 light 槽。
+        // 本测试验证的是「opacity 只到达 shell 一次」这个机制，与哪张表生效无关。
         profile.light.dialogOpacity = 0.70f;
+        profile.dark.dialogOpacity = 0.70f;
         assertTrue("the fixture profile must validate", ThemeProfileStore.apply(profile).success());
 
         try (var host = Robolectric.buildActivity(Host.class).setup()) {

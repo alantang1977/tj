@@ -64,8 +64,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/cache_auto_button" />
 
             <com.google.android.material.button.MaterialButton
@@ -75,8 +76,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/cache_retention_button" />
 
             <com.google.android.material.button.MaterialButton
@@ -86,8 +88,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/cache_total_limit_button" />
         </com.google.android.flexbox.FlexboxLayout>
 
@@ -105,8 +108,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/cache_cleanup_light" />
 
             <com.google.android.material.button.MaterialButton
@@ -116,8 +120,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/cache_cleanup_standard" />
 
             <com.google.android.material.button.MaterialButton
@@ -127,8 +132,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/cache_cleanup_deep" />
         </com.google.android.flexbox.FlexboxLayout>
 
@@ -147,8 +153,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_primary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/cache_cleanup_cancel"
                 android:visibility="gone" />
 
@@ -159,8 +166,9 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/cache_management_refresh" />
 
             <com.google.android.material.button.MaterialButton
@@ -169,8 +177,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="4dp"
-                android:foreground="@drawable/selector_cache_button_focus"
                 android:minHeight="48dp"
+                app:strokeColor="@color/focus_ring_secondary"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
                 android:text="@string/dialog_positive" />
         </com.google.android.flexbox.FlexboxLayout>
     </androidx.appcompat.widget.LinearLayoutCompat>
