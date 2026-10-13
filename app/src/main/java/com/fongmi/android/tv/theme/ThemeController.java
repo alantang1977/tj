@@ -143,14 +143,21 @@ public final class ThemeController {
         } catch (RuntimeException ignored) {
             // Preference access is unavailable; Layer 1 defaults remain valid.
         }
-        return resolveWith(stored);
+        return resolveWith(stored, null);
     }
 
-    private static ThemeTokens resolveWith(ThemeProfile profile) {
+    /**
+     * Resolves the active snapshot against the table the given context inflates with.
+     *
+     * <p>{@code context} must be the activity whose views are about to be inflated, or
+     * {@code null} where no activity exists yet (the read-only probe device tests use).
+     * It is what decides light/dark: see {@link #resolvedDark(Context)}.
+     */
+    private static ThemeTokens resolveWith(ThemeProfile profile, Context context) {
         // Both the base palette and the profile's light/dark slot selection follow the
-        // compiled table, so the active tokens stay comparable with inflated colours on
-        // every flavour (see resolvedDark()).
-        boolean systemDark = resolvedDark();
+        // table that context resolves, so the active tokens stay comparable with inflated
+        // colours on every flavour (see resolvedDark(Context)).
+        boolean systemDark = resolvedDark(context);
         ThemeMode themeMode = currentThemeMode();
         int themeColor = com.fongmi.android.tv.setting.Setting.getThemeColor();
         if (themeColor == -1) {
@@ -168,13 +175,13 @@ public final class ThemeController {
      * <p>Every {@code ?attr/color*} attribute was resolved from the static
      * {@code webhtv_color_*} resources when the view was inflated, so this baseline
      * must ignore {@code theme_color}/{@code wall_color}: those preferences only
-     * reach the activity through {@link #resolveWith(ThemeProfile)}. Deriving the
-     * baseline from the active seed made it describe colours no inflated view ever
+     * reach the activity through {@link #resolveWith(ThemeProfile, Context)}. Deriving
+     * the baseline from the active seed made it describe colours no inflated view ever
      * held, and {@link ThemeBinder} then had nothing left to match - the feature
      * silently degraded to the legacy site dialog.
      */
-    private static ThemeTokens frozenPalette() {
-        return ThemeResolver.resolve(ThemeMode.SYSTEM, ThemeSeed.NONE, 0, 0, null, null, resolvedDark());
+    private static ThemeTokens frozenPalette(Context context) {
+        return ThemeResolver.resolve(ThemeMode.SYSTEM, ThemeSeed.NONE, 0, 0, null, null, resolvedDark(context));
     }
 
     private static ThemeMode currentThemeMode() {
@@ -185,8 +192,8 @@ public final class ThemeController {
     /**
      * Whether the palette the running build actually ships is the dark table.
      *
-     * <p>{@link #frozenPalette()} must describe the colours inflation produced, and
-     * those come from the compiled {@code webhtv_color_*} resources. Resource
+     * <p>{@link #frozenPalette(Context)} must describe the colours inflation produced,
+     * and those come from the compiled {@code webhtv_color_*} resources. Resource
      * selection is not purely a function of uiMode: a flavour may override
      * {@code values/} with a fixed table and ship no table of its own for the other
      * mode. When that happens a uiMode-derived baseline describes colours no inflated
@@ -203,10 +210,25 @@ public final class ThemeController {
      * flavours now resolve the same day/night tables and this method normally agrees
      * with the uiMode rule. The resource probe is kept because it is what keeps the
      * baseline honest if a flavour ever pins a palette again.
+     *
+     * <p><b>The probe must run against the context that inflates the UI, never against
+     * the application context.</b> A forced appearance mode is applied by
+     * {@code AppCompatDelegate.setDefaultNightMode}, which rewrites the resources of the
+     * activities it delegates for; on API &lt; 31 it does not rewrite the application's
+     * own resources. The TV flavour forces {@code MODE_NIGHT_YES} by product default
+     * (see {@link #applyNightModeToApp()}), so on a day-mode TV box the application
+     * context still resolved the light table while every inflated {@code ?attr/color*}
+     * resolved the dark one. The snapshot therefore came out light under a dark UI, and
+     * the dialog shell painted from it ({@code LightDialog.shell}) ended up under dark
+     * foregrounds - measured 1.06-1.41:1 on the 新增点播 dialog. The activity's own
+     * configuration ({@link #isNight(Context)}) is the only source that already reflects
+     * the forced mode, so it is what {@code context} must be.
      */
-    private static boolean resolvedDark() {
-        boolean systemDark = (Resources.getSystem().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        return darkPaletteFor(compiledDarkPalette(), currentThemeMode(), systemDark);
+    static boolean resolvedDark(Context context) {
+        boolean systemDark = context == null
+                ? (Resources.getSystem().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+                : isNight(context);
+        return darkPaletteFor(compiledDarkPalette(context), currentThemeMode(), systemDark);
     }
 
     /**
@@ -224,15 +246,19 @@ public final class ThemeController {
     }
 
     /**
-     * Identifies which canonical table this APK compiled by comparing every role the
-     * binder may rewrite against its {@code webhtv_color_*} resource. Returns
+     * Identifies which canonical table the given context resolves by comparing every role
+     * the binder may rewrite against its {@code webhtv_color_*} resource. Returns
      * {@code null} when no context is available or neither table matches exactly, so
      * an unmodelled future palette keeps the previous uiMode behaviour instead of
      * silently binding against the wrong baseline.
+     *
+     * <p>The context must be the one that inflated the views (see
+     * {@link #resolvedDark(Context)}); it falls back to the application context only for
+     * callers that have no activity, such as the read-only device-test probe.
      */
-    private static Boolean compiledDarkPalette() {
-        Context context = App.get();
-        if (context == null) return null;
+    static Boolean compiledDarkPalette(Context context) {
+        Context probe = context == null ? App.get() : context;
+        if (probe == null) return null;
         ThemeTokens light = ThemeTokens.light();
         ThemeTokens dark = ThemeTokens.dark();
         boolean matchesLight = true;
@@ -240,7 +266,7 @@ public final class ThemeController {
         for (ThemeRole role : ThemeRole.values()) {
             int resource = colorResourceOf(role);
             if (resource == 0) continue;
-            int compiled = ContextCompat.getColor(context, resource);
+            int compiled = ContextCompat.getColor(probe, resource);
             matchesLight &= compiled == role.colorOf(light);
             matchesDark &= compiled == role.colorOf(dark);
         }
@@ -289,8 +315,10 @@ public final class ThemeController {
             // Preference access is unavailable; Layer 1 defaults remain valid.
         }
         profile = stored == null ? ThemeProfile.defaultProfile() : stored;
-        baseline = frozenPalette();
-        current = resolveWith(profile);
+        // `activity` is the context whose resources inflate every view of this screen, so
+        // it is also what decides which compiled table the snapshot must describe.
+        baseline = frozenPalette(activity);
+        current = resolveWith(profile, activity);
         if (activity == null || activity.isFinishing()) return;
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return;
         if (activity.getWindow().getStatusBarColor() != android.graphics.Color.TRANSPARENT) {

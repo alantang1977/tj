@@ -440,12 +440,20 @@ public class ThemeBinderContractTest {
         assertFalse(fromCompiled.rolesFor(compiled.colorSurface()).isEmpty());
 
         // Pin the fix itself: the baseline must be read from the compiled resources
-        // instead of being inferred from uiMode.
+        // instead of being inferred from uiMode, and it must be read through the context
+        // that inflates the views. Probing the application context instead re-broke the
+        // same invariant the other way round: on API < 31 a forced MODE_NIGHT_YES only
+        // reaches the activity's resources, so the application context still reported the
+        // light table while every inflated ?attr/color* was dark.
         String controller = read("src/main/java/com/fongmi/android/tv/theme/ThemeController.java");
-        assertTrue(controller.contains("compiledDarkPalette()"));
+        assertTrue(controller.contains("compiledDarkPalette(context)"));
         assertTrue(controller.contains("R.color.webhtv_color_primary"));
         assertTrue(controller.contains("R.color.webhtv_color_on_warning"));
-        assertTrue(controller.contains("resolvedDark()"));
+        assertTrue(controller.contains("resolvedDark(context)"));
+        assertTrue(controller.contains("baseline = frozenPalette(activity);"));
+        assertTrue(controller.contains("current = resolveWith(profile, activity);"));
+        assertFalse("the probe must not read the application context as its primary source",
+                controller.contains("Context context = App.get();"));
         assertFalse("the frozen palette must not be derived from uiMode alone",
                 controller.contains("ThemeResolver.resolve(currentThemeMode(), ThemeSeed.NONE, 0, 0, null, null, systemDark)"));
     }

@@ -243,12 +243,19 @@ def render(size, shape="rounded", fill=FILL_LEGACY, radius_ratio=0.22,
 # 官方规格 https://developer.android.com/design/ui/tv/guides/system/tv-app-icon-guidelines
 #   * 16:9 位图，装进启动器磁贴；必须自带文字（本地化应用名）
 #   * 安全区四边各留 6.1%，超出部分可能被裁
-#   * 各密度的"最小尺寸"：mdpi 160x90 起，xhdpi 320x180 即 TV 基准档
+#   * 位图规格里 xhdpi 320x180 px 是【最小尺寸】（API<=25 的旧式兜底），
+#     不是目标尺寸
 # 这张图必须按密度分别生成：只给 default(drawable) 一张 320x180 的话，
 # xhdpi/xxhdpi/xxxhdpi 电视都会把它拉大 2~4 倍显示，边缘必然糊且有锯齿。
+#
+# 每档按 320x180 dp 出图（xhdpi 640x360，xxxhdpi 1280x720），即最小尺寸的
+# 2 倍。原因：启动器磁贴按 dp 画，1080p/xhdpi 电视要 640x360 px、4K 面板要
+# 1280x720 px；只按最小尺寸出图时启动器只能放大位图，字标就出锯齿（用户
+# 反馈"横屏图标分辨率不够、锯齿很严重"）。留 2 倍余量后启动器要么 1:1
+# 取用、要么缩小，两条路径都不会放大。
 BANNER_SAFE_PAD = 0.061
-BANNER_SIZES = [("mdpi", 160, 90), ("hdpi", 240, 135), ("xhdpi", 320, 180),
-                ("xxhdpi", 480, 270), ("xxxhdpi", 640, 360)]
+BANNER_SIZES = [("mdpi", 320, 180), ("hdpi", 480, 270), ("xhdpi", 640, 360),
+                ("xxhdpi", 960, 540), ("xxxhdpi", 1280, 720)]
 BANNER_TEXT = "默影视"
 # 子集化后的 Noto Sans SC Bold，仅含 BANNER_TEXT 三个字形（3.6KB，OFL-1.1）。
 # 打包字体而非依赖系统字体：TV 盒子 ROM 常缺中文字形，缺字会渲染成豆腐块。
@@ -598,7 +605,8 @@ def do_write():
     # 启动器会把方形图塞进 16:9 磁贴（字标被裁、边缘发糊），而那张
     # 320x180 位图既没被任何地方引用，又只落在 default 密度桶，
     # 任何 xhdpi 以上的电视都会把它拉 2~4 倍显示。改为按密度分桶后
-    # 启动器才算 1:1 取用，各档位都拿到官方最小尺寸以上的原图。
+    # 启动器才算 1:1 取用；本轮再把每档提到 320x180 dp（最小尺寸的 2 倍），
+    # 让 1080p 与 4K 磁贴都不必放大位图。
     for name, w, h in BANNER_SIZES:
         save_img(render_banner(w, h),
                  f"app/src/leanback/res/mipmap-{name}/ic_banner.png",

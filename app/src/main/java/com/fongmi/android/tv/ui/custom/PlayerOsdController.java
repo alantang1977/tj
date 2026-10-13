@@ -440,8 +440,9 @@ public class PlayerOsdController {
         String frameTiming = player.isExo() ? summarizeFrameTiming() : "";
         PlayerEngine.VideoPlaybackDetails videoDetails =
                 player.getVideoPlaybackDetails();
+        VideoTrackState videoTrack = getVideoTrackState(player);
         String videoText = summarizeVideo(video, player,
-                snapshot.videoDecoderName(), getVideoTrackState(player),
+                snapshot.videoDecoderName(), videoTrack,
                 videoDetails);
         AudioTrackState audioTrack = getAudioTrackState(player);
         AudioPlaybackDiagnostics.Snapshot audioDetails = player.getAudioPlaybackDiagnostics();
@@ -475,7 +476,7 @@ public class PlayerOsdController {
                 row("播放", playback),
                 row("配置", playerText),
                 TextUtils.isEmpty(startup) ? "" : row("起播", startup),
-                row("结论", getDiagnosis(player, snapshot, video, audioTrack, audioDetails, localSource)));
+                row("结论", getDiagnosis(player, snapshot, video, videoTrack, audioTrack, audioDetails, localSource)));
         String extra = join("\n",
                 row("设备", getDeviceText()),
                 row("系统", getSystemText()),
@@ -497,12 +498,19 @@ public class PlayerOsdController {
         return TextUtils.isEmpty(slowest) ? summary : summary + "  最慢 " + slowest;
     }
 
-    private String getDiagnosis(PlayerManager player, PlaybackAnalyticsListener.Snapshot snapshot, Format video, AudioTrackState audioTrack, AudioPlaybackDiagnostics.Snapshot audioDetails, boolean localSource) {
+    private String getDiagnosis(PlayerManager player, PlaybackAnalyticsListener.Snapshot snapshot, Format video, VideoTrackState videoTrack, AudioTrackState audioTrack, AudioPlaybackDiagnostics.Snapshot audioDetails, boolean localSource) {
         if (audioDetails.runtimeState() == AudioPlaybackDiagnostics.RuntimeState.FAILED) return "音频链路失败，先看音频和错误行";
         if (isDecodeError(snapshot) && player.isHardDecode()) return "硬件解码失败：设备可能不支持该视频编码、分辨率、帧率或规格";
         if (!TextUtils.isEmpty(snapshot.errorCode())) return "播放器报错，先看错误行";
         if (audioTrack.hasTracks() && audioTrack.isUnsupported()) return "音频轨不支持：" + summarizeAudioFormat(audioTrack.format()) + " / " + supportText(audioTrack.support());
         if (player.isExo() && audioTrack.hasTracks() && !audioTrack.selected() && snapshot.audioFormat() == null && player.getPlaybackState() == androidx.media3.common.Player.STATE_READY) return "已发现音轨但未选中，可能无声";
+        // A video track without any usable decoder is dropped silently: playback
+        // keeps advancing with audio and subtitles only, so nothing else in this
+        // panel would flag it and the verdict would read as healthy. "Handled" is
+        // the test rather than the unsupported codes alone: EXCEEDS_CAPABILITIES
+        // drops the track the same way, and it is one of the two states
+        // PlayerManager.needsSoftDecode reacts to.
+        if (videoTrack.hasTracks() && !videoTrack.selected() && !videoTrack.isHandled()) return videoDiagnosis(player, videoTrack);
         if (!localSource) {
             long mediaBitrate = getMediaBitrate(video, snapshot.audioFormat() != null ? snapshot.audioFormat() : audioTrack.format());
             long availableBitrate = snapshot.bandwidthEstimate() > 0 ? snapshot.bandwidthEstimate() : lastSpeedKBps * 1024 * 8;
@@ -528,6 +536,19 @@ public class PlayerOsdController {
         if (player.isExo() && audioTrack.hasTracks() && snapshot.audioFormat() == null) return "正在等待音频轨信息";
         if (audioTrack.hasTracks() || audioDetails.runtimeState() == AudioPlaybackDiagnostics.RuntimeState.PENDING) return "音频输出状态待确认";
         return "正常";
+    }
+
+    /**
+     * The verdict for a video track no renderer can decode. The support code is spelled out the
+     * way the audio rows and the video summary row already do it, and an encrypted track does not
+     * get the "switch to software decode" advice: no decoder choice fixes a DRM rejection.
+     */
+    private String videoDiagnosis(PlayerManager player, VideoTrackState videoTrack) {
+        String support = supportText(videoTrack.support());
+        if (videoTrack.support() == C.FORMAT_UNSUPPORTED_DRM) return "视频轨" + support + "，加密轨请更换资源";
+        return player.isHardDecode()
+                ? "视频轨无可用解码器：" + support + "，请切软解或更换资源"
+                : "视频轨无可用解码器：" + support + "，请更换资源";
     }
 
     private String getSystemGpuText() {

@@ -112,12 +112,12 @@ public class ThemeControllerContractTest {
     public void controllerReadsTheV2ProfileAndKeepsABaselineSnapshot() throws Exception {
         String controller = read("src/main/java/com/fongmi/android/tv/theme/ThemeController.java");
         assertTrue(controller.contains("ThemeProfileStore.load()"));
-        assertTrue(controller.contains("private static ThemeTokens resolveWith(ThemeProfile profile)"));
-        assertTrue(controller.contains("baseline = frozenPalette();"));
+        assertTrue(controller.contains("private static ThemeTokens resolveWith(ThemeProfile profile, Context context)"));
+        assertTrue(controller.contains("baseline = frozenPalette(activity);"));
         assertFalse("the binder baseline must never be seed-derived",
                 controller.contains("baseline = resolveWith("));
-        assertTrue(controller.contains("private static ThemeTokens frozenPalette()"));
-        assertTrue(controller.contains("current = resolveWith(profile);"));
+        assertTrue(controller.contains("private static ThemeTokens frozenPalette(Context context)"));
+        assertTrue(controller.contains("current = resolveWith(profile, activity);"));
         assertTrue(controller.contains("ThemeBinder.bind(root, baseline, current);"));
         assertTrue(controller.contains("public static ThemeTokens baseline()"));
     }

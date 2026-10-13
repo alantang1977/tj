@@ -33,16 +33,32 @@ public final class LabRunner {
     private LabRunner() {
     }
 
+    /**
+     * {@code Process#isAlive()} 需要 API 26；低版本用 {@code exitValue()} 探测：
+     * 进程仍在运行时它抛 {@code IllegalThreadStateException}。等价语义，API 1 起可用。
+     */
+    static boolean isAlive(Process process) {
+        if (process == null) return false;
+        try {
+            process.exitValue();
+            return false;
+        } catch (IllegalThreadStateException alive) {
+            return true;
+        } catch (Throwable error) {
+            return false;
+        }
+    }
+
     public static boolean isRunning(String key) {
         Process process = RUNNING.get(key);
-        if (process != null && process.isAlive()) return true;
+        if (isAlive(process)) return true;
         return LabProcManager.recoveredAlive(key);
     }
 
     public static int runningCount() {
         java.util.Set<String> keys = new java.util.LinkedHashSet<>();
         for (Map.Entry<String, Process> entry : RUNNING.entrySet()) {
-            if (entry.getValue() != null && entry.getValue().isAlive()) keys.add(entry.getKey());
+            if (isAlive(entry.getValue())) keys.add(entry.getKey());
         }
         for (String key : LabProcManager.recoveredKeys()) {
             keys.add(key);
@@ -53,7 +69,7 @@ public final class LabRunner {
     public static java.util.List<String> runningKeys() {
         java.util.Set<String> keys = new java.util.LinkedHashSet<>();
         for (Map.Entry<String, Process> entry : RUNNING.entrySet()) {
-            if (entry.getValue() != null && entry.getValue().isAlive()) keys.add(entry.getKey());
+            if (isAlive(entry.getValue())) keys.add(entry.getKey());
         }
         keys.addAll(LabProcManager.recoveredKeys());
         return new java.util.ArrayList<>(keys);

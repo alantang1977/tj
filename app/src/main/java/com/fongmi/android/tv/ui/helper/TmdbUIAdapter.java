@@ -517,6 +517,7 @@ public class TmdbUIAdapter {
         TmdbDetailCache.Entry cached = takeTmdbDetailCache(item);
         if (cached != null) {
             detailPrefetch.cancel();
+            seedSeasonEpisodes(cached);
             backgroundTasks.submit(() -> loadDetailSync(vod, cached.getItem(), cached.getDetail(), cached.getCast(), generation));
             return;
         }
@@ -582,7 +583,28 @@ public class TmdbUIAdapter {
         detailPrefetch.cancel();
         this.tmdbItem = item;
         saveMatch(vod, item);
+        seedSeasonEpisodes(cached);
         backgroundTasks.submit(() -> loadDetailSync(vod, cached.getItem(), cached.getDetail(), cached.getCast(), generation));
+    }
+
+    /**
+     * 把详情页已经解析好的季集数据预填进内存缓存，让后续 {@link #seasonEpisodes} 直接命中内存。
+     *
+     * <p>播放页的选集卡片模式取决于 {@code Episode.tmdbEpisode}，而该字段只有成功拿到该季分集
+     * 才会写入。详情页在跳转前已经取过同一季（否则它自己也画不出卡片），预填后播放页不必再发
+     * 一次同样的请求：既省一次网络往返，也避免那次请求失败时详情页有卡片、播放页退化成纯文本。
+     * 键与 {@link #seasonEpisodeKey} 保持一致，命中判据不变。
+     */
+    private void seedSeasonEpisodes(TmdbDetailCache.Entry cached) {
+        Map<Integer, List<TmdbEpisode>> episodes = cached == null ? null : cached.getSeasonEpisodes();
+        if (episodes == null || episodes.isEmpty() || tmdbItem == null) return;
+        int seeded = 0;
+        for (Map.Entry<Integer, List<TmdbEpisode>> entry : episodes.entrySet()) {
+            if (entry.getKey() == null || entry.getKey() < 0 || entry.getValue() == null || entry.getValue().isEmpty()) continue;
+            seasonEpisodeCache.put(seasonEpisodeKey(tmdbItem, entry.getKey()), List.copyOf(entry.getValue()));
+            seeded++;
+        }
+        SpiderDebug.log("tmdb", "season episodes source=detail-handoff seasons=%d", seeded);
     }
 
     /**
@@ -606,6 +628,11 @@ public class TmdbUIAdapter {
                 tmdbItem.getTitle(), tmdbItem.getMediaType(), tmdbItem.getTmdbId(), seasonOptions.size(), sourceOnly, fillInitial, plan.missing());
         notifyVodChanged(sourceVod, generation, RefreshEvent.Type.VOD_CORE);
         notifyLoadComplete(sourceVod, generation);
+        // applySourceBundle 已把内嵌分季数据写进 seasonEpisodeCache，但写缓存本身不会给 Episode
+        // 挂上 tmdbEpisode；不跑一次绑定，内嵌 payload 的站点在播放页就永远是纯文本选集
+        // （详情页按季集映射表画卡片，所以表现为“详情页有卡片、播放页没有”）。
+        // 这条路径命中内存缓存，不会发起网络请求。
+        if (tmdbItem != null && tmdbItem.isTv()) scheduleStartupEpisodeLoad(sourceVod, tmdbItem, generation);
         if (fillInitial) backgroundTasks.submit(() -> fillInitialSourceGaps(bundle, sourceVod, payload, plan, generation));
     }
 
@@ -1719,9 +1746,52 @@ public class TmdbUIAdapter {
     }
 
     private Integer currentEpisodeMetadataSeason() {
-        if (seasonResolution == null || seasonResolution.getStatus() != TmdbSeasonResolver.Status.RESOLVED) return null;
-        Integer selectedSeason = seasonResolution.getSelectedSeason();
-        return selectedSeason != null && selectedSeason >= 0 ? selectedSeason : null;
+        if (seasonResolution != null && seasonResolution.getStatus() == TmdbSeasonResolver.Status.RESOLVED) {
+            Integer selectedSeason = seasonResolution.getSelectedSeason();
+            if (selectedSeason != null && selectedSeason >= 0) return selectedSeason;
+        }
+        return soleOrdinarySeason();
+    }
+
+    /**
+     * 单季剧兜底：TMDB 元数据里只有一个正片季时，该季就是唯一可能的归属，无需解析器下结论。
+     *
+     * <p>解析器在“请求季不在 TMDB 里”等情况下返回 AMBIGUOUS，此时旧实现直接放弃逐集绑定，
+     * 播放页就只剩纯文本按钮（详情页按季集映射表画卡片，所以表现为“详情页有卡片、播放页没有”）。
+     * 本方法与 {@link TmdbSeasonResolver} 自身的 SINGLE_SEASON 启发式同口径：只有恰好一个正片季
+     * 才成立，多季剧返回 null、行为完全不变。
+     *
+     * <p>必须作为 {@link #currentEpisodeMetadataSeason()} 的组成部分而不是调用点局部变量：
+     * {@link #isCurrentEpisodeMetadataRequest} 与 {@code applyEpisodeTitles} 都用它做代次一致性校验，
+     * 只改调用点会让调度侧与执行侧看到不同的季号而互相否决。
+     *
+     * <p>兜底只对“解析器没有可用结论、且没有相反证据”的来源生效：{@link TmdbSeasonResolver.Source#REQUEST}
+     * （请求季不在 TMDB）与 {@link TmdbSeasonResolver.Source#NONE}（源站路径显式关闭了启发式）。
+     * 其余来源都代表解析器已经看到相反证据或用户显式选择，兜底覆盖它们只会帮倒忙：
+     * {@code MANUAL_FLAT} 是用户「保持原始剧集列表」的选择，覆盖后播放页会挂上 TMDB 集标题、
+     * 并经 {@code TmdbEpisodeSorter.sort} 原地重排选集，与详情页（该模式下不画卡片）也不一致；
+     * {@code TITLE}/{@code EXPLICIT} 冲突表示源站剧名或集名明确指向 TMDB 不存在的季，
+     * 覆盖会把别的季的标题静默挂到这一季上。
+     *
+     * <p>MULTI_SLICE 同样除外：解析器已经给出明确的分段结论时，兜底不得把它降级成单季路径。
+     * 切片路径以 null 作为季号一致性校验的期望值（{@code applyEpisodeTitlesForSlices} 传 null），
+     * 若兜底返回非 null，调度侧会改走单季绑定、执行侧的切片校验又必然否决，
+     * 结果是整个分段（含特别篇）一集都绑不上。
+     */
+    private Integer soleOrdinarySeason() {
+        if (isMultiSliceResolution()) return null;
+        if (seasonResolution != null) {
+            TmdbSeasonResolver.Source source = seasonResolution.getSource();
+            if (source != TmdbSeasonResolver.Source.REQUEST && source != TmdbSeasonResolver.Source.NONE) return null;
+        }
+        if (seasonOptions == null || seasonOptions.isEmpty()) return null;
+        Integer sole = null;
+        for (SeasonOption option : seasonOptions) {
+            if (option == null || option.getSeasonNumber() <= 0) continue;
+            if (sole != null) return null;
+            sole = option.getSeasonNumber();
+        }
+        return sole;
     }
 
     private boolean isMultiSliceResolution() {

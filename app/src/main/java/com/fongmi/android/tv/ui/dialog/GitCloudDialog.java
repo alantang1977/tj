@@ -36,6 +36,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.LinearLayoutCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
 import androidx.core.widget.NestedScrollView;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
@@ -2160,7 +2161,7 @@ public class GitCloudDialog extends BaseAlertDialog {
         edit.setTextColor(Color.parseColor("#202124"));
         edit.setHintTextColor(Color.parseColor("#5F6368"));
         edit.setSelectAllOnFocus(false);
-        edit.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        ViewCompat.setImportantForAutofill(edit, View.IMPORTANT_FOR_AUTOFILL_NO);
         if (password) edit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         layout.addView(edit, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return new TextInput(layout, edit);

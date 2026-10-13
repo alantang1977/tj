@@ -61,6 +61,7 @@ import com.fongmi.android.tv.player.exo.ExoNetworkGuardController;
 import com.fongmi.android.tv.player.exo.ExoNetworkGuardEligibility;
 import com.fongmi.android.tv.player.exo.ExoRtspLiveLagController;
 import com.fongmi.android.tv.player.exo.ExoRtspLiveLagPolicy;
+import com.fongmi.android.tv.player.exo.ExoUtil;
 import com.fongmi.android.tv.player.exo.ForwardBufferTrend;
 import com.fongmi.android.tv.player.exo.PlaybackAnalyticsListener;
 import com.fongmi.android.tv.player.ijk.IjkBufferController;
@@ -287,6 +288,7 @@ public class PlayerManager implements ParseCallback {
     private boolean lutWarmupRefreshRequested;
     private boolean lutWarmupReloadPreviewPending;
     private boolean hardDecodeSwitchRetryArmed;
+    private boolean softDecodeFallbackAttempted;
     private boolean lutAllowed = true;
     private boolean manualPlayerSwitchPending;
     private boolean mpvAutoOutputEvaluated;
@@ -1075,6 +1077,15 @@ public class PlayerManager implements ParseCallback {
         return false;
     }
 
+    private static boolean hasHandledTrack(Tracks tracks, int type) {
+        if (tracks == null || tracks.isEmpty()) return false;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != type) continue;
+            for (int i = 0; i < group.length; i++) if (group.getTrackSupport(i) == C.FORMAT_HANDLED) return true;
+        }
+        return false;
+    }
+
     private static Sub firstSubtitleSub(List<Sub> subs) {
         if (subs == null) return null;
         for (Sub sub : subs) if (sub != null && !TextUtils.isEmpty(sub.getUrl())) return sub;
@@ -1847,6 +1858,52 @@ public void resetTrack(int type) {
             exo.prepareFrameSchedulingForNextPlayback();
         }
         rebuildPlayer(resetVideoSurface);
+        setMediaItem();
+    }
+
+    /**
+     * Hard decode registers hardware decoders exclusively, so on a device without a
+     * hardware decoder for the stream's codec the session runs on platform software
+     * decoders while the OSD still reports hardware decode, and the soft-decode
+     * tuning plus the matching renderer set stay inactive. Two states are answered
+     * here with one software switch per playback request: a video track that no
+     * renderer can decode, and a video track whose codec has no hardware decoder.
+     * ExoPlayer drops the first kind silently and keeps playing audio and subtitles
+     * over the cover image, so neither state is visible as an error.
+     */
+    private void maybeFallbackToSoftDecode(Tracks tracks) {
+        if (softDecodeFallbackAttempted) return;
+        if (engine == null || !isExo() || !engine.isHard()) return;
+        if (!PlaybackPerformanceSetting.isDecoderFallbackEnabled()) return;
+        if (!needsSoftDecode(tracks)) return;
+        softDecodeFallbackAttempted = true;
+        PlaybackTrace.log("switch-decode", playbackTrace.current(), "auto software mode: hard decode has no hardware video path");
+        App.post(this::fallbackToSoftDecode);
+    }
+
+    /**
+     * True when hard decode cannot serve the video track with a hardware decoder. The video track
+     * playback actually selected decides whenever a renderer selected one, and the whole-set
+     * "nothing is decodable at all" state is the only other proof. A container may carry several
+     * video track groups, so an undecodable or software-only group that is not the one playing is
+     * not evidence that the playing track has no hardware path.
+     */
+    private static boolean needsSoftDecode(Tracks tracks) {
+        if (tracks == null || tracks.isEmpty()) return false;
+        Format selected = getSelectedFormat(tracks, C.TRACK_TYPE_VIDEO);
+        if (selected != null) return !ExoUtil.hasHardwareVideoDecoder(selected.sampleMimeType);
+        return hasTrack(tracks, C.TRACK_TYPE_VIDEO) && !hasHandledTrack(tracks, C.TRACK_TYPE_VIDEO);
+    }
+
+    private void fallbackToSoftDecode() {
+        if (engine == null || !engine.isHard()) return;
+        hardDecodeSwitchRetryArmed = false;
+        beginPlaybackTrace("switch-decode-auto");
+        engine.setDecode(PlayerEngine.SOFT);
+        if (engine instanceof ExoPlayerEngine exo) {
+            exo.prepareFrameSchedulingForNextPlayback();
+        }
+        rebuildPlayer(false);
         setMediaItem();
     }
 
@@ -5902,6 +5959,7 @@ public void resetTrack(int type) {
         localProxyRetry = 0;
         resetPlayerFallback();
         hardDecodeSwitchRetryArmed = false;
+        softDecodeFallbackAttempted = false;
         setMediaItem(timeout);
     }
 
@@ -5932,6 +5990,7 @@ public void resetTrack(int type) {
         parseHealthRecorded = false;
         resetPlayerFallback();
         hardDecodeSwitchRetryArmed = false;
+        softDecodeFallbackAttempted = false;
         parseJob = ParseJob.create(this).start(result, useParse);
     }
 
@@ -8539,6 +8598,7 @@ public void resetTrack(int type) {
             publishPlaybackTelemetry();
             applyLutForCurrentItem();
             scheduleMpvAutoOutputEvaluation();
+            maybeFallbackToSoftDecode(tracks);
         }
 
         @Override

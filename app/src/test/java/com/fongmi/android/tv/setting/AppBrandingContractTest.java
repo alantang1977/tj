@@ -188,8 +188,9 @@ public class AppBrandingContractTest {
         // 只给 application 会让 TV 桌面的 alias 磁贴缺图。
         assertEquals(2, countOccurrences(manifest, "android:banner=\"@mipmap/ic_banner\""));
 
-        // 官方最小尺寸（Android TV banner guidelines），xhdpi 320x180 即 TV 基准档。
-        int[][] expected = {{160, 90}, {240, 135}, {320, 180}, {480, 270}, {640, 360}};
+        // 每档按 320x180 dp 出图，即官方 xhdpi 最小尺寸 320x180 px 的 2 倍。
+        // 磁贴按 dp 画，只给最小尺寸时 1080p/4K 电视只能放大位图，字标出锯齿。
+        int[][] expected = {{320, 180}, {480, 270}, {640, 360}, {960, 540}, {1280, 720}};
         String[] density = {"mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"};
         for (int i = 0; i < density.length; i++) {
             Path file = banner(density[i]);
