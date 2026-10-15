@@ -133,6 +133,10 @@ public class LabDetailActivity extends AppCompatActivity implements LabCommandAd
         return LabEnv.displayVersion(item);
     }
 
+    /**
+     * 刷新详情页状态。命令列表只能走 {@link LabCommandAdapter#refreshStates()} 的差异刷新：
+     * 这个方法被 2 秒轮询调用，整表 {@code notifyDataSetChanged()} 会把遥控焦点踢回工具栏。
+     */
     private void updateButtons() {
         boolean installed = LabEnv.installed(this, item);
         boolean running = anyRunning();
@@ -150,7 +154,7 @@ public class LabDetailActivity extends AppCompatActivity implements LabCommandAd
             mBinding.status.setText(R.string.lab_not_installed);
             mBinding.status.setBackgroundResource(R.drawable.shape_lab_not_installed);
         }
-        commandAdapter.notifyDataSetChanged();
+        commandAdapter.refreshStates();
     }
 
     private boolean hasNewVersion() {

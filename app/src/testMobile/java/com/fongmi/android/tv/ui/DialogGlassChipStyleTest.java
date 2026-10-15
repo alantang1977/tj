@@ -5,8 +5,11 @@ import org.junit.Test;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class DialogGlassChipStyleTest {
@@ -18,6 +21,7 @@ public class DialogGlassChipStyleTest {
         String text = readMainResource("color", "selector_dialog_glass_chip_text.xml");
         String track = readLeanbackResource("layout", "adapter_track.xml");
         String title = readLeanbackResource("layout", "adapter_title.xml");
+        String danmaku = readLeanbackResource("layout", "adapter_danmaku.xml");
 
         assertEquals("all focused/selected/checked/activated chip states must share one active drawable",
                 5, occurrences(selector, "@drawable/shape_dialog_glass_chip_active"));
@@ -28,12 +32,167 @@ public class DialogGlassChipStyleTest {
                         && active.contains("android:color=\"#F2FFFFFF\""));
         assertTrue("active chips must include the blue-gray lower focus edge",
                 active.contains("android:color=\"#6B6F9F\""));
-        assertEquals("checked, activated, selected and focused text must all use the semantic onSurface role",
-                6, occurrences(text, "android:color=\"?attr/colorOnSurface\""));
+        // Every chip state the background selector can reach must keep a text entry of its own;
+        // a dropped entry silently falls back to the palette-following default and re-ships the
+        // reported defect for that state (state_activated is the TV persistent-selection state).
+        String states = withoutComments(text);
+        assertEquals("the chip text selector must keep exactly one entry per chip state",
+                6, occurrences(states, "<item "));
+        for (String state : new String[]{
+                "android:state_enabled=\"false\"", "android:state_checked=\"true\"",
+                "android:state_activated=\"true\"", "android:state_selected=\"true\"",
+                "android:state_focused=\"true\""}) {
+            assertTrue("the chip text selector must keep its " + state + " entry",
+                    states.contains(state));
+        }
         assertTrue("subtitle rows must use the shared chip background and text selectors",
                 usesSharedSelectors(track));
         assertTrue("title rows must use the shared chip background and text selectors",
                 usesSharedSelectors(title));
+        assertTrue("danmaku rows must use the shared chip background and text selectors",
+                usesSharedSelectors(danmaku));
+    }
+
+    /**
+     * The chip text must not follow the palette.
+     *
+     * <p>The chip fill and its host panel are fixed in both tables, so a palette-following
+     * foreground is unreadable in one of them. The reported defect was the night table:
+     * {@code colorOnSurface} {@code #E2E2E9} on the selected fill {@code #E6E6EA} measured
+     * <b>1.04:1</b>, which renders the selected track as a glowing white bar. The day table
+     * has the mirror defect on the default chip: {@code #1A1C1E} on the translucent indigo
+     * fill measured <b>1.68:1</b>.
+     *
+     * <p>The check is the resolved contrast rather than the literal spelling, so the colours
+     * may be re-tuned as long as both states stay legible.
+     */
+    @Test
+    public void chipTextStaysReadableOnItsFixedFillInBothPalettes() throws Exception {
+        String text = withoutComments(readMainResource("color", "selector_dialog_glass_chip_text.xml"));
+        String active = withoutComments(readMainResource("drawable", "shape_dialog_glass_chip_active.xml"));
+
+        assertFalse("chip text must not follow the palette: its fill is fixed in both tables",
+                text.contains("?attr/"));
+
+        String selectedFill = resolve(lastSolidColor(active));
+        assertNotNull("the selected chip face must resolve to a literal", selectedFill);
+        String selectedForeground = resolve(lastColorForState(text, "android:state_checked=\"true\""));
+        assertNotNull("the checked state must resolve to a literal", selectedForeground);
+        double selected = contrast(selectedForeground, selectedFill);
+        assertTrue("checked chip text " + selectedForeground + " on " + selectedFill + " measures "
+                        + String.format(Locale.ROOT, "%.2f:1", selected) + ", below the 4.5:1 body-text floor",
+                selected >= 4.5);
+
+        String defaultFill = resolve(lastSolidColor(
+                withoutComments(readMainResource("drawable", "selector_dialog_glass_chip.xml"))));
+        assertNotNull("the default chip fill must resolve to a literal", defaultFill);
+        String defaultForeground = resolve(lastColorForState(text, "<item "));
+        assertNotNull("the default state must resolve to a literal", defaultForeground);
+        // The default chip is translucent over an equally fixed dark glass panel, so its
+        // effective fill is darker than the raw value; the raw value is the worst case.
+        double plain = contrast(defaultForeground, defaultFill);
+        assertTrue("default chip text " + defaultForeground + " on " + defaultFill + " measures "
+                        + String.format(Locale.ROOT, "%.2f:1", plain) + ", below the 4.5:1 body-text floor",
+                plain >= 4.5);
+    }
+
+    /**
+     * Proves the contrast guard above is not vacuous.
+     *
+     * <p>Feeds the exact pair that shipped the reported defect - the night table's
+     * {@code colorOnSurface} over the selected chip face - and requires it to be rejected,
+     * so a future edit that restores a palette-following role cannot pass silently.
+     */
+    @Test
+    public void theContrastGuardRejectsThePairThatShippedTheDefect() {
+        double night = contrast("#E2E2E9", "#E6E6EA");
+        assertTrue("the night onSurface/selected-chip pair must be rejected (measured "
+                        + String.format(Locale.ROOT, "%.2f:1", night) + ")",
+                night < 4.5);
+        double day = contrast("#1A1C1E", "#383C73");
+        assertTrue("the day onSurface/default-chip pair must be rejected (measured "
+                        + String.format(Locale.ROOT, "%.2f:1", day) + ")",
+                day < 4.5);
+    }
+
+    /**
+     * The last {@code <solid>} fill of a chip drawable.
+     *
+     * <p>Both chip drawables declare their states in order, so the last fill is the one the
+     * ordinary (unselected, enabled) chip paints: the raised face of
+     * {@code shape_dialog_glass_chip_active} and the default item of
+     * {@code selector_dialog_glass_chip}.
+     */
+    private static String lastSolidColor(String source) {
+        String found = null;
+        int at = 0;
+        while ((at = source.indexOf("<solid android:color=\"", at)) >= 0) {
+            int start = at + "<solid android:color=\"".length();
+            int end = source.indexOf('"', start);
+            if (end < 0) break;
+            found = source.substring(start, end);
+            at = end;
+        }
+        return found;
+    }
+
+    /** Drops XML comments so a documented colour name cannot satisfy a value assertion. */
+    private static String withoutComments(String source) {
+        return source.replaceAll("(?s)<!--.*?-->", "");
+    }
+
+    /**
+     * The {@code android:color} of the last line carrying {@code marker}, or null.
+     *
+     * <p>The last rather than the first: a selector's final {@code <item>} is its default
+     * state, which is the one an unselected chip resolves.
+     */
+    private static String lastColorForState(String source, String marker) {
+        String found = null;
+        for (String line : source.split("\n")) {
+            if (!line.contains(marker)) continue;
+            int at = line.indexOf("android:color=\"");
+            if (at < 0) continue;
+            int start = at + "android:color=\"".length();
+            int end = line.indexOf('"', start);
+            if (end > start) found = line.substring(start, end);
+        }
+        return found;
+    }
+
+    /** Resolves a {@code #RRGGBB} literal or a {@code @color/<name>} reference, or null. */
+    private static String resolve(String value) throws Exception {
+        if (value == null) return null;
+        if (value.startsWith("#")) return value.matches("#[0-9A-Fa-f]{6,8}") ? value : null;
+        if (!value.startsWith("@color/")) return null;
+        String name = value.substring("@color/".length());
+        String colors = readMainResource("values", "colors.xml");
+        String marker = "<color name=\"" + name + "\">";
+        int at = colors.indexOf(marker);
+        if (at < 0) return null;
+        int start = at + marker.length();
+        int end = colors.indexOf('<', start);
+        if (end < 0) return null;
+        String resolved = colors.substring(start, end).trim();
+        return resolved.startsWith("#") ? resolved : null;
+    }
+
+    /** WCAG 2.x relative-luminance contrast; alpha is dropped. */
+    private static double contrast(String first, String second) {
+        double a = luminance(first);
+        double b = luminance(second);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    }
+
+    private static double luminance(String hex) {
+        String digits = hex.startsWith("#") ? hex.substring(1) : hex;
+        if (digits.length() == 8) digits = digits.substring(2);
+        double[] channels = new double[3];
+        for (int i = 0; i < 3; i++) {
+            double value = Integer.parseInt(digits.substring(i * 2, i * 2 + 2), 16) / 255.0;
+            channels[i] = value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+        }
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
     }
 
     @Test

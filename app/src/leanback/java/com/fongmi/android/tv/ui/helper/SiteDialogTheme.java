@@ -57,7 +57,9 @@ public final class SiteDialogTheme {
     }
 
     private static GradientDrawable shell(Context context, ThemeTokens tokens) {
-        return rounded(context, tokens.colorSurfaceContainer(), tokens.colorOutline(), 22, 0);
+        // 面板是浮在暗化背景上的独立层，需要一条可见的轮廓把它和背景分开；
+        // 全屏时代面板边缘就是屏幕边缘，0 描边看不出来，收窄成浮层后必须补回来。
+        return rounded(context, tokens.colorSurfaceContainer(), tokens.colorOutlineVariant(), 22, 1);
     }
 
     private static StateListDrawable input(Context context, ThemeTokens tokens) {
@@ -71,7 +73,9 @@ public final class SiteDialogTheme {
         StateListDrawable result = new StateListDrawable();
         result.addState(new int[]{android.R.attr.state_focused}, rounded(context, tokens.colorPrimary(), tokens.colorOnPrimary(), 12, 2));
         result.addState(new int[]{android.R.attr.state_selected}, rounded(context, tokens.colorPrimaryContainer(), tokens.colorPrimary(), 12, 2));
-        result.addState(new int[]{}, rounded(context, tokens.colorSurfaceContainer(), tokens.colorOutline(), 12, 0));
+        // 常态填充必须是比面板高一层的容器色：面板用 colorSurfaceContainer，
+        // 卡片若也用同一色，卡片边界在面板上完全消失（只剩文字）。
+        result.addState(new int[]{}, rounded(context, tokens.colorSurfaceContainerHigh(), tokens.colorOutlineVariant(), 12, 1));
         return result;
     }
 

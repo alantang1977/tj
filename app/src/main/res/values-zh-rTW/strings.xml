@@ -1567,6 +1567,9 @@ TVData</string>
     
     <string name="search_keyword">關鍵字…</string>
     <string name="site_search_hint">搜尋站點…</string>
+    <string name="site_dialog_title">選擇站點</string>
+    <string name="site_dialog_title_action">管理站點</string>
+    <string name="site_dialog_count">共 %1$d 個站點</string>
     <string name="site_group_all">全部</string>
     <string name="site_group_sort_desc">%1$s，長按拖動排序</string>
     <string name="site_group_sort_tv_desc">%1$s，長按確定鍵排序</string>

@@ -1,7 +1,6 @@
 package com.fongmi.android.tv.ui.adapter;
 
 import android.content.res.ColorStateList;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -200,7 +199,6 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
             super(binding.getRoot());
             this.actionBinding = binding;
             this.switchBinding = null;
-            binding.text.setGravity(Gravity.CENTER);
             binding.getRoot().setOnClickListener(v -> click());
             binding.getRoot().setOnLongClickListener(v -> longClick());
             binding.getRoot().setOnFocusChangeListener((v, hasFocus) -> {
@@ -214,7 +212,6 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
             super(binding.getRoot());
             this.actionBinding = null;
             this.switchBinding = binding;
-            binding.text.setGravity(Gravity.CENTER);
             binding.getRoot().setOnClickListener(v -> click());
             binding.getRoot().setOnLongClickListener(v -> longClick());
             binding.getRoot().setOnFocusChangeListener((v, hasFocus) -> {

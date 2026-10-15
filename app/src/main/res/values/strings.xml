@@ -1619,6 +1619,9 @@ TVData</string>
     <string name="search_keyword">Keywords…</string>
     <string name="search_column">Search layout</string>
     <string name="site_search_hint">Search sites…</string>
+    <string name="site_dialog_title">Select site</string>
+    <string name="site_dialog_title_action">Manage sites</string>
+    <string name="site_dialog_count">%1$d sites</string>
     <string name="site_group_all">All</string>
     <string name="site_group_sort_desc">%1$s, long press to reorder</string>
     <string name="site_group_sort_tv_desc">%1$s, long press OK to reorder</string>

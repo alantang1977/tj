@@ -41,6 +41,7 @@
                 android:id="@+id/sourceDropdown"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:nextFocusDown="@+id/folder"
                 android:inputType="none"/>
         </com.google.android.material.textfield.TextInputLayout>
         <LinearLayout
@@ -66,6 +67,8 @@
                     android:layout_height="wrap_content"
                     android:minHeight="48dp"
                     android:maxLines="3"
+                    android:nextFocusUp="@+id/sourceDropdown"
+                    android:nextFocusDown="@+id/rootInput"
                     android:inputType="textUri"/>
             </com.google.android.material.textfield.TextInputLayout>
             <androidx.appcompat.widget.AppCompatImageView
@@ -78,6 +81,8 @@
                 android:layout_height="48dp"
                 android:src="@drawable/ic_setting_folder"
                 android:tint="?attr/colorPrimary"
+                android:nextFocusUp="@+id/sourceDropdown"
+                android:nextFocusDown="@+id/input"
                 android:layout_marginStart="8dp"/>
         </LinearLayout>
         <com.google.android.material.textfield.TextInputLayout

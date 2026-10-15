@@ -1,9 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+   弹层 chip（音轨/视轨/字幕/标题/弹幕）文字色。
+
+   这里的取值必须是**调色板无关的常量**，不能走 ?attr/colorOnSurface：
+   chip 背景是固定色（选中态 shape_dialog_glass_chip_active 的浅灰实底，
+   常态 selector_dialog_glass_chip 的半透明深靛），宿主面板
+   shape_dialog_glass_panel / shape_dialog_danmaku_sheet_glass_panel
+   也是两张表相同的固定深靛玻璃。跟随调色板的前景必然在其中一张表上撞色：
+
+     深色表 onSurface 近白压在选中态浅灰实底上 ≈ 1.04:1
+       （用户报告 2026-10-14：电视版主题选深色后，选中项变成一条发光的白条）
+     浅色表 onSurface 近黑压在常态深靛 chip 上 ≈ 1.68:1
+
+   以上三个比值都是不透明原始色对按 WCAG 2.x 相对亮度直接算出的（与守卫同一口径）。
+   所以常态取固定浅色（white_90，半透明合成后的实测区间 7.98–9.57:1），
+   选中/聚焦/激活/勾选态取固定深色（black，对浅灰选中底 16.87:1）。
+   这与同类的固定明暗控件一致：display_option_text.xml 的 state_selected
+   同样用固定黑压在固定的浅色选中底上。
+
+   两个常量都取自已命名资源，且都不在 ThemeRole 索引里（black 与 white_90
+   都不是任何基线角色值），因此 ThemeBinder 不会改写它们。
+-->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:alpha="0.45" android:color="?attr/colorOnSurface" android:state_enabled="false" />
-    <item android:color="?attr/colorOnSurface" android:state_checked="true" />
-    <item android:color="?attr/colorOnSurface" android:state_activated="true" />
-    <item android:color="?attr/colorOnSurface" android:state_selected="true" />
-    <item android:color="?attr/colorOnSurface" android:state_focused="true" />
-    <item android:color="?attr/colorOnSurface" />
+    <item android:alpha="0.45" android:color="@color/white_90" android:state_enabled="false" />
+    <item android:color="@color/black" android:state_checked="true" />
+    <item android:color="@color/black" android:state_activated="true" />
+    <item android:color="@color/black" android:state_selected="true" />
+    <item android:color="@color/black" android:state_focused="true" />
+    <item android:color="@color/white_90" />
 </selector>
