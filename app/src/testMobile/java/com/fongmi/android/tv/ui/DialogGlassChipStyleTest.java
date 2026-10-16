@@ -14,6 +14,9 @@ import static org.junit.Assert.assertTrue;
 
 public class DialogGlassChipStyleTest {
 
+    /** The two video-frame extremes a translucent dialog stack can sit on. */
+    private static final double[][] FRAME_EXTREMES = {{0, 0, 0}, {255, 255, 255}};
+
     @Test
     public void trackAndTitleSelectionsShareTheLightGlassFocusStyle() throws Exception {
         String selector = readMainResource("drawable", "selector_dialog_glass_chip.xml");
@@ -88,12 +91,84 @@ public class DialogGlassChipStyleTest {
         assertNotNull("the default chip fill must resolve to a literal", defaultFill);
         String defaultForeground = resolve(lastColorForState(text, "<item "));
         assertNotNull("the default state must resolve to a literal", defaultForeground);
-        // The default chip is translucent over an equally fixed dark glass panel, so its
-        // effective fill is darker than the raw value; the raw value is the worst case.
-        double plain = contrast(defaultForeground, defaultFill);
-        assertTrue("default chip text " + defaultForeground + " on " + defaultFill + " measures "
-                        + String.format(Locale.ROOT, "%.2f:1", plain) + ", below the 4.5:1 body-text floor",
-                plain >= 4.5);
+        // The chip is translucent (47%) and sits on the equally translucent glass panel
+        // (80-90%), which sits on the video frame. Both layers let light through, so a bright
+        // frame makes the composited face LIGHTER than the chip's raw colour: the raw value
+        // measures 8.64:1, while the real stack bottoms out at 6.84:1 on a white frame. The
+        // raw value is therefore an optimistic proxy, not the worst case - assert the real
+        // composite so the guard enforces what the chip-text comment claims.
+        double worst = Double.MAX_VALUE;
+        int evaluated = 0;
+        for (String[] panel : new String[][]{{"main", "drawable", "shape_dialog_glass_panel.xml"},
+                {"leanback", "drawable", "shape_dialog_danmaku_sheet_glass_panel.xml"}}) {
+            String[] stops = gradientStops(readPanel(panel[0], panel[1], panel[2]));
+            // Pin the stop count: a gradient that lost its stops (or became a flat <solid>)
+            // would leave `worst` at MAX_VALUE and make the floor below pass vacuously.
+            assertEquals(panel[2] + " must stay a three-stop gradient so its worst case is computable",
+                    3, stops.length);
+            for (String stop : stops) {
+                String glass = resolve(stop);
+                assertNotNull("every glass gradient stop must resolve to a literal: " + stop, glass);
+                for (double[] frame : FRAME_EXTREMES) {
+                    double[] face = composite(defaultFill, composite(glass, frame));
+                    worst = Math.min(worst, contrast(composite(defaultForeground, face), face));
+                    evaluated++;
+                }
+            }
+        }
+        assertEquals("every glass stop must be checked against both frame extremes", 12, evaluated);
+        assertTrue("default chip text " + defaultForeground + " on " + defaultFill + " over the glass"
+                        + " measures " + String.format(Locale.ROOT, "%.2f:1", worst)
+                        + " at worst, below the 4.5:1 body-text floor",
+                worst >= 4.5);
+    }
+
+    private static String readPanel(String flavour, String type, String file) throws Exception {
+        return withoutComments(read(findAppPath().resolve(Path.of("src", flavour, "res", type, file))));
+    }
+
+    /** The {@code startColor}/{@code centerColor}/{@code endColor} of a gradient, in declaration order. */
+    private static String[] gradientStops(String drawable) {
+        String[] found = new String[3];
+        int count = 0;
+        for (String attribute : new String[]{"startColor", "centerColor", "endColor"}) {
+            String marker = "android:" + attribute + "=\"";
+            int at = drawable.indexOf(marker);
+            if (at < 0) continue;
+            int start = at + marker.length();
+            found[count++] = drawable.substring(start, drawable.indexOf('"', start));
+        }
+        String[] stops = new String[count];
+        System.arraycopy(found, 0, stops, 0, count);
+        return stops;
+    }
+
+    /** Composites an {@code #AARRGGBB}/{@code #RRGGBB} colour over an opaque backdrop. */
+    private static double[] composite(String colour, double[] backdrop) {
+        String digits = colour.startsWith("#") ? colour.substring(1) : colour;
+        double alpha = digits.length() == 8 ? Integer.parseInt(digits.substring(0, 2), 16) / 255.0 : 1.0;
+        String rgb = digits.length() == 8 ? digits.substring(2) : digits;
+        double[] out = new double[3];
+        for (int channel = 0; channel < 3; channel++) {
+            double value = Integer.parseInt(rgb.substring(channel * 2, channel * 2 + 2), 16);
+            out[channel] = alpha * value + (1 - alpha) * backdrop[channel];
+        }
+        return out;
+    }
+
+    private static double contrast(double[] first, double[] second) {
+        double a = luminance(first);
+        double b = luminance(second);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    }
+
+    private static double luminance(double[] rgb) {
+        double[] channels = new double[3];
+        for (int channel = 0; channel < 3; channel++) {
+            double value = rgb[channel] / 255.0;
+            channels[channel] = value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+        }
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
     }
 
     /**

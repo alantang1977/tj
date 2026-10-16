@@ -452,6 +452,7 @@ private int mAudioBackgroundRandomNonce;
     private boolean revealManualSearch;
     private boolean useParse;
     private boolean rotate;
+    private boolean manualRotate;
     private boolean detailHealthRecorded;
     private boolean playHealthRecorded;
     private boolean mNativePersonalTmdbLoading;
@@ -3822,6 +3823,9 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
     private void onRotate() {
         setR1Callback();
         setRotate(!isRotate());
+        // 用户显式选择的方向要压过 checkOrientation 的自动纠正：切下一集时新视频的尺寸回调
+        // 会再次进来，否则「横屏视频手动转竖屏」会被当成过时状态立刻改回横屏。
+        manualRotate = true;
         setRequestedOrientation(PlaybackOrientation.getRotateOrientation(isRotate()));
     }
 
@@ -5336,6 +5340,8 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         mBinding.control.title.setVisibility(View.VISIBLE);
         setSizeText();
         setRotate(current.isPortrait());
+        // 重新进全屏就按当前视频形态重建自动基线，手动覆盖到此为止，避免 rotate 与标记互相矛盾。
+        manualRotate = false;
         mKeyDown.resetScale();
         // 短剧会话退出全屏后再双击/点全屏按钮进来不走 enterShortDramaFullscreen，
         // 这里也要按新形态重算，否则回到全屏时手势还是长视频那套轴向。
@@ -5378,6 +5384,8 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         syncShortDramaGesture();
         App.post(mR3, 2000);
         setRotate(false);
+        // 退出全屏即结束本次手动覆盖，下次进全屏按视频形态重新建立自动基线。
+        manualRotate = false;
         hideControl();
         logVideoFrame("exitFullscreen after");
     }
@@ -8100,6 +8108,9 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
     }
 
 private void checkOrientation() {
+        // 用户点过旋转按钮之后方向由他决定：这里只负责在用户没表态时按视频宽高自动纠正。
+        // 否则全屏下把横屏视频手动转成竖屏，切下一集的尺寸回调会立刻把方向改回去。
+        if (manualRotate) return;
         if (isFullscreen() && !isRotate() && player().isPortrait()) {
             setRequestedOrientation(PlaybackOrientation.getPortraitVideoSizeOrientation());
             setRotate(true);
