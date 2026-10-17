@@ -1014,6 +1014,23 @@ public class ExoPlayerEngine implements PlayerEngine {
         });
     }
 
+    /**
+     * One-shot recovery for a standard offload output that accepted payload but was never consumed.
+     *
+     * <p>The generic startup timeout can only switch the decode mode or the kernel, and neither of
+     * those changes the output mode that is actually failing, so this has to run before it. The
+     * configuration stays disabled for this engine, which keeps the next selection on the PCM path.
+     */
+    public boolean recoverStalledOffloadOutputWithPcm() {
+        if (player == null || spec == null) return false;
+        if (!compressedAudioDirectPolicy.requestOffloadStallRecovery()) return false;
+        PlaybackTrace.log(
+                "player-engine",
+                getPlaybackTraceId(),
+                "offload output accepted payload without consuming it; restarted current item with PCM");
+        return requestPcmFallback();
+    }
+
     private boolean requestPcmFallback() {
         if (pcmFallbackInProgress.get()
                 || pcmFallbackScheduledAttempt.get() == audioOutputAttemptGeneration) {

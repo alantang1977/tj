@@ -668,13 +668,20 @@
         android:textSize="16sp"
         tools:text="導演：FongMi" />
 
-    <!-- TMDB 简介：仅 TMDB 模式显示，撑满站源/导演行与底部按钮之间的空间 -->
+    <!--
+        简介预览：撑满「导演/演员行」与底部按钮行之间的空间，超出的部分由运行时按
+        可用高度夹取行数（getTmdbOverviewMaxLines），点「简介」按钮看全文。
+        锚点取 @id/actor 而不是 @id/director：原生增强/TMDB 里 actor 被
+        suppressTmdbNativeTextFields() 压成 GONE，RelativeLayout 会把 GONE 锚点折叠到自身位置，
+        这里因此仍落在导演行下方；影视原生(DIRECT) 模式下 actor 可见，简介接在演员行下方，
+        不再与演员行重叠。
+    -->
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/tmdbOverview"
         style="@style/Video.ContextText"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@+id/director"
+        android:layout_below="@+id/actor"
         android:layout_above="@+id/row2"
         android:layout_alignStart="@+id/name"
         android:layout_alignParentEnd="true"

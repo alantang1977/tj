@@ -1,5 +1,7 @@
 import requests
 import os
+import contextlib
+import tempfile
 import textwrap
 from importlib.machinery import SourceFileLoader
 import json
@@ -14,25 +16,87 @@ def spider(cache, source, file_name=None):
 
 
 def writeFile(path, content):
-    with open(path, 'wb') as f:
-        f.write(content)
+    # Write to a scratch file and rename it into place.  open(path, 'wb') truncates
+    # immediately, so a failure part-way through (for example a full disk) would
+    # leave a truncated script behind -- and this is the same cache file that
+    # Loader.source() falls back to when the network is unavailable, so the last
+    # working copy would be destroyed too.  rename() is atomic, so a reader never
+    # observes a half-written script.
+    if not isinstance(content, (bytes, bytearray)):
+        content = str(content).encode()
+    parent = os.path.dirname(path) or '.'
+    handle = None
+    temp = None
+    try:
+        os.makedirs(parent, exist_ok=True)
+        # A unique scratch name per write: two threads writing the same script must
+        # not share one temp file, or their bytes interleave and both lose.
+        handle, temp = tempfile.mkstemp(dir=parent, prefix=os.path.basename(path) + '.', suffix='.tmp')
+        with os.fdopen(handle, 'wb') as f:
+            handle = None
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp, path)
+    except BaseException:
+        # Never leave a partial scratch file next to the script we failed to replace.
+        if handle is not None:
+            with contextlib.suppress(OSError):
+                os.close(handle)
+        if temp is not None:
+            with contextlib.suppress(OSError):
+                os.remove(temp)
+        raise
 
 
-def redirect(url):
-    rsp = requests.get(url, allow_redirects=False, verify=False)
-    if 'Location' in rsp.headers:
-        return redirect(rsp.headers['Location'])
-    else:
-        return rsp
+REDIRECT_TIMEOUT = 10
+REDIRECT_MAX_HOPS = 10
+
+
+def redirect(url, timeout=REDIRECT_TIMEOUT, maxHops=REDIRECT_MAX_HOPS, verify=True):
+    # Manual redirect following, so it needs the two guards requests applies for us:
+    # a per-hop timeout (a stalled server used to hang the calling thread forever)
+    # and a hop limit (a redirect loop used to recurse until RecursionError).
+    # verify defaults to True because each hop target comes from a remote Location
+    # header: following those with TLS verification disabled lets a man-in-the-middle
+    # choose the next URL.  Callers that genuinely need a self-signed host can pass
+    # verify=False explicitly.
+    if maxHops < 1:
+        raise ValueError('redirect needs maxHops >= 1')
+    for _ in range(maxHops):
+        rsp = requests.get(url, allow_redirects=False, timeout=timeout, verify=verify)
+        location = rsp.headers.get('Location')
+        if not location:
+            return rsp
+        url = location
+    raise ValueError(f'too many redirects (limit {maxHops})')
 
 
 def str2json(content):
-    return json.loads(content)
+    # Deliberately strict: every caller passes JSON that the Java bridge produced, so
+    # a decode failure means the contract was broken and must not be swallowed into a
+    # silent empty result.  Only the error shape is normalised here, so callers and
+    # the diagnostic log get one bounded, payload-free message instead of a raw
+    # JSONDecodeError/TypeError running to arbitrary length.
+    try:
+        return json.loads(content)
+    except Exception as error:
+        raise ValueError(f'str2json: invalid JSON payload: {error}') from None
 
 
 def getDependence(ru):
-    result = ru.getDependence()
-    return result
+    # getDependence is a WebHTV bridge extension, not part of the TVBox/"cat" Python
+    # spider contract.  The bundled base/spider.py supplies a default, but a
+    # single-file spider that does not inherit from it has no such attribute, and
+    # calling it raises AttributeError inside Spider.init().  PyLoader then degrades
+    # the site to an all-empty SpiderNull, so home/category/search silently show
+    # nothing.  Treat "not implemented" as "no dependencies".
+    # Use getattr rather than try/except AttributeError so a real getDependence()
+    # that raises internally still surfaces instead of being swallowed here.
+    getter = getattr(ru, 'getDependence', None)
+    if getter is None:
+        return []
+    return getter() if callable(getter) else getter
 
 
 def getName(ru):

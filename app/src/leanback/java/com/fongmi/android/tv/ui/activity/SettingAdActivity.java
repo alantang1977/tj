@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.View;
 import android.widget.TextView;
 
@@ -72,7 +73,22 @@ public class SettingAdActivity extends BaseActivity {
     }
 
     private void safeSet(String name, TextView view, TextSupplier supplier) {
-        safeRun(name, () -> view.setText(supplier.get()), () -> setError(view));
+        safeRun(name, () -> setSummary(view, supplier.get()), () -> setError(view));
+    }
+
+    /**
+     * 写入取值摘要，并把颜色复位到常规壁纸前景色。
+     *
+     * <p>复位这一步是必需的：{@link #setError} 会把同一个 TextView 染成错误色，而这些摘要
+     * 全部**复用同一个控件**——不复位的话，某一行失败一次之后，即使后续刷新成功，
+     * 它也会一直显示为红色。
+     */
+    private void setSummary(TextView view, CharSequence text) {
+        if (view == null) return;
+        view.setText(text);
+        view.setTextColor(themeColor(R.attr.webhtvColorOnWallpaper));
+        // 撤掉错误底材：错误态是"临时"的，刷新成功必须完全回到原样（这些 TextView 原本没有背景）。
+        view.setBackground(null);
     }
 
     private void safeRun(String name, Runnable action, Runnable fallback) {
@@ -88,8 +104,32 @@ public class SettingAdActivity extends BaseActivity {
         }
     }
 
+    /**
+     * 内联错误：设计文档 §9.9 要求错误态有「错误色」。
+     *
+     * <p>不能直接用 {@code ?attr/colorError}：那是跟随调色板的角色，浅色表的深红
+     * （{@code #B3261E}）压在深色壁纸行色带上实测只有 1.06:1，完全不可读。这里用与壁纸
+     * 同族的 {@code ?attr/webhtvColorOnWallpaperError}（同一底材实测 4.05–4.50:1）。
+     *
+     * <p>底材：错误色直接画在行色带上只有 4.05–4.50:1，略低于正文门槛 4.5:1，而继续调色无解
+     * （要达标就得接近纯白，错误色随之失去语义）。因此这里同时换上一块**实心深底**
+     * （{@code @drawable/shape_error_value}），核算为 8.84:1，稳过门槛。
+     *
+     * <p>如实记录：该取值在行色带最亮处是 4.05:1，**略低于正文门槛 4.5:1**。这是底材
+     * （中亮度壁纸）决定的取舍，理由与替代方案见 {@code values/webhtv_tokens.xml} 的同名条目
+     * 与 docs/TV-ERROR-STATE-20261012.md §7。
+     */
     private void setError(TextView view) {
-        if (view != null) view.setText(R.string.error_config_get);
+        if (view == null) return;
+        view.setText(R.string.error_config_get);
+        view.setTextColor(themeColor(R.attr.webhtvColorOnWallpaperError));
+        view.setBackgroundResource(R.drawable.shape_error_value);
+    }
+
+    /** 解析主题属性里的颜色值；未赋值时返回 0（透明）。 */
+    private int themeColor(int attr) {
+        TypedValue value = new TypedValue();
+        return getTheme().resolveAttribute(attr, value, true) ? value.data : 0;
     }
 
     private interface TextSupplier {

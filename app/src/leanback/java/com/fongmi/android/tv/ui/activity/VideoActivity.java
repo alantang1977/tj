@@ -1574,6 +1574,10 @@ private boolean runtimeSourceOnly;
         mBinding.control.action.lut.setOnClickListener(guarded(this::onLut));
         mBinding.control.action.speed.setOnClickListener(guarded(this::onSpeed));
         mBinding.control.action.reset.setOnClickListener(guarded(this::onReset));
+        // 错误层的重试复用控制层同一条「重做本次播放」动作：onReset() 会按用户的「重置」
+        // 设置决定从头重播还是重新拉流，所以不新写播放路径，也就不会与既有的自动换源
+        // （startFlow）产生第二套恢复逻辑。重试成功后的收尾由 showProgress() 负责隐藏错误层。
+        mBinding.widget.retry.setOnClickListener(guarded(this::onReset));
         mBinding.control.action.title.setOnClickListener(guarded(this::onTitle));
         mBinding.control.action.player.setOnClickListener(guarded(this::onPlayerKernel));
         mBinding.control.action.player.setOnLongClickListener(view -> onPlayerKernelLong());
@@ -1651,7 +1655,7 @@ private boolean runtimeSourceOnly;
     private void setupIntroSkipConfirmListener() {
         mIntroSkipPlayback.setSkipConfirmListener((segment, action) -> {
             if (mIntroSkipConfirmDialog != null && mIntroSkipConfirmDialog.isShowing()) return false;
-            mIntroSkipConfirmDialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            mIntroSkipConfirmDialog = new WebHtvAlertDialogBuilder(this)
                 .setTitle(R.string.intro_skip_confirm_title)
                 .setMessage(IntroSkipKinds.confirmMessage(segment))
                 .setPositiveButton(android.R.string.ok, (dialog, which) -> action.run())
@@ -2839,24 +2843,40 @@ private boolean runtimeSourceOnly;
         }
 
         // 简介移到站源行下方显示；内容相同时不重置 maxLines，避免播放页再次布局闪动。
-        Object desc = mBinding.content.getTag();
-        String overview = desc == null ? "" : desc.toString();
-        if (!TextUtils.isEmpty(overview)) {
-            CharSequence overviewText = getString(R.string.detail_content, overview);
-            if (!TextUtils.equals(mBinding.tmdbOverview.getText(), overviewText)) {
-                mBinding.tmdbOverview.setSingleLine(false);
-                mBinding.tmdbOverview.setHorizontallyScrolling(false);
-                mBinding.tmdbOverview.setMaxLines(Integer.MAX_VALUE);
-                mBinding.tmdbOverview.setText(overviewText);
-                mBinding.tmdbOverview.post(this::updateTmdbOverviewButton);
-            }
-            mBinding.tmdbOverview.setVisibility(View.VISIBLE);
-        } else {
-            mBinding.tmdbOverview.setVisibility(View.GONE);
-        }
+        updateOverviewPreview();
 
         // 简介按钮默认隐藏，焦点先把视频右移到简介按钮（按钮显示时）或搜索按钮
         mBinding.video.setNextFocusRightId(R.id.content);
+    }
+
+    /**
+     * 把详情文本（mBinding.content 的 tag）铺到简介区做「预览一部分」。
+     *
+     * 影视原生 (DIRECT) 模式下 mTmdbUIAdapter 为 null，applyTmdbDetailFields() 永不运行，
+     * 此前没有任何代码写这个节点，于是简介只能靠点按钮弹窗看，用户报告「简介不显示，
+     * 必须点击简介才能弹窗，以前这里会显示一部分」。
+     */
+    private void updateOverviewPreview() {
+        Object desc = mBinding.content.getTag();
+        String overview = desc == null ? "" : desc.toString();
+        if (TextUtils.isEmpty(overview)) {
+            mBinding.tmdbOverview.setText("");
+            mBinding.tmdbOverview.setVisibility(View.GONE);
+            return;
+        }
+        CharSequence overviewText = getString(R.string.detail_content, overview);
+        if (!TextUtils.equals(mBinding.tmdbOverview.getText(), overviewText)) {
+            mBinding.tmdbOverview.setSingleLine(false);
+            mBinding.tmdbOverview.setHorizontallyScrolling(false);
+            mBinding.tmdbOverview.setMaxLines(Integer.MAX_VALUE);
+            mBinding.tmdbOverview.setText(overviewText);
+        }
+        // 详情列可能已经被沉浸音频收起：setDetail() 里 checkFlag() 排在 setText() 之前，
+        // checkFlag()->onItemClick()->onRefresh()->getPlayer() 会先 setAudioStageVisible(true)
+        // 把整列（含本节点）收掉，这里再无条件下 show 就会把刚收起的简介重新亮在音频面板旁边。
+        // 详情列的显示/隐藏以 setVideoDetailsVisible() 为唯一所有者，本写入只负责是否“有内容”。
+        mBinding.tmdbOverview.setVisibility(mAudioStageVisible ? View.GONE : View.VISIBLE);
+        mBinding.tmdbOverview.post(this::updateTmdbOverviewButton);
     }
 
     private void updateTmdbOverviewButton() {
@@ -2872,8 +2892,11 @@ private boolean runtimeSourceOnly;
             }
         }
         boolean truncated = isTextTruncated(view);
-        mBinding.content.setVisibility(truncated ? View.VISIBLE : View.GONE);
-        mBinding.video.setNextFocusRightId(truncated ? R.id.content : R.id.keep);
+        // 影视原生没有 TMDB 那条「按钮由富集结果决定」的回显路径，简介按钮是看全文的唯一入口，
+        // 不能因为文字恰好没被截断就把它藏掉，否则简介区一旦放得下全文就再也点不开。
+        boolean directMode = !isTmdbSourceEnabled();
+        mBinding.content.setVisibility(truncated || directMode ? View.VISIBLE : View.GONE);
+        mBinding.video.setNextFocusRightId(truncated || directMode ? R.id.content : R.id.keep);
     }
 
     private int getTmdbOverviewMaxLines(TextView view, android.text.Layout layout) {
@@ -2930,13 +2953,30 @@ private boolean runtimeSourceOnly;
         setText(mBinding.director, R.string.detail_director, item.getDirector());
         setText(mBinding.actor, R.string.detail_actor, item.getActor());
         setText(mBinding.remark, 0, item.getRemarks());
+        // TMDB 模式下简介区由 applyTmdbDetailFields() 按富集结果接管，此处只喂影视原生，
+        // 否则站源简介会先上屏、TMDB 到达后再换一次，产生用户可见的文本闪动。
+        if (!isTmdbSourceEnabled()) updateOverviewPreview();
         updateAudioStageText();
     }
 
     private void setText(TextView view, int resId, String text) {
-        if (TextUtils.isEmpty(text) && !TextUtils.isEmpty(view.getText())) return;
+        if (TextUtils.isEmpty(text)) {
+            // 值缺失时必须清掉文本，不能只置 GONE：带标签的字段渲染出来的是
+            // getString(resId, "")，也就是 "导演：" 这种非空字符串，随后
+            // setVideoDetailsVisible() 按 !getText().isEmpty() 又把它翻回 VISIBLE，
+            // 于是详情页出现只有标签、没有内容的空行（用户截图所见）。
+            // 保留旧文本则会在换集后泄漏上一条目的元数据，同样靠清空消掉。
+            //
+            // resId == 0（remark）不走这条：它的文本可能由 TMDB 集数信息经另一条路径单独写入，
+            // 无条件清空会把那条路径的结果抹掉，因此保留原来的"空值不覆盖已有文本"语义。
+            if (resId > 0) {
+                if (!TextUtils.isEmpty(view.getText())) view.setText(null);
+                view.setVisibility(View.GONE);
+            }
+            return;
+        }
         String value = resId > 0 ? getString(resId, text) : text;
-        view.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+        view.setVisibility(View.VISIBLE);
         if (TextUtils.equals(view.getText(), value)) return;
         view.setText(Sniffer.buildClickable(value, this::clickableSpan), TextView.BufferType.SPANNABLE);
         view.setLinkTextColor(MDColor.YELLOW_500);
@@ -3748,7 +3788,7 @@ private boolean runtimeSourceOnly;
     private void onQuality() {
         Result result = mViewModel.getPlayer().getValue();
         if (result == null || !result.getUrl().isMulti()) return;
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+        new WebHtvAlertDialogBuilder(this)
                 .setTitle(R.string.detail_quality)
                 .setSingleChoiceItems(getQualityItems(result), result.getUrl().getPosition(), (dialog, which) -> {
                     dialog.dismiss();
@@ -5106,12 +5146,17 @@ private boolean runtimeSourceOnly;
     private void showError(String text) {
         mBinding.widget.error.setVisibility(View.VISIBLE);
         mBinding.widget.text.setText(text);
+        // 把焦点交给重试按钮：错误态下用户唯一能做的事就是重试，而播放页平时把焦点放在
+        // 视频面上（mBinding.video），浮层里的按钮靠方向键不一定走得过去。
+        mBinding.widget.retry.requestFocus();
         hideProgress();
     }
 
     private void hideError() {
         mBinding.widget.error.setVisibility(View.GONE);
         mBinding.widget.text.setText("");
+        // 只有焦点确实在重试按钮上时才交还视频面：否则会抢走别的控件（例如剧集网格）的焦点。
+        if (mBinding.widget.retry.hasFocus()) mBinding.video.requestFocus();
     }
 
     private void showInfo() {
@@ -10419,6 +10464,9 @@ private void setVideoDetailsVisible(boolean visible) {
         mBinding.row1.setVisibility(value);
         mBinding.director.setVisibility(showNativeMetadata && !TextUtils.isEmpty(mBinding.director.getText()) ? View.VISIBLE : View.GONE);
         mBinding.actor.setVisibility(showNativeMetadata && !TextUtils.isEmpty(mBinding.actor.getText()) ? View.VISIBLE : View.GONE);
+        // 简介区必须跟着一起收：沉浸音频/纯音频播放时它叠在播放器右侧，不收会在音频面板旁边
+        // 留一块详情文本。影视原生此前没有内容所以看不出来，现在它真的有文字了。
+        mBinding.tmdbOverview.setVisibility(visible && !TextUtils.isEmpty(mBinding.tmdbOverview.getText()) ? View.VISIBLE : View.GONE);
         mBinding.row2.setVisibility(value);
         mBinding.scroll.setVisibility(value);
     }

@@ -231,6 +231,14 @@ public class ThemeBinderContractTest {
         // `new WebHtvAlertDialogBuilder(`.
         java.util.regex.Pattern forbidden = java.util.regex.Pattern.compile(
                 "new\\s+(?:[A-Za-z_][\\w.]*\\.)?AlertDialog\\.Builder\\(");
+        // Same shape for the Material builder: the qualified `new com.google.android.material
+        // .dialog.MaterialAlertDialogBuilder(` must be caught too. The previous version used a
+        // literal `contains("new MaterialAlertDialogBuilder(")`, so every call site that spelled
+        // the class out in full slipped through - five of them in the two VideoActivity files
+        // were building dialogs that never reached ThemeController.bindDialog, which meant a
+        // user-chosen theme silently did not apply to them.
+        java.util.regex.Pattern forbiddenMaterial = java.util.regex.Pattern.compile(
+                "new\\s+(?:[A-Za-z_][\\w.]*\\.)?MaterialAlertDialogBuilder\\(");
         java.util.List<String> raw = new java.util.ArrayList<>();
         for (String sourceSet : new String[]{"main", "mobile", "leanback"}) {
             Path base = root.resolve("src/" + sourceSet);
@@ -240,7 +248,7 @@ public class ThemeBinderContractTest {
                     if (path.toString().contains("graphify-out")) continue;
                     if (exempt.contains(path.getFileName().toString())) continue;
                     String text = Files.readString(path, StandardCharsets.UTF_8);
-                    if (text.contains("new MaterialAlertDialogBuilder(")) {
+                    if (forbiddenMaterial.matcher(text).find()) {
                         raw.add(sourceSet + "/" + path.getFileName() + " -> MaterialAlertDialogBuilder");
                     }
                     if (forbidden.matcher(text).find()) {

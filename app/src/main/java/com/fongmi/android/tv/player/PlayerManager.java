@@ -8764,6 +8764,17 @@ public void resetTrack(int type) {
             callback.onError(ResUtil.getString(R.string.error_play_timeout));
             return;
         }
+        // A standard offload output that accepted payload but never consumed it is only
+        // recoverable by changing the output mode. Switching decode mode or kernel cannot help and
+        // would cost a second timeout, so this must run before the generic fallback.
+        if (PlayerSetting.getFailureFallback() != PlayerSetting.FALLBACK_DISABLED
+                && engine instanceof ExoPlayerEngine exo
+                && exo.recoverStalledOffloadOutputWithPcm()) {
+            // The engine restarts the item internally, bypassing setMediaItem, so re-arm the
+            // startup guard that path would otherwise have armed on its own.
+            App.post(runnable, Constant.TIMEOUT_PLAY);
+            return;
+        }
         if (fallbackPlayback(e)) return;
         finishPlaybackProfileAbSession(
                 "timeout", SystemClock.elapsedRealtime());

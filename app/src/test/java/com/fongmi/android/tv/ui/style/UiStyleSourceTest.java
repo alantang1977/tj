@@ -14,7 +14,8 @@ public class UiStyleSourceTest {
 
     @Test
     public void sharedComponentStylesExistAndOnlyConsumeTokens() throws Exception {
-        String styles = Files.readString(Path.of("src/main/res/values/webhtv_styles.xml"), StandardCharsets.UTF_8);
+        String styles = withoutComments(
+                Files.readString(Path.of("src/main/res/values/webhtv_styles.xml"), StandardCharsets.UTF_8));
         String[] required = {
                 "Theme.WebHTV", "Theme.WebHTV.Dialog", "ThemeOverlay.WebHTV.Dialog", "Widget.WebHTV.Button.Filled",
                 "Widget.WebHTV.Button.Tonal", "Widget.WebHTV.Button.Outlined", "Widget.WebHTV.Button.Text",
@@ -23,6 +24,32 @@ public class UiStyleSourceTest {
         };
         for (String name : required) assertTrue(name, styles.contains("name=\"" + name + "\""));
         assertFalse(styles.matches("(?s).*#[0-9A-Fa-f]{6,8}.*"));
+    }
+
+    /**
+     * The comment strip must stay load-bearing, in both directions.
+     *
+     * <p>A guard that reads raw text flags any table whose audit comment quotes a measured hex
+     * (here the scrim colour it wired up, {@code #52000000}). Deleting that evidence would be the
+     * wrong fix, so the strip is what keeps the check honest - and it is only honest while it also
+     * keeps real declarations. Both directions are asserted on synthetic input, so the guard binds
+     * the strip behaviour instead of pinning today's comment text; the real file is then checked
+     * for the actual invariant (nothing renders a raw hex) without depending on its prose.
+     */
+    @Test
+    public void commentStripIgnoresCommentHexAndKeepsRealOnes() throws Exception {
+        assertFalse("注释里的 hex 必须被剔除（否则审查注释会被当成硬编码色）",
+                withoutComments("<style><!-- 实测 #52000000 / #1A73E8 --></style>")
+                        .matches("(?s).*#[0-9A-Fa-f]{6,8}.*"));
+        assertTrue("真属性的 hex 必须保留（剔除不得过度）",
+                withoutComments("<item name=\"a\">#FF123456</item>")
+                        .matches("(?s).*#[0-9A-Fa-f]{6,8}.*"));
+        assertTrue("剔除不得吃掉声明本身",
+                withoutComments("<!--x--><style name=\"Theme.WebHTV\"/>").contains("Theme.WebHTV"));
+
+        String styles = withoutComments(
+                Files.readString(Path.of("src/main/res/values/webhtv_styles.xml"), StandardCharsets.UTF_8));
+        assertFalse("这份表剔除注释后不得残留 hex", styles.matches("(?s).*#[0-9A-Fa-f]{6,8}.*"));
     }
 
     @Test
@@ -54,11 +81,25 @@ public class UiStyleSourceTest {
     @Test
     public void dialogAndSettingLayoutsUseSemanticColors() throws Exception {
         for (Path path : dialogAndSettingLayouts()) {
-            String source = Files.readString(path, StandardCharsets.UTF_8);
+            String source = withoutComments(Files.readString(path, StandardCharsets.UTF_8));
             assertFalse(path + " contains a raw color", source.matches("(?s).*#[0-9A-Fa-f]{6,8}.*"));
             assertFalse(path + " contains a fixed business color", source.matches("(?s).*@color/(white|black|white_[0-9]+|black_[0-9]+|grey_[0-9]+|text|yellow)\\b.*"));
             assertFalse(path + " still uses a legacy widget style", source.contains("@style/Widget.WebHTV.LightDialog"));
         }
+    }
+
+    /**
+     * XML comments are documentation, not rendered values.
+     *
+     * <p>An audit comment that quotes a measured hex (the palette it replaced, the contrast it
+     * scored) is not a hard-coded colour, so scanning the raw file text reports a false positive
+     * for any file whose only hex sits in a comment - and the fix an author is pressured into is
+     * deleting the evidence. Stripping comments first keeps the guard aimed at what actually
+     * renders, and matches how the other source guards in this repository read their inputs
+     * ({@code TvFocusScaleContractTest}, {@code LabSettingsDialogThemeTest}).
+     */
+    private static String withoutComments(String source) {
+        return source.replaceAll("(?s)<!--.*?-->", " ");
     }
 
     private static Path[] javaSources() throws Exception {

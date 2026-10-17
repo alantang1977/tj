@@ -40,6 +40,7 @@ import com.fongmi.android.tv.player.diagnostic.PanEndpoint;
 import com.fongmi.android.tv.player.diagnostic.PanEndpointParser;
 import com.fongmi.android.tv.player.diagnostic.PanNetworkDiagnosticRunner;
 import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
+import com.fongmi.android.tv.ui.helper.TvFocusScale;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
@@ -914,7 +915,7 @@ public final class PanNetworkDiagnosticDialog extends DialogFragment implements 
         button.setStrokeColor(ColorStateList.valueOf(primary ? BLUE : Color.rgb(138, 180, 248)));
         button.setStrokeWidth(dp(1));
         button.setOnFocusChangeListener((v, focused) -> {
-            v.animate().scaleX(focused ? 1.035f : 1f).scaleY(focused ? 1.035f : 1f).setDuration(100).start();
+            TvFocusScale.applyCompact(v, focused);
             if (!primary) {
                 button.setTextColor(ColorStateList.valueOf(focused ? Color.WHITE : BLUE_DARK));
                 button.setBackgroundTintList(ColorStateList.valueOf(focused ? BLUE : Color.WHITE));

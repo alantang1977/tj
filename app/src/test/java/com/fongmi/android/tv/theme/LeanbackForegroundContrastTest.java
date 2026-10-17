@@ -53,6 +53,9 @@ public class LeanbackForegroundContrastTest {
     static {
         CONSTANT_LIGHT_FOREGROUNDS.put("?attr/webhtvColorOnWallpaper", "#FFFFFF");
         CONSTANT_LIGHT_FOREGROUNDS.put("@color/webhtv_color_player_control_muted", "#CCFFFFFF");
+        // 壁纸上的次级前景。与上面两个同族：两张表里都是浅色，因此只允许落在深色宿主上
+        // （卡片信息条带、设置行色带），落在浅色日间表面会白到看不见。
+        CONSTANT_LIGHT_FOREGROUNDS.put("?attr/webhtvColorOnWallpaperVariant", "#CCFFFFFF");
     }
 
     /** Luminance above which a day-mode fill can no longer carry a light foreground. */

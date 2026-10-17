@@ -42,6 +42,14 @@
     <string name="keep">收藏</string>
     <string name="keep_add">已收藏</string>
     <string name="keep_del">已取消收藏</string>
+    
+    <string name="keep_empty_title">還沒有收藏</string>
+    <string name="keep_empty_description">在任意詳情頁按「收藏」，就會出現在這裡。</string>
+    <string name="keep_empty_action">去點播</string>
+    
+    <string name="history_empty_title">還沒有觀看記錄</string>
+    <string name="history_empty_description">播放過的內容會自動出現在這裡，方便繼續觀看。</string>
+    <string name="history_empty_action">去點播</string>
     <string name="exit_confirm_title">退出應用</string>
     <string name="exit_confirm_message">應用將關閉，播放和後台服務也會停止。</string>
     <string name="exit_confirm_playing_message">目前正在播放；後台播放會繼續播放，完全退出會停止播放和後台服務。</string>
@@ -173,6 +181,11 @@
     <string name="push">推送</string>
 
     
+    
+    <string name="setting_group_sources">內容源</string>
+    <string name="setting_group_playback">播放與內容</string>
+    <string name="setting_group_personal">個人化與智慧</string>
+    <string name="setting_group_data">資料與網路</string>
     <string name="setting_vod">點播</string>
     <string name="setting_live">直播</string>
     <string name="setting_wall">壁紙</string>
@@ -1619,6 +1632,17 @@ TVData</string>
 
     
     <string name="error_config_get">配置取得失敗</string>
+    
+    <string name="error_config_load">內容源載入失敗</string>
+    
+    <string name="home_empty_title">暫時沒有內容</string>
+    <string name="home_empty_description">內容源沒有回傳可顯示的內容。</string>
+    <string name="home_empty_action">重新載入</string>
+    
+    <string name="file_empty_title">這裡沒有內容</string>
+    <string name="file_empty_description">這個目錄下沒有可顯示的項目。如果是剛放進來的檔案，重新掃描即可看到。</string>
+    <string name="file_empty_action">重新掃描</string>
+    <string name="error_retry">重試</string>
     <string name="error_play_next">已經是最後一集了！</string>
     <string name="error_play_prev">已經是第一集了！</string>
     <string name="error_play_parse">播放網址解析失敗</string>

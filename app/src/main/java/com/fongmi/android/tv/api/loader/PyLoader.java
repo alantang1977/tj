@@ -5,12 +5,15 @@ import android.text.TextUtils;
 import com.fongmi.android.tv.App;
 import com.fongmi.chaquo.Loader;
 import com.github.catvod.crawler.Spider;
+import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.crawler.SpiderNull;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class PyLoader {
+
+    private static final String PY_TAG = "python-spider";
 
     private final ConcurrentHashMap<String, Spider> spiders;
     private final Loader loader;
@@ -46,6 +49,18 @@ public class PyLoader {
                 spider.init(App.get(), normalizeExt(ext));
                 return spider;
             } catch (Throwable e) {
+                // A failed bridge init is otherwise hard to attribute: SpiderNull then
+                // returns "" for every method, so home/category/search just render empty.
+                // Record it under the python-spider tag (already routed to the NETWORK
+                // category) and name the callable that failed, because the stack alone
+                // does not tell whether it was init(), getDependence() or the import.
+                SpiderDebug.log(PY_TAG, "init failed key=%s api=%s error=%s:%s", key, api, e.getClass().getName(), e.getMessage());
+                SpiderDebug.log(PY_TAG, e);
+                // SpiderDebug.log() is gated on DebugLogStore.acceptsTag(), which is false
+                // whenever 调试日志 is off (the default).  Relying on it alone would make a
+                // failed init invisible in Logcat even though this catch is the only place
+                // that explains an all-empty site.  Keep the unconditional channel too, as
+                // the sibling JsLoader does for its own init failure.
                 e.printStackTrace();
                 return new SpiderNull();
             }

@@ -106,5 +106,22 @@
         ThemeBaseWiringTest freezes that property.
     -->
     <color name="webhtv_on_wallpaper">#FFFFFF</color>
-    <dimen name="webhtv_focus_scale">1.1</dimen>
+    <!--
+        壁纸上的次级前景，与日间表同值：壁纸本身两张表里都是深色，所以这一角色不需要
+        随明暗切换。派生依据与对比度核算见 values/webhtv_tokens.xml 的同名条目。
+    -->
+    <color name="webhtv_on_wallpaper_variant">#CCFFFFFF</color>
+    <!--
+        卡片角标底色，与日间表同值：角标画在海报上，与页面调色板无关，因此不需要随明暗切换。
+        取值依据与对比度核算见 values/webhtv_tokens.xml 的同名条目。
+    -->
+    <color name="webhtv_color_badge_progress">#177535</color>
+    <color name="webhtv_color_badge_site">#C62828</color>
+    <color name="webhtv_color_badge_year">#1565C0</color>
+    <!-- 壁纸上的错误前景色，与日间表同值：壁纸在两种模式下都是深色，不随模式切换。
+         取值依据与实测对比度见 values/webhtv_tokens.xml 的同名条目。 -->
+    <color name="webhtv_color_on_wallpaper_error">#FFDAD6</color>
+    <!-- 错误取值文字的实心深色底，与日间表同值：它是实心色，不跟随调色板。
+         核算过程见 values/webhtv_tokens.xml 的同名条目。 -->
+    <color name="webhtv_color_error_value_bg">#4A3438</color>
 </resources>

@@ -66,4 +66,12 @@
          dialogs draw on a light panel, so ?attr/colorOnSurface cannot serve both.
          This role is always light and is assigned by Theme.WebHTV. -->
     <attr name="webhtvColorOnWallpaper" format="color" />
+    <!-- Secondary counterpart of webhtvColorOnWallpaper: values, metadata and group
+         headings drawn on the wallpaper, so a title and its own subtitle stop being the
+         same pure white. Assigned by Theme.WebHTV; palette-independent for the same
+         reason as webhtvColorOnWallpaper (the built-in walls are dark in both modes). -->
+    <attr name="webhtvColorOnWallpaperVariant" format="color" />
+    <!-- 壁纸页面上的错误前景色（与明暗无关）。用法边界见 webhtv_tokens.xml 同名条目：
+         可直接用于 Display 档标题与行色带上的正文；直接画在壁纸上的正文不要用。 -->
+    <attr name="webhtvColorOnWallpaperError" format="color" />
 </resources>

@@ -1566,7 +1566,7 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
     private void setupIntroSkipConfirmListener() {
         mIntroSkipPlayback.setSkipConfirmListener((segment, action) -> {
             if (mIntroSkipConfirmDialog != null && mIntroSkipConfirmDialog.isShowing()) return false;
-            mIntroSkipConfirmDialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            mIntroSkipConfirmDialog = new WebHtvAlertDialogBuilder(this)
                 .setTitle(R.string.intro_skip_confirm_title)
                 .setMessage(IntroSkipKinds.confirmMessage(segment))
                 .setPositiveButton(android.R.string.ok, (dialog, which) -> action.run())
@@ -1636,6 +1636,10 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         mBinding.control.action.karaoke.setOnClickListener(view -> onKaraokeMode());
         mBinding.control.action.speed.setOnClickListener(guarded(this::onSpeed));
         mBinding.control.action.reset.setOnClickListener(guarded(this::onReset));
+        // 错误层的重试复用控制层同一条「重做本次播放」动作：onReset() 会按用户的「重置」
+        // 设置决定从头重播还是重新拉流，所以不新写播放路径，也就不会与既有的自动换源
+        // 产生第二套恢复逻辑。重试成功后的收尾由 showProgress() 负责隐藏错误层。
+        mBinding.widget.errorRetry.setOnClickListener(guarded(this::onReset));
         mBinding.control.action.change2.setOnClickListener(view -> onChange());
         mBinding.control.action.title.setOnClickListener(guarded(this::onTitle));
         mBinding.control.action.discMenu.setOnClickListener(view -> {
@@ -3527,7 +3531,7 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
     private void onQuality() {
         Result result = mViewModel.getPlayer().getValue();
         if (result == null || !result.getUrl().isMulti()) return;
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+        new WebHtvAlertDialogBuilder(this)
                 .setTitle(R.string.detail_quality)
                 .setSingleChoiceItems(getQualityItems(result), result.getUrl().getPosition(), (dialog, which) -> {
                     dialog.dismiss();
@@ -5216,7 +5220,7 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         String[] items = new String[kernel.length + 1];
         System.arraycopy(kernel, 0, items, 0, kernel.length);
         items[kernel.length] = getString(R.string.player_kernel_external);
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setItems(items, (dialog, index) -> {
+        new WebHtvAlertDialogBuilder(this).setItems(items, (dialog, index) -> {
             if (index < kernel.length) {
                 int which = PlayerSetting.kernelAt(index);
                 if (!refreshAndSwitchPlayerKernel(which)) {
@@ -5499,13 +5503,13 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
 
     private void showError(String text) {
         mBinding.widget.error.setVisibility(View.VISIBLE);
-        mBinding.widget.error.setText(text);
+        mBinding.widget.errorText.setText(text);
         hideProgress();
     }
 
     private void hideError() {
         mBinding.widget.error.setVisibility(View.GONE);
-        mBinding.widget.error.setText("");
+        mBinding.widget.errorText.setText("");
     }
 
     private void showDanmaku() {

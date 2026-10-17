@@ -12,13 +12,11 @@ import androidx.leanback.widget.Presenter;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.TmdbVideo;
 import com.fongmi.android.tv.databinding.AdapterTmdbVideoBinding;
+import com.fongmi.android.tv.ui.helper.TvFocusScale;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.google.android.material.card.MaterialCardView;
 
 public class TmdbVideoPresenter extends Presenter {
-
-    private static final float FOCUS_SCALE = 1.04f;
-    private static final int FOCUS_SCALE_DURATION_MS = 120;
 
     public interface OnClickListener {
         void onItemClick(TmdbVideo item);
@@ -52,9 +50,7 @@ public class TmdbVideoPresenter extends Presenter {
     @Override
     public void onUnbindViewHolder(Presenter.ViewHolder viewHolder) {
         View root = viewHolder.view;
-        root.animate().cancel();
-        root.setScaleX(1.0f);
-        root.setScaleY(1.0f);
+        TvFocusScale.reset(root);
         root.setOnFocusChangeListener(null);
         root.setForeground(null);
         root.setActivated(false);
@@ -81,9 +77,7 @@ public class TmdbVideoPresenter extends Presenter {
      */
     private void applyFocusChrome(ViewHolder holder, boolean focused) {
         holder.binding.getRoot().setActivated(focused);
-        holder.view.animate().cancel();
-        float scale = focused ? FOCUS_SCALE : 1.0f;
-        holder.view.animate().scaleX(scale).scaleY(scale).setDuration(FOCUS_SCALE_DURATION_MS).start();
+        TvFocusScale.applyCompact(holder.view, focused);
     }
 
     static final class ViewHolder extends Presenter.ViewHolder {

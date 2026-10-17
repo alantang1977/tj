@@ -140,4 +140,25 @@
     <!-- Keep TV dialogs aligned with the active app theme instead of pinning a fixed palette. -->
     <style name="ThemeOverlay.WebHTV.LightDialog" parent="ThemeOverlay.WebHTV.Dialog" />
 
+    <!--
+        电视设置页的分组标题。
+
+        颜色必须用纯白的 webhtvColorOnWallpaper，不能用次级角色
+        webhtvColorOnWallpaperVariant：标题直接画在壁纸上（没有色带承载），80% 白在
+        实测壁纸上只有 3.84:1，低于正文 4.5:1 门槛；而它在色带上的取值（5.12:1）才合规。
+        所以分组的层级靠字号（14sp 对 18sp 正文）、字距和间距表达，不靠降低亮度。
+
+        间距遵循「标题上方留白大于下方」：上 32dp、下 0dp；紧随其后的行自带
+        {@code layout_marginTop="16dp"}，所以标题下实际留白 16dp，仍小于上方的 32dp。
+    -->
+    <style name="Widget.WebHTV.TvGroupHeader">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">32dp</item>
+        <item name="android:layout_marginBottom">0dp</item>
+        <item name="android:textColor">?attr/webhtvColorOnWallpaper</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.1</item>
+    </style>
+
 </resources>

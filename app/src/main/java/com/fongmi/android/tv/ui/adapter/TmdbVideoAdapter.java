@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.TmdbVideo;
 import com.fongmi.android.tv.theme.ThemeController;
+import com.fongmi.android.tv.ui.helper.TvFocusScale;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
@@ -109,8 +110,7 @@ public class TmdbVideoAdapter extends RecyclerView.Adapter<TmdbVideoAdapter.View
                 if (listener != null) listener.onItemClick(item);
             });
             itemView.setOnFocusChangeListener((view, focused) -> {
-                float scale = focused ? 1.04f : 1.0f;
-                view.animate().scaleX(scale).scaleY(scale).setDuration(120).start();
+                TvFocusScale.applyCompact(view, focused);
                 // 焦点环宽度必须走唯一 token（此前写死 2dp，前几轮统一时漏掉）。
                 card.setStrokeWidth(focused
                         ? view.getContext().getResources().getDimensionPixelSize(com.fongmi.android.tv.R.dimen.webhtv_focus_ring_width)

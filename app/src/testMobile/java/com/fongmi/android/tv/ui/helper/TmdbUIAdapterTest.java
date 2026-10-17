@@ -694,7 +694,14 @@ public class TmdbUIAdapterTest {
         int directReturn = applyBody.indexOf("return;", directGuard);
         int suppress = applyBody.indexOf("suppressTmdbNativeTextFields();");
         int hideSynopsisButton = applyBody.indexOf("mBinding.content.setVisibility(View.GONE);");
-        int replaceWithOverview = applyBody.indexOf("mBinding.tmdbOverview.setVisibility(View.VISIBLE);");
+        // 简介文本的写入者已从本方法内联挪到 updateOverviewPreview()（PR #452：影视原生也要
+        // 显示简介预览）。这里断言的是「直接播放的早退仍然发生在接管之前」这个不变式，而不是
+        // 当时那句话恰好写在哪个方法里，否则实现重构后守卫会假红。接管点取两个写入者中
+        // 实际存在的那个：新实现是 updateOverviewPreview()，旧写法是内联的 VISIBLE 赋值。
+        int replaceWithOverview = applyBody.indexOf("updateOverviewPreview();");
+        if (replaceWithOverview < 0) {
+            replaceWithOverview = applyBody.indexOf("mBinding.tmdbOverview.setVisibility(View.VISIBLE);");
+        }
         int suppressMethod = source.indexOf("private void suppressTmdbNativeTextFields()");
         int suppressEnd = source.indexOf("\n    }", suppressMethod);
         String suppressBody = source.substring(suppressMethod, suppressEnd);

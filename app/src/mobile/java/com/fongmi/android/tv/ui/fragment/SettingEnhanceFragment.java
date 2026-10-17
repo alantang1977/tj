@@ -2,6 +2,7 @@ package com.fongmi.android.tv.ui.fragment;
 
 import android.content.Intent;
 import android.net.Uri;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -196,8 +197,8 @@ public class SettingEnhanceFragment extends BaseFragment {
     private void setShellProxyText() {
         safeRun("shellProxy", () -> {
             int count = ProxySetting.count();
-            mBinding.shellProxyText.setText(getSwitch(Setting.isShellProxy()) + " · " + getString(R.string.setting_proxy_rule_count, count));
-            mBinding.shellProxyConfigText.setText(getString(R.string.setting_proxy_rule_count, count));
+            setSummary(mBinding.shellProxyText, getSwitch(Setting.isShellProxy()) + " · " + getString(R.string.setting_proxy_rule_count, count));
+            setSummary(mBinding.shellProxyConfigText, getString(R.string.setting_proxy_rule_count, count));
         }, () -> {
             setError(mBinding.shellProxyText);
             setError(mBinding.shellProxyConfigText);
@@ -212,12 +213,27 @@ public class SettingEnhanceFragment extends BaseFragment {
                 return;
             }
             CustomCspSetting.Count count = status.count();
-            mBinding.customCspText.setText(getSwitch(status.enabled()) + " · " + getString(R.string.setting_custom_csp_count, count.active(), count.enabled()));
+            setSummary(mBinding.customCspText, getSwitch(status.enabled()) + " · " + getString(R.string.setting_custom_csp_count, count.active(), count.enabled()));
         }, () -> setError(mBinding.customCspText));
     }
 
     private void safeSet(String name, TextView view, TextSupplier supplier) {
-        safeRun(name, () -> view.setText(supplier.get()), () -> setError(view));
+        safeRun(name, () -> setSummary(view, supplier.get()), () -> setError(view));
+    }
+
+    /**
+     * 写入取值摘要，并把颜色与底材复位到常规状态。
+     *
+     * <p>复位这一步是必需的：{@link #setError} 会把同一个 TextView 染成错误色并换上一块深底，
+     * 而这些摘要全部**复用同一个控件**——不复位的话，某一行失败一次之后，即使后续刷新成功，
+     * 它也会一直显示为红字加深底。
+     */
+    private void setSummary(TextView view, CharSequence text) {
+        if (view == null) return;
+        view.setText(text);
+        view.setTextColor(themeColor(R.attr.webhtvColorOnWallpaper));
+        // 这些 TextView 在布局里原本都没有背景，所以置空就是"恢复原样"。
+        view.setBackground(null);
     }
 
     private void safeRun(String name, Runnable action, Runnable fallback) {
@@ -233,8 +249,27 @@ public class SettingEnhanceFragment extends BaseFragment {
         }
     }
 
+    /**
+     * 内联错误：设计文档 §9.9 要求错误态有「错误色」。
+     *
+     * <p>不能直接用 {@code ?attr/colorError}：那是跟随调色板的角色，浅色表的深红
+     * （{@code #B3261E}）压在深色壁纸行色带上实测只有约 1.06:1，完全不可读。这里用与壁纸
+     * 同族的 {@code ?attr/webhtvColorOnWallpaperError}，并同时换上一块**实心深底**
+     * （{@code @drawable/shape_error_value}）——错误色直接画在行色带上只有 4.05–4.50:1，
+     * 略低于正文门槛 4.5:1；实心底上是 8.84:1，稳过门槛。底材是实心色，因此这个比值与
+     * flavor 无关，与电视端共用同一份 drawable 与同一个角色。
+     */
     private void setError(TextView view) {
-        if (view != null) view.setText(R.string.error_config_get);
+        if (view == null) return;
+        view.setText(R.string.error_config_get);
+        view.setTextColor(themeColor(R.attr.webhtvColorOnWallpaperError));
+        view.setBackgroundResource(R.drawable.shape_error_value);
+    }
+
+    /** 解析主题属性里的颜色值；未赋值时返回 0（透明）。 */
+    private int themeColor(int attr) {
+        TypedValue value = new TypedValue();
+        return requireContext().getTheme().resolveAttribute(attr, value, true) ? value.data : 0;
     }
 
     private interface TextSupplier {
@@ -243,12 +278,12 @@ public class SettingEnhanceFragment extends BaseFragment {
 
     private void setDriveCheck(View view) {
         Setting.putDriveCheck(!Setting.isDriveCheck());
-        mBinding.driveCheckText.setText(getSwitch(Setting.isDriveCheck()));
+        setSummary(mBinding.driveCheckText, getSwitch(Setting.isDriveCheck()));
     }
 
     private void setDebugLog(View view) {
         Setting.putDebugLog(!Setting.isDebugLog());
-        mBinding.debugLogText.setText(getSwitch(Setting.isDebugLog()));
+        setSummary(mBinding.debugLogText, getSwitch(Setting.isDebugLog()));
         if (!Setting.isDebugLog()) return;
         DebugLogDialog.show(this);
     }
@@ -288,12 +323,12 @@ public class SettingEnhanceFragment extends BaseFragment {
 
     private void setPlaybackArtworkWall(View view) {
         Setting.putPlaybackArtworkWall(!Setting.isPlaybackArtworkWall());
-        mBinding.playbackArtworkWallText.setText(getSwitch(Setting.isPlaybackArtworkWall()));
+        setSummary(mBinding.playbackArtworkWallText, getSwitch(Setting.isPlaybackArtworkWall()));
     }
 
     private void setWebHomeFullscreen(View view) {
         Setting.putWebHomeFullscreen(!Setting.isWebHomeFullscreen());
-        mBinding.webHomeFullscreenText.setText(getSwitch(Setting.isWebHomeFullscreen()));
+        setSummary(mBinding.webHomeFullscreenText, getSwitch(Setting.isWebHomeFullscreen()));
         if (requireActivity() instanceof HomeActivity activity) {
             if (!Setting.isWebHomeFullscreen()) {
                 JsonObject object = new JsonObject();

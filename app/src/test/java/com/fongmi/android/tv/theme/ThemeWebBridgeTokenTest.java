@@ -20,7 +20,9 @@ public class ThemeWebBridgeTokenTest {
         for (String key : ORIGINAL_13) {
             assertTrue(key + " must stay in the snapshot", json.contains("\"" + key + "\":"));
         }
-        assertTrue(json.contains("\"focusScale\":1.00"));
+        // 焦点缩放已统一为与明暗模式无关的 1.10（见 ThemeTokens 与 TvFocusScale）：
+        // 它是动效属性而不是配色属性，此前浅色表为 1.00 只是历史取值。
+        assertTrue(json.contains("\"focusScale\":1.10"));
         assertTrue(json.startsWith("{") && json.endsWith("}"));
     }
 

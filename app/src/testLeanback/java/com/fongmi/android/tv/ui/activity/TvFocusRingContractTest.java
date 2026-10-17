@@ -263,28 +263,63 @@ public class TvFocusRingContractTest {
     @Test
     public void noLeanbackFocusRingHardcodesItsWidth() throws Exception {
         java.util.Set<String> exempt = java.util.Set.of(
-                "selector_video_item.xml",
                 "shape_audio_action_icon_focused.xml");
-        java.nio.file.Path dir = java.nio.file.Path.of("app/src/leanback/res/drawable");
-        if (!java.nio.file.Files.isDirectory(dir)) dir = java.nio.file.Path.of("../app/src/leanback/res/drawable");
-        assertTrue("leanback drawable 目录必须存在", java.nio.file.Files.isDirectory(dir));
+        // 已知未收敛的 main 源集文件（2026-10-13 审计发现，见
+        // docs/TV-FOCUS-RING-MAIN-SOURCE-20261013.md）。它们仍是 3dp 字面量 + 与注释公式
+        // 不符的圆角，但**改宽度必须重做像素级月牙复核**（TvAppSurfaceFocusRingDeviceTest 的
+        // Robolectric 栅格化扫描），属独立批次。这里显式列出而不是静默跳过：
+        // 一旦有人修好其中任一文件，下面的断言会失败并提醒把它从名单里删掉。
+        java.util.Set<String> knownUnconverged = java.util.Set.of(
+                "selector_episode_card.xml",
+                "selector_tmdb_cast_focus.xml",
+                "selector_tmdb_media_focus.xml",
+                "shape_episode_photo_focused.xml");
+        java.util.List<java.nio.file.Path> dirs = new java.util.ArrayList<>();
+        for (String candidate : new String[]{
+                "app/src/leanback/res/drawable", "app/src/main/res/drawable"}) {
+            java.nio.file.Path dir = java.nio.file.Path.of(candidate);
+            if (!java.nio.file.Files.isDirectory(dir)) dir = java.nio.file.Path.of("../" + candidate);
+            assertTrue(candidate + " 必须存在", java.nio.file.Files.isDirectory(dir));
+            dirs.add(dir);
+        }
 
         java.util.List<String> violations = new java.util.ArrayList<>();
+        java.util.Set<String> stillUnconverged = new java.util.TreeSet<>();
         int checked = 0;
-        try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.list(dir)) {
-            for (java.nio.file.Path path : paths.sorted().toList()) {
-                String name = path.getFileName().toString();
-                if (!name.endsWith(".xml") || exempt.contains(name)) continue;
-                String body = values(read(path.toString().replace('\\', '/')));
-                for (String width : focusStateStrokeWidths(body, name)) {
-                    checked++;
-                    if (!WIDTH.equals(width)) violations.add(name + " -> " + width);
+        for (java.nio.file.Path dir : dirs) {
+            boolean leanback = dir.toString().replace('\\', '/').contains("/leanback/");
+            try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.list(dir)) {
+                for (java.nio.file.Path path : paths.sorted().toList()) {
+                    String name = path.getFileName().toString();
+                    if (!name.endsWith(".xml") || exempt.contains(name)) continue;
+                    String body = values(read(path.toString().replace('\\', '/')));
+                    // main 源集是两端共享的，里面绝大多数 drawable 与电视焦点环无关
+                    // （输入框/开关的 1.5dp 描边、手机端自己的 2dp 卡片描边等）。
+                    // 只收口**真正的电视焦点环**：引用 ?attr/tvFocusRing / tvCurrentRing 的那些。
+                    // 这正是漏掉 selector_episode_card / selector_tmdb_*_focus /
+                    // shape_episode_photo_focused 的原因——它们在 main 里，用 3dp 字面量，
+                    // 而同族的 leanback 文件早已改用 token。
+                    if (!leanback && !body.contains("?attr/tvFocusRing") && !body.contains("?attr/tvCurrentRing")) {
+                        continue;
+                    }
+                    for (String width : focusStateStrokeWidths(body, name)) {
+                        checked++;
+                        if (WIDTH.equals(width)) continue;
+                        if (knownUnconverged.contains(name)) {
+                            stillUnconverged.add(name);
+                            continue;
+                        }
+                        violations.add(dir.getFileName() + "/" + name + " -> " + width);
+                    }
                 }
             }
         }
         assertTrue("扫描必须真的读到焦点环，否则本测试是空断言", checked >= 15);
-        assertTrue("电视版焦点环宽度只允许有一个来源 " + WIDTH + "，以下仍写死：" + violations,
+        assertTrue("电视焦点环宽度只允许有一个来源 " + WIDTH + "，以下仍写死：" + violations,
                 violations.isEmpty());
+        // 名单必须是「活的」：修好的文件要立刻从名单里移除，否则名单会腐烂成第二套豁免。
+        assertEquals("以下文件已收敛到 token，请从 knownUnconverged 名单里删掉：" + stillUnconverged,
+                knownUnconverged, stillUnconverged);
     }
 
     /**
@@ -437,22 +472,35 @@ public class TvFocusRingContractTest {
     }
 
     /**
-     * 集数名可读性：TV 卡片下方那一行（{@code adapter_vod} 的 {@code @id/remark}）此前用
-     * {@code ?attr/colorOnSurfaceVariant}（浅色表 #44474F）画在深色 {@code shape_vod_name}
-     * 条带上，实机对比度只有 <b>1.35:1</b>（刷名 {@code @id/name} 用白色是 6.89:1），用户报告
-     * 「集数名称一栏字体颜色不对看不清」。手机版同一行用的是 {@code ?attr/webhtvColorOnWallpaper}，
-     * TV 对齐该取值。
+     * 集数名可读性 + 卡片两行文字的层级。
+     *
+     * <p>历史：这一行此前用 {@code ?attr/colorOnSurfaceVariant}（浅色表 #44474F）画在深色
+     * {@code shape_vod_name} 条带上，实机对比度只有 <b>1.35:1</b>，用户报告「集数名称一栏字体
+     * 颜色不对看不清」，于是被改成与刷名相同的纯白（条带上 6.89:1）。
+     *
+     * <p>代价是卡片两行完全同色，标题与集数只剩字号差别。本次用「先把承载色带压暗、再给次级
+     * 文字一个语义角色」解决：条带由 20% 黑改为 40% 黑后，刷名（纯白）升到 9.82:1，集数行
+     * （{@code webhtvColorOnWallpaperVariant}）为 6.99:1——仍高于被替换掉的那个纯白取值，
+     * 因此这是「既分层级、又不降低可读性」的改动，不是把 1.35:1 的缺陷放回来。
+     *
+     * <p>本测试钉住三件事：刷名保持纯白、集数行走次级角色、条带保持 40% 黑。最后一条尤其重要：
+     * 一旦有人把条带调回 20%，集数行的对比度会掉到 5.12:1，必须在这里改断言并重新核算，
+     * 而不是悄悄放行。
      */
     @Test
-    public void leanbackCardEpisodeLineUsesTheSameReadableColourAsItsTitle() throws Exception {
+    public void leanbackCardEpisodeLineIsTheSecondaryRoleOnTheDarkenedBand() throws Exception {
         String layout = read("app/src/leanback/res/layout/adapter_vod.xml");
         String nameColour = textColourOf(layout, "name");
         String remarkColour = textColourOf(layout, "remark");
-        assertEquals("集数名必须与刷名同色（手机版同款可读取值）", nameColour, remarkColour);
-        assertEquals("集数名必须走 webhtvColorOnWallpaper（深色条带上实测 6.89:1）",
-                "?attr/webhtvColorOnWallpaper", remarkColour);
-        assertFalse("集数名不允许再用 colorOnSurfaceVariant（深色条带上仅 1.35:1）",
+        assertEquals("刷名必须保持纯白（40% 条带上 9.82:1）",
+                "?attr/webhtvColorOnWallpaper", nameColour);
+        assertEquals("集数行必须走壁纸次级角色（40% 条带上 6.99:1）",
+                "?attr/webhtvColorOnWallpaperVariant", remarkColour);
+        assertFalse("集数行不允许再用 colorOnSurfaceVariant（深色条带上仅 1.35:1）",
                 remarkColour.contains("colorOnSurfaceVariant"));
+        assertFalse("集数行不得与刷名同色，否则两行又会失去层级", nameColour.equals(remarkColour));
+        assertTrue("卡片信息条带必须保持 40% 黑，否则集数行的次级色会跌破 4.5:1",
+                read("app/src/leanback/res/drawable/shape_vod_name.xml").contains("@color/black_40"));
     }
 
     /** 取某个 {@code @+id/xxx} 控件上的 {@code android:textColor}。 */

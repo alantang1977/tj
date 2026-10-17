@@ -52,6 +52,24 @@
         <item name="colorOnSurface_80">@color/webhtv_on_surface_80</item>
         <item name="colorOnSurface_90">@color/webhtv_on_surface_90</item>
         <item name="webhtvColorOnWallpaper">@color/webhtv_on_wallpaper</item>
+        <item name="webhtvColorOnWallpaperVariant">@color/webhtv_on_wallpaper_variant</item>
+        <item name="webhtvColorOnWallpaperError">@color/webhtv_color_on_wallpaper_error</item>
+    <!--
+        浮层 scrim。此前 webhtvColorScrim / webhtvColorOverlayDark / webhtvColorOverlayLight
+        三个属性都只声明、从未赋值（审计发现的「只声明、没接线」之一），所以任何想用它们的
+        布局都取不到值。这里先接上 overlay_dark：空态/错误态浮层需要它。
+
+        为什么需要：设计文档 §5.3 要求「图片上的文字必须有 scrim/gradient」、§5.4 要求
+        「所有内容表面必须有不透明或可控的 surface 层」。而空态/错误态的文字此前**直接压在
+        壁纸（一张图）上、没有任何 scrim**——那不只是对比度差一点，而是违反这两条。
+
+        实测（正文门槛 4.5:1，壁纸实机取样 L=0.1217/0.1476/0.2019）：
+        - 无 scrim、80% 白文字：4.61 / 4.08 / 3.30:1 → 平均与最亮处不达标；
+        - **纯白文字也无解**：最亮壁纸上限只有 4.17:1，即 4.5:1 物理上不可达；
+        - 加 20% 黑 scrim 后：6.02 / 5.43 / 4.53:1 → 全部达标。
+        overlay_dark 是 #52000000（≈32% 黑），比所需的 20% 更宽裕。
+    -->
+    <item name="webhtvColorOverlayDark">@color/webhtv_color_overlay_dark</item>
         <item name="android:colorBackground">@color/webhtv_color_surface</item>
         <item name="android:windowBackground">?attr/colorSurface</item>
         <item name="android:navigationBarColor">@color/webhtv_color_surface</item>

@@ -487,14 +487,22 @@ public class ThemeBaseWiringTest {
         for (String source : new String[]{light, night}) {
             assertTrue("every palette must declare webhtv_on_wallpaper",
                     source.contains("<color name=\"webhtv_on_wallpaper\">#FFFFFF</color>"));
+            // 次级角色两张表同值，理由与上面一致：壁纸在明暗两种模式下都是深色，
+            // 因此这一角色不需要随模式切换，声明两处只为让"每张表都自描述"这一点成立。
+            assertTrue("every palette must declare webhtv_on_wallpaper_variant",
+                    source.contains("<color name=\"webhtv_on_wallpaper_variant\">#CCFFFFFF</color>"));
         }
 
         String attrs = read("src/main/res/values/webhtv_attrs.xml");
         assertTrue("webhtvColorOnWallpaper must be declared",
                 attrs.contains("name=\"webhtvColorOnWallpaper\" format=\"color\""));
+        assertTrue("webhtvColorOnWallpaperVariant must be declared",
+                attrs.contains("name=\"webhtvColorOnWallpaperVariant\" format=\"color\""));
         String theme = styleBody(read("src/main/res/values/webhtv_styles.xml"), "Theme.WebHTV");
         assertTrue("Theme.WebHTV must assign webhtvColorOnWallpaper",
                 theme.contains("<item name=\"webhtvColorOnWallpaper\">@color/webhtv_on_wallpaper</item>"));
+        assertTrue("Theme.WebHTV must assign webhtvColorOnWallpaperVariant",
+                theme.contains("<item name=\"webhtvColorOnWallpaperVariant\">@color/webhtv_on_wallpaper_variant</item>"));
 
         // The binder only rewrites a colour when the index yields a different
         // replacement, so 0xFFFFFFFF must never resolve to one for any palette pair.

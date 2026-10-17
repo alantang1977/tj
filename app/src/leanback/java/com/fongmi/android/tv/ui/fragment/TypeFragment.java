@@ -156,7 +156,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     private void setRecyclerView() {
         CustomSelector selector = new CustomSelector();
         selector.addPresenter(Vod.class, new VodPresenter(this, Style.list()));
-        selector.addPresenter(ListRow.class, new CustomRowPresenter(16, this::onContentHorizontalEdge), VodPresenter.class);
+        selector.addPresenter(ListRow.class, new CustomRowPresenter(ResUtil.dpOf(R.dimen.webhtv_size_tv_card_gap), this::onContentHorizontalEdge), VodPresenter.class);
         selector.addPresenter(ListRow.class, new CustomRowPresenter(8, FocusHighlight.ZOOM_FACTOR_NONE, HorizontalGridView.FOCUS_SCROLL_ALIGNED, true), FilterPresenter.class);
         mBinding.recycler.setAdapter(new ItemBridgeAdapter(mAdapter = new ArrayObjectAdapter(selector)));
         mBinding.recycler.setHeader(getActivity(), getParent().getScrollHeaderIds());

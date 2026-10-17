@@ -75,6 +75,17 @@ required = [
 
 color_pattern = re.compile(r'<color name="webhtv_color_([a-z0-9_]+)">#([0-9A-Fa-f]{6,8})</color>')
 hex_pattern = re.compile(r'#[0-9A-Fa-f]{6,8}\b')
+xml_comment_pattern = re.compile(r'<!--.*?-->', re.DOTALL)
+
+def strip_xml_comments(text):
+    """XML comments are documentation, not rendered values.
+
+    An audit comment quoting the palette a file replaced (and the contrast it scored) is not a
+    hard-coded colour, so scanning raw text flags any file whose only hex sits in a comment - a
+    false positive whose cheapest fix is deleting the evidence. Stripping comments first keeps
+    check 4 aimed at what actually renders.
+    """
+    return xml_comment_pattern.sub(" ", text)
 
 def parse_colors(path):
     text = path.read_text(encoding="utf-8")
@@ -215,7 +226,7 @@ def asset_has_hex(path):
 def has_hex(path):
     if path.suffix.lower() in {".css", ".html"} and "app/src/main/assets/" in relative(path):
         return asset_has_hex(path)
-    return bool(hex_pattern.search(path.read_text(encoding="utf-8", errors="ignore")))
+    return bool(hex_pattern.search(strip_xml_comments(path.read_text(encoding="utf-8", errors="ignore"))))
 
 
 def scan(files):

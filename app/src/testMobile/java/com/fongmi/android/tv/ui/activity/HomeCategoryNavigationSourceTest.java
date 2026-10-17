@@ -57,7 +57,15 @@ public class HomeCategoryNavigationSourceTest {
         String edge = method(home, "public void onCategoryContentHorizontalEdge(Class item, int contentRow, boolean towardEnd)", "private Class getAdjacentCategory(Class item, boolean towardEnd)");
         String adjacent = method(home, "private Class getAdjacentCategory(Class item, boolean towardEnd)", "private void showHomeContent()");
 
-        assertTrue("category card rows must report horizontal edge navigation", type.contains("new CustomRowPresenter(16, this::onContentHorizontalEdge)"));
+        // 断言的是「卡片行把水平边缘导航接给宿主」这个语义，不是当时的间距字面量：
+        // fad60a9b1e6 已把间距改成 @dimen/webhtv_size_tv_card_gap（token），钉死 16 只会
+        // 让守卫与实现脱钩，并在真正改间距时产生假失败。「间距必须来自 token」那一条由
+        // UiLayoutSourceTest 钉住；这里只认同一个 presenter 注册里确实装了自己的边缘回调，
+        // 间距参数写成什么值不影响判定（[^\n]* 允许参数里再嵌括号）。
+        assertTrue("category card rows must report horizontal edge navigation",
+                java.util.regex.Pattern
+                        .compile("new CustomRowPresenter\\([^\\n]*this::onContentHorizontalEdge\\)")
+                        .matcher(type).find());
         assertTrue("filter rows must retain their edge focus without switching categories", type.contains("HorizontalGridView.FOCUS_SCROLL_ALIGNED, true)"));
         assertTrue("row grids must consume the boundary key and report its logical direction", row.contains("edgeListener.onHorizontalEdge(towardEnd)") && row.contains("isHorizontalEdge(grid, event)"));
         assertTrue("content rows must be relative to the filter-row offset", type.contains("getContentRow()") && type.contains("mBinding.recycler.getSelectedPosition() - (filterVisible ? mFilters.size() : 0)"));

@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.ui.fragment;
 
 import android.view.LayoutInflater;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -62,7 +63,7 @@ public class SettingAdFragment extends BaseFragment {
         safeSet("adblock", mBinding.adblockText, () -> getSwitch(Setting.isAdblock()));
         safeRun("aiAdDetection", () -> {
             mBinding.aiAdDetection.setVisibility(Setting.isAiConfigReady() ? View.VISIBLE : View.GONE);
-            mBinding.aiAdDetectionText.setText(getSwitch(Setting.isAiAdDetection()));
+            setSummary(mBinding.aiAdDetectionText, getSwitch(Setting.isAiAdDetection()));
         }, () -> setError(mBinding.aiAdDetectionText));
         safeSet("adRuleManage", mBinding.adRuleManageText, () -> getString(R.string.ad_rule_count_with_pending,
                 UserAdRuleStore.load().size() + RuleConfig.get().getDefaultRules().size(),
@@ -76,7 +77,22 @@ public class SettingAdFragment extends BaseFragment {
     }
 
     private void safeSet(String name, TextView view, TextSupplier supplier) {
-        safeRun(name, () -> view.setText(supplier.get()), () -> setError(view));
+        safeRun(name, () -> setSummary(view, supplier.get()), () -> setError(view));
+    }
+
+    /**
+     * 写入取值摘要，并把颜色与底材复位到常规状态。
+     *
+     * <p>复位这一步是必需的：{@link #setError} 会把同一个 TextView 染成错误色并换上一块深底，
+     * 而这些摘要全部**复用同一个控件**——不复位的话，某一行失败一次之后，即使后续刷新成功，
+     * 它也会一直显示为红字加深底。
+     */
+    private void setSummary(TextView view, CharSequence text) {
+        if (view == null) return;
+        view.setText(text);
+        view.setTextColor(themeColor(R.attr.webhtvColorOnWallpaper));
+        // 这些 TextView 在布局里原本都没有背景，所以置空就是"恢复原样"。
+        view.setBackground(null);
     }
 
     private void safeRun(String name, Runnable action, Runnable fallback) {
@@ -92,8 +108,27 @@ public class SettingAdFragment extends BaseFragment {
         }
     }
 
+    /**
+     * 内联错误：设计文档 §9.9 要求错误态有「错误色」。
+     *
+     * <p>不能直接用 {@code ?attr/colorError}：那是跟随调色板的角色，浅色表的深红
+     * （{@code #B3261E}）压在深色壁纸行色带上实测只有约 1.06:1，完全不可读。这里用与壁纸
+     * 同族的 {@code ?attr/webhtvColorOnWallpaperError}，并同时换上一块**实心深底**
+     * （{@code @drawable/shape_error_value}）——错误色直接画在行色带上只有 4.05–4.50:1，
+     * 略低于正文门槛 4.5:1；实心底上是 8.84:1，稳过门槛。底材是实心色，因此这个比值与
+     * flavor 无关，与电视端共用同一份 drawable 与同一个角色。
+     */
     private void setError(TextView view) {
-        if (view != null) view.setText(R.string.error_config_get);
+        if (view == null) return;
+        view.setText(R.string.error_config_get);
+        view.setTextColor(themeColor(R.attr.webhtvColorOnWallpaperError));
+        view.setBackgroundResource(R.drawable.shape_error_value);
+    }
+
+    /** 解析主题属性里的颜色值；未赋值时返回 0（透明）。 */
+    private int themeColor(int attr) {
+        TypedValue value = new TypedValue();
+        return requireContext().getTheme().resolveAttribute(attr, value, true) ? value.data : 0;
     }
 
     private interface TextSupplier {

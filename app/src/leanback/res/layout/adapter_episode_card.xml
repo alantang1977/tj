@@ -6,7 +6,7 @@
     android:id="@+id/cardContainer"
     android:layout_width="280dp"
     android:layout_height="160dp"
-    android:layout_marginEnd="12dp"
+    android:layout_marginEnd="@dimen/webhtv_size_tv_card_gap"
     android:defaultFocusHighlightEnabled="false"
     android:focusable="true"
     android:focusableInTouchMode="true"

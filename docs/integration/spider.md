@@ -105,6 +105,28 @@ JS `req/http` options：
 
 Python 基类提供 `loadSpider/loadModule/regStr/removeHtmlTags/cleanText/fetch/post/html/str2json/json2str/getProxyUrl/log/getCache/setCache/delCache`。`getDependence()` 返回依赖模块名列表（不带 `.py`）。
 
+`getDependence()` 缺失时按「无依赖」处理（桥接层 `getattr` 兜底）。它不属于 TVBox/猫源 Python 契约，因此不继承 `base.spider.Spider` 的单文件 py 源可以不实现它。
+
+## Python 加载与缓存
+
+排查「改了 py 却不生效」时先看这里。加载链路分四层，每层都会改变你看到的地址或实例：
+
+1. `Site.objectFrom()` 调 `UrlUtil.convert()`，把 `file://TV/…` 改写成 `http://127.0.0.1:9978/file/TV/…`。配置里填的地址与运行时 `api` 不是同一个字符串。
+2. `Loader.scriptName(api)` 用 **api 字符串的 md5** 作为缓存名，落盘为 `cache/py/<md5>.py`。http(s) 源每次加载都会重新抓取并覆写该文件，所以磁盘缓存本身不会长期陈旧。
+3. `PyLoader.getSpider()` 用 `spiders.computeIfAbsent(key, …)` 缓存 **Spider 实例**（key 是站点 key）。实例在进程内长期复用。
+4. Python 侧 `app.spider()` 用 `SourceFileLoader(...).load_module()` 每次都会**重新执行**源码（模块对象复用，类对象重建），所以 `sys.modules` 不是陈旧源；真正可能挡住新代码的是 CPython 的 `__pycache__` 字节码校验——它的判据只有源文件的 `(mtime, size)` 两个值，两者都与旧 `.pyc` 记录的一致时就直接复用旧字节码。
+
+后两层决定了：**替换 py 文件后必须让站点重新初始化才会生效**。实测结果（同版本包、同一站点）：
+
+| 操作 | 是否生效 |
+| --- | --- |
+| 只替换磁盘上的 py 文件 | 否，仍按旧代码运行 |
+| 新文件与旧文件**大小相同**、且写入后源文件 `mtime` 仍在**同一秒**（`(mtime, size)` 与旧 `.pyc` 记录完全一致） | 否，本次仍用旧 `.pyc`；任一条件不成立即重新编译 |
+| 触发配置重载（切换/重载配置走 `VodConfig.clear()` → `BaseLoader.clear()` → `PyLoader.clear()` 清掉实例） | 是 |
+| 重启 App | 是 |
+
+排查提示：缓存名取的是**改写后**的 api 字符串，直接拿配置里填写的 `file://…` 算 md5 对不上 `cache/py/` 里的文件名，要用 `http://127.0.0.1:9978/file/…` 计算。
+
 ## CatSpider HTTP 协议
 
 `api` 是 `http.../spider/...` 绝对地址时走 CatSpider。所有路由使用 POST JSON：
@@ -167,4 +189,8 @@ Python 基类提供 `loadSpider/loadModule/regStr/removeHtmlTags/cleanText/fetch
 - `app/src/main/java/com/fongmi/android/tv/api/loader/PyLoader.java`
 - `app/src/main/java/com/fongmi/android/tv/api/loader/CatSpider.java`
 - `quickjs/src/main/java/com/fongmi/quickjs/crawler/Spider.java`
+- `chaquo/src/main/java/com/fongmi/chaquo/Loader.java`
+- `chaquo/src/main/python/app.py`
 - `chaquo/src/main/python/base/spider.py`
+- `app/src/main/java/com/fongmi/android/tv/utils/UrlUtil.java`
+- `app/src/main/java/com/fongmi/android/tv/bean/Site.java`

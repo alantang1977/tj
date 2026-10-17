@@ -169,7 +169,16 @@ public class ThemeContractTest {
 
     private static void assertResourceMapping(ThemeTokens tokens, Path path) throws Exception {
         Map<String, Integer> colors = colors(path);
-        assertEquals(51, colors.size());
+        // 计数只覆盖 webhtv_color_* 这一族（见上面的 COLOR 模式），且刻意冻结：新增语义色
+        // 必须在这里显式承认一次，避免"顺手加个颜色"绕过角色契约。
+        // 51 → 54：新增 webhtv_color_badge_{progress,site,year}（卡片角标底色，
+        // 见 docs/TV-CARD-BADGE-CONTRAST-20261012.md）。它们不属于 ThemeTokens 的 49 项
+        // 角色契约，只是同一命名族里的固定语义色，与 webhtv_on_wallpaper 同类。
+        // 54 → 55：新增 webhtv_color_on_wallpaper_error（壁纸上的错误前景色，
+        // 见 docs/TV-ERROR-STATE-20261012.md），同理不属于角色契约。
+        // 55 → 56：新增 webhtv_color_error_value_bg（错误取值文字的实心深色底，
+        // 让错误正文稳过 4.5:1，见 docs/TV-ERROR-STATE-CLOSEOUT-20261013.md）。
+        assertEquals(56, colors.size());
         for (RecordComponent component : ThemeTokens.class.getRecordComponents()) {
             if (!component.getType().equals(int.class)) continue;
             String name = component.getName();
