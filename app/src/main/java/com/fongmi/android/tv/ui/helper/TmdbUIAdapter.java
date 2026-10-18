@@ -231,7 +231,15 @@ public class TmdbUIAdapter {
             }
             if (keyed != null && (TextUtils.isEmpty(requestedEpisodeUrl)
                     || containsEpisodeUrl(keyed, requestedEpisodeUrl))) return keyed;
-            return uniqueFlagForEpisodeUrl(flags, requestedEpisodeUrl);
+            Flag unique = uniqueFlagForEpisodeUrl(flags, requestedEpisodeUrl);
+            if (unique != null) return unique;
+            // 稳定键已经在当前线路表里命中了一条真实线路，只是那一集的 URL 不再属于它
+            // （换源/源站刷新/带时效签名都会失配）。此时 keyed 仍是用户显式选过的那条线路，
+            // 不能像早期实现那样直接判罚为 null——调用方会把 null 当成「解析不了」而退回
+            // flags.get(0)，表现就是杀进程重进后线路强行回到第一条。线路名也一致时才认。
+            if (keyed != null && !TextUtils.isEmpty(requestedFlagName)
+                    && TextUtils.equals(requestedFlagName, keyed.getFlag())) return keyed;
+            return null;
         }
         if (!TextUtils.isEmpty(requestedEpisodeUrl)) {
             for (Flag flag : flags) {

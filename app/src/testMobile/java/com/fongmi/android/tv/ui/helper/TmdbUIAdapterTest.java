@@ -95,6 +95,30 @@ public class TmdbUIAdapterTest {
                 "same#1", "target-url", "same"));
     }
 
+    /**
+     * 稳定键命中了真实线路，但那一集的 URL 已换（源站刷新、换源、带时效签名都可能发生）。
+     * 线路名对得上就必须复用这条线路：早期实现这里直接返回 null，调用方会把 null 当成
+     * 「解析不了」而退回 flags.get(0)，表现就是杀进程重进后线路强行回到第一条。
+     */
+    @Test
+    public void matchedStableFlagKeySurvivesRefreshedEpisodeUrl() {
+        Flag firstLine = Flag.create("线路1", "E1$one");
+        Flag chosenLine = Flag.create("线路4", "E1$four-old");
+
+        assertSame(chosenLine, TmdbUIAdapter.selectPlaybackFlag(
+                List.of(firstLine, chosenLine), "线路4#1", "E1$four-new", "线路4"));
+    }
+
+    /** 稳定键根本不存在时不靠线路名猜，仍由上层（偏好/历史）决定。 */
+    @Test
+    public void staleStableFlagKeyWithUnmatchedNameStaysUnresolved() {
+        Flag firstLine = Flag.create("线路1", "E1$one");
+        Flag secondLine = Flag.create("线路2", "E1$two");
+
+        assertNull(TmdbUIAdapter.selectPlaybackFlag(
+                List.of(firstLine, secondLine), "线路2#9", "E1$gone", "线路2"));
+    }
+
     @Test
     public void explicitMultiSeasonSegmentsApplySecondSeasonMetadata() {
         List<Episode> source = List.of(

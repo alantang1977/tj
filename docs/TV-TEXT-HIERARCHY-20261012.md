@@ -160,4 +160,3 @@ TV-1 的四项目标（分组、标签/取值层级、卡片两行层级、空�
 3. **首页时钟与品牌标题同尺寸同色。** `activity_home.xml` 的 `@id/clock` 为 24sp 纯白，与标题同权重，在无信息价值的情况下抢视觉。留给 TV-2。
 4. **`webhtv_focus_scale` 仍为 1.0 而代码里散落硬编码 1.1。** `ThemeTokens` baseline `focusScale=1.0`、`ThemeResolver` 用 1.1，而 `KeepAdapter`/`HistoryAdapter` 各自硬编码 `scaleX(1.1f)`、`TmdbCardFocusHelper` 又复位为 `1f`。属 TV-3（焦点与动效统一）批次。
 5. **TMDB 评分色复用播放器 token 且有 2 处硬编码 hex。** `adapter_tmdb_*` 等 5 个布局的评分文字用 `@color/webhtv_color_player_control_active`（设计文档明确该角色"不用于普通 UI"），`TmdbRailAdapter:130` 与 `TmdbHeaderView:71` 还直接写死 `0xFFFFD35C`，自定义主题改不动评分色。属 TV-2。
-

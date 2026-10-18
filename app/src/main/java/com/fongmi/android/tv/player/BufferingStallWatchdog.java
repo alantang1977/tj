@@ -1,4 +1,4 @@
-package com.fongmi.android.tv.player.exo;
+package com.fongmi.android.tv.player;
 
 /**
  * Detects a player stuck in BUFFERING that is no longer making any progress.
@@ -7,10 +7,21 @@ package com.fongmi.android.tv.player.exo;
  * normal rebuffer. Only when neither the playback position nor the buffered end
  * advances is the session actually stalled.
  *
- * <p>The timeout must stay above {@code MAX_STREAMING_REBUFFER_MS} (15 s) so a
- * LoadControl that is still filling its rebuffer threshold is never killed.
+ * <p>Engine-independent by construction: it consumes only position, buffered end and the
+ * source's loading flag, all of which every engine reports. It was originally written for
+ * Exo and lived in the {@code exo} package, but the very stall it catches is reachable on
+ * MPV as well — {@code MpvPlayer.timeOutSeekBuffering()} already assumes a stall watchdog
+ * will take over when it declines to publish READY over a frozen frame.
+ *
+ * <p>Both ceilings must outlast the engine's own rebuffer threshold, or a player that is
+ * still filling that threshold is killed while working:
+ * <ul>
+ *   <li>Exo: {@code MAX_STREAMING_REBUFFER_MS} (15 s).</li>
+ *   <li>MPV: {@code MpvPerformanceSetting.getRebufferMs()} maps to at most 8 s, which
+ *       drives mpv's own {@code cache-pause-wait}.</li>
+ * </ul>
  */
-public final class ExoBufferingStallWatchdog {
+public final class BufferingStallWatchdog {
 
     public static final long STALL_TIMEOUT_MS = 20_000L;
 
@@ -133,6 +144,15 @@ public final class ExoBufferingStallWatchdog {
 
     public boolean isArmed() {
         return armed;
+    }
+
+    /**
+     * How long the current continuity segment has gone without progress, or {@code -1} when the
+     * watchdog is disarmed. Reported on the timeout so the log states the measured stall instead
+     * of only the configured ceiling.
+     */
+    public long stalledDurationMs(long nowMs) {
+        return armed ? Math.max(0, nowMs - lastProgressAtMs) : -1L;
     }
 
     public boolean shouldTimeout(

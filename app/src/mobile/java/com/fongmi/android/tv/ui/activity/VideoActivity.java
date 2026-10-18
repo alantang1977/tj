@@ -74,6 +74,7 @@ import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.EpisodePositionCache;
 import com.fongmi.android.tv.bean.Flag;
+import com.fongmi.android.tv.bean.FlagPreferenceCache;
 import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
 import com.fongmi.android.tv.ui.helper.EpisodeSeasonSnapshot;
 import com.fongmi.android.tv.bean.History;
@@ -1186,9 +1187,73 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         String flagKey = mHistory == null ? "" : mHistory.getSourceBindingKey();
         String flagName = mHistory == null ? "" : mHistory.getVodFlag();
         String episodeUrl = mHistory == null ? "" : mHistory.getEpisodeUrl();
+        // 用户最后一次显式切换的线路优先于 History 里的线路快照：History.vodFlag 只是
+        // 「上次起播时的线路」的副产物，切线路而没重新起播时它不会更新，杀进程后若还
+        // 以它为准就会退回旧线路甚至第一条。偏好同样要能定位到这次要播的集，
+        // 否则会劫持跨源解算出的、确实含目标集的那条线路。
+        Flag preferred = findPreferredFlag(flags, episodeUrl);
+        if (preferred != null) return preferred;
         Flag selected = com.fongmi.android.tv.ui.helper.TmdbUIAdapter.selectPlaybackFlag(
                 flags, flagKey, episodeUrl, flagName);
         return selected == null ? flags.get(0) : selected;
+    }
+
+    /**
+     * 记住用户显式切换的线路。线路选择原本只作为播放副产物写进 History，而切线路后
+     * 不一定重新起播（seamless 没切集时不会走 onRefresh），mHistory 的 vodFlag/
+     * sourceBindingKey 仍指向旧线路，杀进程后就退回了旧线路。这里与详情页保持一致，
+     * 切一下就落盘偏好，不依赖播放进度。
+     */
+    private void rememberFlagSelection(Flag flag) {
+        if (flag == null) return;
+        int index = mFlagAdapter == null ? -1 : mFlagAdapter.indexOf(flag);
+        if (index < 0 && mVod != null) index = com.fongmi.android.tv.ui.helper.TmdbUIAdapter.flagIndex(mVod.getFlags(), flag);
+        // 索引未知时不写稳定键：Flag.stableKey 会把 -1 夹成 0，留下一个必然命中首条线路的假键。
+        String stableKey = index >= 0 ? com.fongmi.android.tv.ui.helper.TmdbUIAdapter.flagKey(flag, index) : "";
+        FlagPreferenceCache.get().put(getKey(), getId(), stableKey, flag.getFlag());
+        Task.execute(() -> FlagPreferenceCache.get().save());
+        if (mHistory == null) return;
+        // History 里的 sourceBindingKey 与既有 setHistoryFlag 保持一致：稳定键不可用时退化到适配器当前键。
+        String historyKey = TextUtils.isEmpty(stableKey)
+                ? (mTmdbUIAdapter == null ? "" : mTmdbUIAdapter.activeFlagKey(flag))
+                : stableKey;
+        mHistory.setVodFlag(flag.getFlag());
+        if (!TextUtils.isEmpty(historyKey)) mHistory.setSourceBindingKey(historyKey);
+        // 还没起播（无进度）时不写库，避免在「最近观看」里留下一条没有进度的空记录。
+        if (mHistory.canSave()) syncHistory();
+    }
+
+    /**
+     * 读取上次显式选中的线路。稳定键（线路名#索引）优先，源站线路增删导致索引漂移时
+     * 退化用线路名匹配。episodeUrl 非空时要求该线路确实含这一集。
+     */
+    private Flag findPreferredFlag(List<Flag> flags, String episodeUrl) {
+        FlagPreferenceCache.FlagPreference preference = FlagPreferenceCache.get().get(getKey(), getId());
+        if (preference == null) return null;
+        Flag candidate = null;
+        String stableKey = preference.getStableKey();
+        if (!TextUtils.isEmpty(stableKey)) {
+            for (int i = 0; i < flags.size(); i++) {
+                Flag flag = flags.get(i);
+                if (flag != null && TextUtils.equals(stableKey, com.fongmi.android.tv.ui.helper.TmdbUIAdapter.flagKey(flag, i))) {
+                    candidate = flag;
+                    break;
+                }
+            }
+        }
+        if (candidate == null) {
+            String flagName = preference.getFlagName();
+            if (TextUtils.isEmpty(flagName)) return null;
+            for (Flag flag : flags) {
+                if (flag != null && TextUtils.equals(flagName, flag.getFlag())) {
+                    candidate = flag;
+                    break;
+                }
+            }
+        }
+        if (candidate == null) return null;
+        if (TextUtils.isEmpty(episodeUrl) || candidate.containsEpisodeUrl(Episode.create("", episodeUrl))) return candidate;
+        return null;
     }
 
     private Episode getEpisode() {
@@ -3170,6 +3235,7 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         SpiderDebug.log("playback-action", "flag switch ui=mobile site=%s from=%s to=%s fullscreen=%s", getKey(), previous == null ? "" : previous.getFlag(), resolved.getFlag(), isFullscreen());
         mFlagAdapter.setSelected(resolved);
         if (mTmdbUIAdapter != null) mTmdbUIAdapter.setActiveFlag(resolved);
+        rememberFlagSelection(resolved);
         scrollToPosition(mBinding.flag, mFlagAdapter.getPosition());
         boolean episodeChanged = seamless(resolved);
         if (!episodeChanged) setEpisodeAdapter(resolved.getEpisodes());
