@@ -148,6 +148,85 @@ public class TvErrorStateContractTest {
     }
 
     /**
+     * 「还没配接口」必须与「加载失败」分开：前者不是失败。
+     *
+     * <p>重置应用、重装或恢复出厂后的首次启动就是这个状态。改动前 {@code BaseConfig} 把它
+     * 当成 {@code error("")} 抛出来，首页显示「内容源加载失败 / 重试」——一个不存在的故障
+     * 加一个点了永远没用的按钮（用户实机截图确认：只有标题与重试，没有原因行）。
+     */
+    @Test
+    public void missingConfigIsNotTreatedAsAFailure() throws Exception {
+        String base = read("app/src/main/java/com/fongmi/android/tv/api/config/BaseConfig.java");
+        assertFalse("BaseConfig 不得再把'没配地址'当成 error(\"\")", base.contains("callback.error(\"\")"));
+        assertTrue("没有配置地址必须走 callback.noConfig()", base.contains("callback::noConfig"));
+        assertTrue("Callback 必须提供 noConfig 钩子",
+                read("app/src/main/java/com/fongmi/android/tv/impl/Callback.java").contains("public void noConfig()"));
+
+        String home = read(HOME);
+        assertTrue("HomeActivity 必须实现 noConfig 回调", home.contains("public void noConfig()"));
+        assertTrue("未配置必须进入空态而不是错误态", home.contains("showNoConfig()"));
+        String showNoConfig = methodBody(home, "private void showNoConfig()");
+        for (String string : new String[]{
+                "home_no_config_title", "home_no_config_description", "home_no_config_action"}) {
+            assertTrue("必须引用 " + string, showNoConfig.contains(string));
+            assertTrue("默认字符串表必须声明 " + string,
+                    read("app/src/main/res/values/strings.xml").contains("name=\"" + string + "\""));
+            assertTrue("简中字符串表必须声明 " + string,
+                    read("app/src/main/res/values-zh-rCN/strings.xml").contains("name=\"" + string + "\""));
+        }
+        // 主动作必须是"添加接口"这种真的能出去的动作，不能是重试。
+        assertTrue("主动作必须打开接口管理", showNoConfig.contains("openVodConfig()"));
+        assertTrue("接口管理必须落到既有的接口列表（自带新增，不另写第二个入口）",
+                methodBody(home, "private void openVodConfig()").contains("HistoryDialog.create().vod().manage()"));
+        assertFalse("未配置态的主动作不得是重试", showNoConfig.contains("error_retry"));
+        // 未配置态必须走空态（标题不用错误色、插画保留），不能借道错误态。
+        assertTrue("未配置必须切到空态", showNoConfig.contains("showEmpty()"));
+        assertFalse("未配置不得调用 showError", showNoConfig.contains("showError("));
+    }
+
+    /**
+     * 配置在**别的路径**上变得可用后，首页不能继续顶着状态卡。
+     *
+     * <p>用户反馈："卸载后重新安装再通过备份恢复也会出现类似情况，必现；杀进程后重进才行"。
+     * 恢复备份走的是 {@code RefreshEvent.home()} 而不是重新走首页启动（{@code showContent()}），
+     * 而状态浮层只被启动成功与点重试收掉——于是配置明明已经可用，首页仍停在状态卡上。
+     */
+    @Test
+    public void aConfiguredSourceDismissesAStaleStateOverlay() throws Exception {
+        String home = read(HOME);
+        String handler = methodBody(home, "public void onRefreshEvent(RefreshEvent event)");
+        assertTrue("HOME 刷新时必须检查并收起过期的状态卡", handler.contains("dismissStateIfConfigured()"));
+        String dismiss = methodBody(home, "private void dismissStateIfConfigured()");
+        assertTrue("只有配置真的可用（有站点）时才收起", dismiss.contains("getSites().isEmpty()"));
+        assertTrue("收起动作必须回到内容态", dismiss.contains("showContent()"));
+        // 只能收「空态 / 错误态」：加载中（PROGRESS）与内容态都不得被这条顺手收掉，
+        // 否则 HOME 刷新会把还在转圈的首页直接变成空白。
+        assertTrue("必须能识别空态", dismiss.contains("isEmpty()"));
+        assertTrue("必须能识别错误态", dismiss.contains("isError()"));
+    }
+
+    /**
+     * 未配置时宿主不得停在加载中：{@code Callback.noConfig()} 的默认实现必须保留改动前的收尾行为。
+     *
+     * <p>{@code noConfig()} 是本次新增的**终态**分支，而既有宿主是拿 {@code start()} 与
+     * {@code error(String)} 当「加载开始 / 加载结束」的一对在用。默认留空实现，所有没来得及
+     * 覆写它的宿主在无配置时就会永远停在加载中。实测可达路径：TV 标题长按走
+     * {@code reloadConfig()}，它先 {@code progressLayout.showProgress()}，加载失败后只有
+     * {@code error("")} 能收掉转圈（空消息在 {@code Notify.show} 里直接返回，不会弹空吐司）。
+     */
+    @Test
+    public void defaultNoConfigStillTerminatesTheLoadingState() throws Exception {
+        String callback = read("app/src/main/java/com/fongmi/android/tv/impl/Callback.java");
+        String body = methodBody(callback, "public void noConfig()");
+        assertTrue("默认实现必须结束加载态（转调 error(\"\")），否则既有宿主会永久停在加载中",
+                body.contains("error(\"\")"));
+        // 可达性证据：reloadConfig() 先进加载态，且它的匿名回调只覆写了 error 作为收尾。
+        String reload = methodBody(read(HOME), "public void reloadConfig()");
+        assertTrue("reloadConfig 必须先进加载态", reload.contains("progressLayout.showProgress()"));
+        assertTrue("该回调以 error(String) 作为收尾", reload.contains("public void error(String msg)"));
+    }
+
+    /**
      * 设置页的内联错误必须与正常取值**可区分**，且失败过的行在后续刷新成功时能复位。
      */
     /**
@@ -282,6 +361,22 @@ public class TvErrorStateContractTest {
     /** 剥掉 Java 的行注释与块注释，避免负向断言命中说明文字。 */
     private static String withoutJavaComments(String source) {
         return source.replaceAll("(?s)/\\*.*?\\*/", " ").replaceAll("(?m)//.*$", " ");
+    }
+
+    /** 取一个方法的完整方法体（含签名），用花括号配平切分。 */
+    private static String methodBody(String source, String signature) {
+        String cleaned = withoutJavaComments(source);
+        int start = cleaned.indexOf(signature);
+        assertTrue("必须存在方法 " + signature, start > 0);
+        int open = cleaned.indexOf('{', start);
+        assertTrue("方法签名后必须有方法体", open > 0);
+        int depth = 0;
+        for (int i = open; i < cleaned.length(); i++) {
+            char c = cleaned.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return cleaned.substring(start, i + 1);
+        }
+        return cleaned.substring(start);
     }
 
     private static String read(String path) throws Exception {

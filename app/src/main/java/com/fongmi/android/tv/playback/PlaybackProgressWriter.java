@@ -213,7 +213,7 @@ public final class PlaybackProgressWriter {
         history.setVodFlag(input.flag);
         applySourceBindingKey(history, input);
         history.setVodRemarks(input.episodeName);
-        history.setEpisodeUrl(input.episodeUrl);
+        history.setEpisodeUrl(resolveEpisodeUrl(local, input, sameEpisode));
         if (input.hasTmdbEpisodeIdentity()) {
             history.setTmdbId(input.tmdbId);
             history.setMediaType(input.mediaType);
@@ -273,6 +273,51 @@ public final class PlaybackProgressWriter {
     static boolean isSameEpisode(History local, PlaybackProgressInput input) {
         if (local == null || input == null) return false;
         return Episode.create(input.episodeName, input.episodeUrl).matchesPlayback(local.getEpisode());
+    }
+
+    /**
+     * 决定这次写入要把 {@code episodeUrl} 落成什么。
+     *
+     * <p>为什么不能无条件写入入参：只读 API（{@code apiSafe()}）**故意不输出**
+     * {@code episodeUrl}（那是带时效签名的播放地址），只输出它的指纹 {@code episodeId}。
+     * 对端把刚读到的记录原样回推时就没有 {@code episodeUrl}，无条件写入会把本地那条
+     * 历史已落库的播放地址抹成空串——而地址是「从历史继续播放」定位集条目的依据
+     * （{@code History.getEpisode()}），抹掉后用户从历史点进去会定位不到那一集。
+     *
+     * <p>但也不能一律保留本地地址：对端推来的可能是**另一集**，那时留着旧地址会把
+     * 上一集的地址挂到新集的进度上。所以只在能证明「同一集」时才保留：
+     * 既有的 {@code sameEpisode} 容错语义，或集指纹相等
+     * （非 TMDB 内容没有季集号，指纹是唯一的集身份）。
+     *
+     * <p>抽成静态纯函数是为了让"保留/清空"这个决策本身可被单测直接锁定——
+     * 只测 {@link #sameEpisodeFingerprint} 无法阻止调用点退回无条件写入。
+     */
+    static String resolveEpisodeUrl(History local, PlaybackProgressInput input, boolean sameEpisode) {
+        if (input == null || TextUtils.isEmpty(input.episodeUrl)) {
+            if (local == null || sameEpisode || sameEpisodeFingerprint(local, input)) {
+                return local == null ? "" : local.getEpisodeUrl();
+            }
+            return "";
+        }
+        return input.episodeUrl;
+    }
+
+    /**
+     * 入参与本地历史是否指向**同一集**，用集指纹（{@code episodeUrl} 的 SHA-256）判定。
+     *
+     * <p>为什么需要它：{@link #isSameEpisode} 依赖集名或地址匹配，而只读 API
+     * （{@code apiSafe()}）故意不输出 {@code episodeUrl}，对端回推时往往只有一个
+     * 指纹 {@code episodeId}。没有季集号的内容（非 TMDB）就只有指纹能证明"这是同一集"，
+     * 否则会误判成换集、把本地已落库的播放地址抹掉。
+     *
+     * <p>只在**双方都有**指纹且相等时才为真：单侧有指纹无法证明同一集
+     * （对端可能是另一条线路的同名集），此时宁可保守地按换集处理。
+     */
+    static boolean sameEpisodeFingerprint(History local, PlaybackProgressInput input) {
+        if (local == null || input == null) return false;
+        String localId = PlaybackRecord.episodeId(local.getEpisodeUrl());
+        String inputId = input.episodeId;
+        return !TextUtils.isEmpty(localId) && !TextUtils.isEmpty(inputId) && localId.equals(inputId);
     }
 
     static void applySpeed(History history, float speed, Boolean speedOverride) {

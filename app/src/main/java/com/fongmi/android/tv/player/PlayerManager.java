@@ -1895,10 +1895,16 @@ public void resetTrack(int type) {
 
     public void toggleDecode() {
         beginIjkRuntimeManualOverride();
+        int previousDecode = engine.getDecode();
         int next = engine.isHard() ? PlayerEngine.SOFT : PlayerEngine.HARD;
         boolean resetVideoSurface = playerType == PlayerSetting.EXO && next == PlayerEngine.HARD;
         hardDecodeSwitchRetryArmed = next == PlayerEngine.HARD;
         beginPlaybackTrace("switch-decode");
+        // The control bar's decode button is the primary manual soft/hard switch, so it must be
+        // attributable like every other switch. switchDecode(…) logs for the source-refresh path
+        // only; without this line the most common manual switch produced no switch-cause row at all.
+        logSwitchCause("decode", "user-choice", playerType, playerType,
+                previousDecode, next, false, getPosition());
         engine.setDecode(next);
         if (engine instanceof ExoPlayerEngine exo) {
             exo.prepareFrameSchedulingForNextPlayback();

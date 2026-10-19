@@ -12,6 +12,22 @@ public class PlaybackFieldPolicy {
     private static final Set<String> STANDARD = set("appVersion", "client");
     private static final Set<String> FULL = set("episodeUrl", "episodeIndex", "clientKey");
     private static final Set<String> OPTIONAL = set("episodeUrl", "episodeIndex", "appVersion", "client", "clientKey");
+    /**
+     * 只读 API 额外放行的字段。
+     *
+     * <p>{@code episodeId} 是单集地址的 SHA-256（见
+     * {@link PlaybackRecord#episodeId(String)}）：它让对端能稳定区分同一剧的
+     * 不同集，又不把带时效签名的播放地址（{@code episodeUrl}）交出去。
+     *
+     * <p>为什么不直接放 {@code episodeUrl}：那个地址常带 CDN 签名/token，
+     * 且对端只需要"是不是同一集"这个布尔语义，不需要能重新发起播放。
+     *
+     * <p><b>声明位置有约束</b>：必须排在 {@link #CUSTOM_SAFE} 之前。
+     * Java 静态字段按**文本顺序**初始化，而 {@code CUSTOM_SAFE = customSafe()}
+     * 会读本字段；写在后面会让它读到 {@code null} 并在类初始化时抛 NPE。
+     */
+    private static final Set<String> API_SAFE_EXTRA = set("episodeId");
+
     private static final Set<String> CUSTOM_SAFE = customSafe();
 
     private final Set<String> fields;
@@ -26,6 +42,7 @@ public class PlaybackFieldPolicy {
         Set<String> fields = base();
         fields.remove("event");
         fields.remove("eventId");
+        fields.addAll(API_SAFE_EXTRA);
         return new PlaybackFieldPolicy(fields, false);
     }
 
@@ -82,6 +99,7 @@ public class PlaybackFieldPolicy {
         fields.addAll(OBJECT);
         fields.addAll(PROGRESS);
         fields.addAll(OPTIONAL);
+        fields.addAll(API_SAFE_EXTRA);
         return fields;
     }
 

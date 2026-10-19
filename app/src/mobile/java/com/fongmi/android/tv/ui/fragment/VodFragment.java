@@ -429,10 +429,26 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         if (event.type() == ConfigEvent.Type.VOD) setLogo();
     }
 
+    /**
+     * 状态浮层只能被「又一次启动 / 点重试」收掉，而配置可能在别的路径上变得可用：
+     * 恢复备份、远程指令切换接口、设置页切换接口、接收推送接口。这些路径发的是
+     * {@link RefreshEvent#home()} 而不是 StateEvent，于是用户在这些页面上操作完回到首页，
+     * 首页仍顶着那张状态卡，**必须杀进程冷启动才恢复**（用户反馈的"杀进程后重进才行"）。
+     *
+     * <p>这里把「配置真的可用了」当成收卡的唯一判据：HOME 刷新意味着本 Fragment 马上会
+     * 重新加载首页内容，此时若还处在空态/错误态就直接收起，不依赖任何调用方记得收。
+     */
+    private void dismissStateIfConfigured() {
+        if (mBinding.state.getVisibility() != View.VISIBLE) return;
+        if (VodConfig.get().getSites().isEmpty()) return;
+        hideState();
+    }
+
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
         switch (event.getType()) {
             case HOME:
+                dismissStateIfConfigured();
                 if (mWeb != null && mWeb.isVisible()) {
                     Site home = getHome();
                     WebHomeChromeStartup.remember(getConfig(), home);
@@ -480,6 +496,12 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
                 hideProgress();
                 showError(event.message());
                 break;
+            case NO_CONFIG:
+                // 还没配接口：不是失败，所以不给"重试"（它永远不会成功），而是给一个
+                // 真的能把用户带出去的主动作——去添加接口。
+                hideProgress();
+                showNoConfig();
+                break;
         }
     }
 
@@ -511,6 +533,27 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     private void showError(String message) {
         mBinding.state.setVisibility(View.VISIBLE);
         mBinding.state.showError(R.string.error_config_load, message, R.string.error_retry, view -> retryConfig());
+    }
+
+    /**
+     * 显示「还没配接口」空态：标题 + 解释 + 主动作，主动作打开接口管理。
+     *
+     * <p>刻意**不**复用错误态：这里没有失败原因可显示，重试也永远不会成功（没有地址可请求）。
+     * 用户此刻唯一能做的是添加一个接口，所以动作落到既有的接口管理列表
+     * （{@code HistoryDialog.manage()} 自带「新增」）。
+     */
+    private void showNoConfig() {
+        mBinding.state.setVisibility(View.VISIBLE);
+        mBinding.state.setEmptyContent(
+                R.string.home_no_config_title,
+                R.string.home_no_config_description,
+                R.string.home_no_config_action,
+                view -> openVodConfig());
+        mBinding.state.showEmpty();
+    }
+
+    private void openVodConfig() {
+        HistoryDialog.create().vod().manage().show(this);
     }
 
     /** 重新加载内容源配置：交给承载本 Fragment 的 Activity（失败的那一步在它那里）。 */

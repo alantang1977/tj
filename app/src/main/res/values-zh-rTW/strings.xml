@@ -1639,6 +1639,10 @@ TVData</string>
     <string name="home_empty_description">內容源沒有回傳可顯示的內容。</string>
     <string name="home_empty_action">重新載入</string>
     
+    <string name="home_no_config_title">還沒有設定接口</string>
+    <string name="home_no_config_description">新增一個點播接口後即可瀏覽內容。</string>
+    <string name="home_no_config_action">新增接口</string>
+    
     <string name="file_empty_title">這裡沒有內容</string>
     <string name="file_empty_description">這個目錄下沒有可顯示的項目。如果是剛放進來的檔案，重新掃描即可看到。</string>
     <string name="file_empty_action">重新掃描</string>

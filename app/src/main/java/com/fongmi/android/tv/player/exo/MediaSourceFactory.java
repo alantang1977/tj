@@ -98,7 +98,8 @@ public class MediaSourceFactory implements MediaSource.Factory {
     static DataSource.Factory createUpstreamDataSourceFactory(Map<String, String> headers) {
         OkHttpDataSource.Factory factory = createHttpDataSourceFactory(OkHttp.player(), headers);
         DataSource.Factory upstream = new DefaultDataSource.Factory(App.get(), factory);
-        DataSource.Factory recovered = new HttpEofRecoveryDataSource.Factory(upstream);
+        // Preload path: its own EOF recoveries must not make preload yield to itself.
+        DataSource.Factory recovered = new HttpEofRecoveryDataSource.Factory(upstream, false);
         return new PriorityTaskDataSource.Factory(recovered, PLAYBACK_PRIORITY_MANAGER, C.PRIORITY_PLAYBACK_PRELOAD, true);
     }
 
@@ -343,7 +344,8 @@ public class MediaSourceFactory implements MediaSource.Factory {
             DataSource.Factory upstreamFactory, Map<String, String> headers) {
         return new CacheDataSource.Factory()
                 .setCache(getCache())
-                .setUpstreamDataSourceFactory(new HttpEofRecoveryDataSource.Factory(upstreamFactory))
+                // Foreground path: these recoveries are the signal preload yields to.
+                .setUpstreamDataSourceFactory(new HttpEofRecoveryDataSource.Factory(upstreamFactory, true))
                 .setCacheWriteDataSinkFactory(null)
                 .setCacheKeyFactory(cacheKeyFactory(headers))
                 .setEventListener(PlaybackCacheMetrics.listener())

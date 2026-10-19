@@ -1731,6 +1731,10 @@ TVData</string>
     <string name="home_empty_description">The content source returned no items.</string>
     <string name="home_empty_action">Reload</string>
     
+    <string name="home_no_config_title">No content source yet</string>
+    <string name="home_no_config_description">Add a VOD content source to start browsing.</string>
+    <string name="home_no_config_action">Add source</string>
+    
     <string name="file_empty_title">Nothing here</string>
     <string name="file_empty_description">This folder has no items to show. If you just added files, rescan to pick them up.</string>
     <string name="file_empty_action">Rescan</string>

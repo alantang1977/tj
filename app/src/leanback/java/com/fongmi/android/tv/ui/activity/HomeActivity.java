@@ -624,6 +624,21 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
                 showContent();
             }
 
+            /**
+             * 还没有配置任何内容源（重置应用、重装或恢复出厂后的首次启动）。
+             *
+             * <p>这不是失败：没有地址可请求、没有失败原因、重试也永远不会成功。改动前
+             * {@code BaseConfig} 把它当 {@code error("")} 抛出来，首页便显示「内容源加载失败 /
+             * 重试」——一个不存在的故障加一个点了没用的按钮。这里改走「未配置」空态，
+             * 主动作是把用户带到添加接口。
+             */
+            @Override
+            public void noConfig() {
+                SpiderDebug.log("startup", "no vod config configured");
+                skipNextVodConfigRefresh = true;
+                showNoConfig();
+            }
+
             @Override
             public void error(String msg) {
                 SpiderDebug.log("startup", "config load error cost=%sms msg=%s", System.currentTimeMillis() - App.time(), msg);
@@ -648,6 +663,26 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
                     mBinding.progressLayout.showProgress();
                     initConfig();
                 });
+    }
+
+    /**
+     * 还没有配置内容源：进入空态，主动作打开接口列表让用户添加。
+     *
+     * <p>刻意不复用错误态：没有失败原因可显示，重试也没有意义；用户此时唯一能做的是
+     * 「添加一个接口」。动作直接落到既有的 {@link HistoryDialog}（它自带「新增」，且
+     * 空列表时会自己关掉并让位给 ConfigDialog），不新写第二条配置入口。
+     */
+    private void showNoConfig() {
+        mBinding.progressLayout.setEmptyContent(
+                R.string.home_no_config_title,
+                R.string.home_no_config_description,
+                R.string.home_no_config_action,
+                view -> openVodConfig());
+        mBinding.progressLayout.showEmpty();
+    }
+
+    private void openVodConfig() {
+        HistoryDialog.create().vod().manage().show(this);
     }
 
     private void showContent() {
@@ -917,6 +952,7 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
         switch (event.getType()) {
             case HOME:
                 setTitle();
+                dismissStateIfConfigured();
                 SpiderDebug.log("site-dialog", "home refresh start key=%s homePage=%s", getHome().getKey(), getHome().hasHomePage());
                 if (mWeb != null && mWeb.isVisible()) {
                     if (!mWeb.load(getHome(), true)) getVideo(true);
@@ -934,6 +970,21 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
                 getHistory(true);
                 break;
         }
+    }
+
+    /**
+     * 状态浮层只会被「又一次启动 / 点重试」收掉，而配置可能在别的路径上变得可用：
+     * 恢复备份、远程指令切换接口、设置页切换接口、接收推送接口。这些路径发的是
+     * {@link RefreshEvent#home()} 而不是重新走 {@link #showContent()}，于是用户在这些页面上
+     * 操作完回到首页，首页仍顶着那张状态卡，**必须杀进程冷启动才恢复**。
+     *
+     * <p>这里把「配置真的可用了」当成收卡的唯一判据：HOME 刷新意味着首页马上会重新拉内容，
+     * 此时若还停在空态/错误态就直接收起，不依赖任何调用方记得收。
+     */
+    private void dismissStateIfConfigured() {
+        if (VodConfig.get().getSites().isEmpty()) return;
+        if (!mBinding.progressLayout.isEmpty() && !mBinding.progressLayout.isError()) return;
+        mBinding.progressLayout.showContent();
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)

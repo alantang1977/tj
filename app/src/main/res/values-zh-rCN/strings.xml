@@ -1687,6 +1687,10 @@ TVData</string>
     <string name="home_empty_description">内容源没有返回可显示的内容。</string>
     <string name="home_empty_action">重新加载</string>
     
+    <string name="home_no_config_title">还没有配置接口</string>
+    <string name="home_no_config_description">添加一个点播接口后即可浏览内容。</string>
+    <string name="home_no_config_action">添加接口</string>
+    
     <string name="file_empty_title">这里没有内容</string>
     <string name="file_empty_description">这个目录下没有可显示的项。如果是刚放进来的文件，重新扫描即可看到。</string>
     <string name="file_empty_action">重新扫描</string>

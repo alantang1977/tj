@@ -35,7 +35,18 @@ public record StateEvent(Type type, String message) {
         EventBus.getDefault().post(new StateEvent(Type.ERROR, message));
     }
 
+    /**
+     * 还没有配置任何内容源。
+     *
+     * <p>与 {@link #error(String)} 的区别是它**不是失败**：没有地址可请求，所以既没有失败
+     * 原因，也没有可重试的动作。重置应用、重装或恢复出厂后首次启动都会走到这里，消费方
+     * 应渲染成空态并给出「添加接口」这类可执行的主动作，而不是「内容源加载失败 + 重试」。
+     */
+    public static void noConfig() {
+        EventBus.getDefault().post(new StateEvent(Type.NO_CONFIG, null));
+    }
+
     public enum Type {
-        EMPTY, PROGRESS, CONTENT, ERROR
+        EMPTY, PROGRESS, CONTENT, ERROR, NO_CONFIG
     }
 }

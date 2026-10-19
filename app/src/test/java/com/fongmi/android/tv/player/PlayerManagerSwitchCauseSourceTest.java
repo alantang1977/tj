@@ -124,6 +124,22 @@ public class PlayerManagerSwitchCauseSourceTest {
     }
 
     @Test
+    public void manualDecodeButtonLogsItsCauseToo() throws Exception {
+        String source = readPlayerManager();
+        // toggleDecode() is the control bar's decode button - the most common manual
+        // soft/hard switch on both flavors. switchDecode(...) only covers the source-refresh
+        // path, so without a log here the everyday manual switch had no switch-cause row.
+        String toggle = methodBody(source, "public void toggleDecode()", "private void maybeFallbackToSoftDecode(");
+        assertTrue("the manual decode button must log its cause",
+                toggle.contains("logSwitchCause(\"decode\", \"user-choice\","));
+        // The previous decode has to be read before engine.setDecode(next) overwrites it.
+        int capture = toggle.indexOf("int previousDecode = engine.getDecode();");
+        int mutate = toggle.indexOf("engine.setDecode(next);");
+        assertTrue("the previous decode must be captured before it is overwritten",
+                capture >= 0 && mutate > capture);
+    }
+
+    @Test
     public void switchCauseLogIsNotGatedOnSpiderDebug() throws Exception {
         String source = readPlayerManager();
         String logger = methodBody(source,
