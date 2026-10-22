@@ -105,6 +105,7 @@ import com.fongmi.android.tv.setting.MultiThreadProxySetting;
 import com.fongmi.android.tv.setting.PlaybackExperimentSetting;
 import com.fongmi.android.tv.setting.PreloadSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
+import com.fongmi.android.tv.setting.FlagSwitchPlaybackPolicy;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.setting.SiteHealthStore;
 import com.fongmi.android.tv.setting.DetailRuntimeModePolicy;
@@ -394,6 +395,8 @@ private boolean runtimeSourceOnly;
     private PartAdapter mPartAdapter;
     private BackdropAdapter mBackdropAdapter;
     private Map<String, View> mActionButtons;
+    private boolean mProgrammaticFlagSwitch;
+    private boolean mDeferFlagSwitchPlayback;
     private final List<View> mCustomActionViews = new ArrayList<>();
     private HorizontalScrollView mCustomPortraitButtons;
     private LinearLayout mCustomPortraitButtonRow;
@@ -3634,9 +3637,13 @@ private boolean runtimeSourceOnly;
         notifyItemsChanged(mBinding.flag, mFlagAdapter, oldPosition, newPosition);
         setEpisodeAdapter(resolved.getEpisodes());
         setQualityVisible(false);
+        boolean deferFlagSwitch = FlagSwitchPlaybackPolicy.shouldDeferPlayback(PlayerSetting.isDeferFlagSwitchPlayback(), mProgrammaticFlagSwitch);
+        mDeferFlagSwitchPlayback = deferFlagSwitch && !initialBinding;
         boolean episodeChanged = seamless(resolved);
         if (initialBinding && !episodeChanged) onRefresh();
+        else if (deferFlagSwitch && !episodeChanged) onRefresh();
         loadTmdbRelatedVideosForCurrentEpisode();
+        mDeferFlagSwitchPlayback = false;
     }
 
     private void setEpisodeAdapter(List<Episode> items) {
@@ -4853,8 +4860,17 @@ private boolean runtimeSourceOnly;
     }
 
     private void onRefresh() {
-        invalidateShortDramaQueue("refresh");
         saveHistory();
+        // 「切换线路不自动播放」：线路点击只换线路/选集列表，旧流继续播。
+        // 抑制必须先于拆流，否则用户还没点具体集数，正在看的视频就先被停掉了；
+        // 但仍在途的旧线路取流结果必须就地作废，否则它稍后返回会替用户自动起播旧线路。
+        if (mDeferFlagSwitchPlayback) {
+            mDeferFlagSwitchPlayback = false;
+            if (mViewModel != null) mViewModel.cancelPlayerContent();
+            invalidatePlayerContent();
+            return;
+        }
+        invalidateShortDramaQueue("refresh");
         if (mViewModel != null) mViewModel.cancelPlayerContent();
         invalidatePlayerContent();
         subtitlePlaybackSession.stop(this);
@@ -5411,7 +5427,9 @@ private boolean runtimeSourceOnly;
             setQualityVisible(false);
             if (mHistory.isRevSort()) reverseEpisode(true);
         } else {
+            mProgrammaticFlagSwitch = true;
             onItemClick(resolveHistoryPlaybackFlag(item.getFlags()));
+            mProgrammaticFlagSwitch = false;
             if (mHistory.isRevSort()) reverseEpisode(true);
         }
     }
@@ -5855,7 +5873,9 @@ private boolean runtimeSourceOnly;
             tmdbHistoryResumePending = true;
         }
         if (!targetFlag.isSelected() || !targetEpisode.isSelected()) {
+            mProgrammaticFlagSwitch = true;
             onItemClick(targetFlag);
+            mProgrammaticFlagSwitch = false;
             return;
         }
 
@@ -8070,7 +8090,9 @@ private boolean runtimeSourceOnly;
     private void nextFlag(int position) {
         Flag flag = mFlagAdapter.get(position + 1);
         Notify.show(getString(R.string.play_switch_flag, flag.getFlag()));
+        mProgrammaticFlagSwitch = true;
         onItemClick(flag);
+        mProgrammaticFlagSwitch = false;
     }
 
     private void nextSite() {
@@ -8437,9 +8459,13 @@ private boolean runtimeSourceOnly;
 
     @Override
     public void onKeyUp() {
+        long position = player().getPosition();
+        long duration = player().getDuration();
+        if (isEndingShortcutDue(position, duration)) {
+            showControl(mBinding.control.action.ending);
+            return;
+        }
         if (!hasRememberedFocus()) {
-            long position = player().getPosition();
-            long duration = player().getDuration();
             if (player().canSetOpening(position, duration)) {
                 showControl(mBinding.control.action.opening);
                 return;
@@ -8450,6 +8476,22 @@ private boolean runtimeSourceOnly;
             }
         }
         showControl(getFocus2());
+    }
+
+    /**
+     * 「快播完」时按上键的目标就是设片尾，这个入口必须优先于「恢复上次控件」。
+     *
+     * <p>09-29 的 c7fba76a46 为修「片头区间唤醒被抢焦点」把片头/片尾两个分支一起收进
+     * {@link #hasRememberedFocus()}；而记忆焦点只在进出全屏时清空，用户只要碰过一次控制栏
+     * （按过下键、点过选集/字幕/弹幕等），此后整场播放的片尾快捷入口就永久失效，片头分支
+     * 却仍会在片头区间生效，表现为「能跳片头、跳不了片尾」。片头区间保留该收敛语义，
+     * 片尾区间恢复上游的快捷聚焦。
+     *
+     * <p>限定「已过中点」才抢焦点：短剧/短片整段都落在两侧可设窗口内，开场阶段按上键
+     * 仍应给片头。该条件对长内容恒成立（片尾窗口必定在后半程），不改变原本能命中的场景。
+     */
+    private boolean isEndingShortcutDue(long position, long duration) {
+        return position > 0 && duration > 0 && position >= duration / 2 && player().canSetEnding(position, duration);
     }
 
     @Override

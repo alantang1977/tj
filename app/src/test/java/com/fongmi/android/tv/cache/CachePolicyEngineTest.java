@@ -92,8 +92,8 @@ public class CachePolicyEngineTest {
     }
 
     /**
-     * The settings row's long-press shortcut clears every module, including the report-only ones a
-     * tiered plan deliberately protects, and it is the mode that selects the full clean path.
+     * The settings row's plain click clears every module, including the report-only ones a tiered
+     * plan deliberately protects, and it is the mode that selects the full clean path.
      */
     @Test
     public void fullPlanCoversEveryModuleExactlyOnce() {

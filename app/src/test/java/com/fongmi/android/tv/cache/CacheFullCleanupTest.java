@@ -21,8 +21,8 @@ import java.util.List;
  * meant for background runs. An explicit request must ignore that window while still protecting a
  * transfer that is running right now.</p>
  *
- * <p>2. The settings row's long-press shortcut has to clear everything the way the pre-split
- * one-key clear did, which needs a residual sweep over whatever no module claims.</p>
+ * <p>2. The settings row's plain click has to clear everything the way the pre-split one-key clear
+ * did, which needs a residual sweep over whatever no module claims.</p>
  */
 public class CacheFullCleanupTest {
 
@@ -128,7 +128,7 @@ public class CacheFullCleanupTest {
 
     /**
      * Every age-windowed module decides through one shared rule, so the reported defect can not
-     * come back at a single call site. The row's own button (MODULE) and the long-press shortcut
+     * come back at a single call site. The row's own button (MODULE) and the row's plain click
      * (FULL) are explicit requests; the tiered and automatic runs keep the background window.
      */
     @Test
@@ -176,8 +176,8 @@ public class CacheFullCleanupTest {
      * {@code sweepResidual} is called directly, so the call sites inside {@code CacheCleanupManager}
      * are never executed: reverting the temporary-file row to the 24-hour background window - the
      * exact code path the user reported as "released nothing, deleted 0 files" - leaves every other
-     * test in this class green, and reverting the full-clean dispatch turns the long-press shortcut
-     * back into a tiered run. That is how both defects shipped.
+     * test in this class green, and reverting the full-clean dispatch turns the settings row's
+     * plain click back into a tiered run. That is how both defects shipped.
      *
      * <p>The call sites can not be reached from a JVM test (they resolve
      * {@code App.get().getCacheDir()}, {@code Updater.isDownloading()} and the player state), so
@@ -189,7 +189,8 @@ public class CacheFullCleanupTest {
     public void everyCleanupCallSiteUsesTheSharedRule() throws Exception {
         String source = productionSource();
 
-        // 1. The long-press shortcut must dispatch to the full clean, not to a tiered module loop.
+        // 1. The settings row's plain click must dispatch to the full clean, not to a tiered module
+        // loop. (The gesture moved off the long press on 2026-10-21; the long press opens the panel.)
         String run = method(source, "private static void run(CacheCleanupPlan plan, String reason,");
         assertTrue("FULL must select the full-clean path: " + run,
                 run.contains("if (plan.mode() == CacheCleanupMode.FULL) {"));

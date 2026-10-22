@@ -454,6 +454,15 @@ public class PlayerSetting {
         Prefers.put("playback_bluray_menu", enabled);
     }
 
+    /** Whether switching to another line must wait for an explicit play action. */
+    public static boolean isDeferFlagSwitchPlayback() {
+        return Prefers.getBoolean("player_defer_flag_switch", false);
+    }
+
+    public static void putDeferFlagSwitchPlayback(boolean defer) {
+        Prefers.put("player_defer_flag_switch", defer);
+    }
+
     public static int getBackground() {
         int stored = Prefers.getInt("background", BackgroundPlaybackPolicy.ON);
         int normalized = BackgroundPlaybackPolicy.normalize(stored);

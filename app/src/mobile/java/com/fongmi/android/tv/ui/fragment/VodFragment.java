@@ -497,8 +497,9 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
                 showError(event.message());
                 break;
             case NO_CONFIG:
-                // 还没配接口：不是失败，所以不给"重试"（它永远不会成功），而是给一个
-                // 真的能把用户带出去的主动作——去添加接口。
+                // 还没配接口：不是失败，所以不给"重试"（它永远不会成功），也不接管首页——
+                // 收起状态浮层回到原生内容态，底部导航照常可用；添加接口走既有的
+                // 「设置 → 点播」管理面板。
                 hideProgress();
                 showNoConfig();
                 break;
@@ -536,24 +537,14 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     }
 
     /**
-     * 显示「还没配接口」空态：标题 + 解释 + 主动作，主动作打开接口管理。
+     * 还没配接口：这不是失败，也不该由本 Fragment 独占整屏。
      *
-     * <p>刻意**不**复用错误态：这里没有失败原因可显示，重试也永远不会成功（没有地址可请求）。
-     * 用户此刻唯一能做的是添加一个接口，所以动作落到既有的接口管理列表
-     * （{@code HistoryDialog.manage()} 自带「新增」）。
+     * <p>配置为空时首页仍然是"正常首页"：底部导航（点播/设置）照常可用，只是没有内容。
+     * 状态浮层只留给真正的加载失败——用它接管首页会把顶栏和内容一起盖掉。
      */
     private void showNoConfig() {
-        mBinding.state.setVisibility(View.VISIBLE);
-        mBinding.state.setEmptyContent(
-                R.string.home_no_config_title,
-                R.string.home_no_config_description,
-                R.string.home_no_config_action,
-                view -> openVodConfig());
-        mBinding.state.showEmpty();
-    }
-
-    private void openVodConfig() {
-        HistoryDialog.create().vod().manage().show(this);
+        hideState();
+        showNativeContent();
     }
 
     /** 重新加载内容源配置：交给承载本 Fragment 的 Activity（失败的那一步在它那里）。 */

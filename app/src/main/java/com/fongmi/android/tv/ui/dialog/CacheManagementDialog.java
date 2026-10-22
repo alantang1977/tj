@@ -71,43 +71,47 @@ public class CacheManagementDialog extends DialogFragment {
     }
 
     /**
-     * Runs the settings row's long-press shortcut: every cache the panel can name is cleared the way
-     * the single-key clear of the pre-split settings row left them, and the outcome is reported as a
+     * Runs the settings row's plain click: every cache the panel can name is cleared the way the
+     * single-key clear of the pre-split settings row left them, and the outcome is reported as a
      * notification.
      *
-     * <p>The panel deliberately stays closed. This entry re-creates a gesture from before the cache
-     * management split, and that one-key clear never opened a screen either: holding the key is the
+     * <p>The panel deliberately stays closed. This entry re-creates the action from before the cache
+     * management split, and that one-key clear never opened a screen either: the click is the
      * deliberate act, the cleanup runs in the background, and the settings row re-reads itself once
-     * the cleanup publishes its change. Opening the panel here turned a one-key action into "open a
-     * screen, then watch it", and put a cancel button in front of an action the user had just
-     * confirmed by holding the key.</p>
+     * the cleanup publishes its change. The panel - graded cleanup, module limits, auto cleanup -
+     * moved to the row's long press, which is now its only entry: the row stays single-line by user
+     * request, so no gesture hint is printed under the title.</p>
      */
     public static void cleanEverything() {
-        if (CacheCleanupManager.isRunning()) return;
-        Resources resources = shortcutResources();
+        if (CacheCleanupManager.isRunning()) {
+            Resources resources = rowResources();
+            Notify.show(resources.getString(R.string.cache_cleanup_busy));
+            return;
+        }
+        Resources resources = rowResources();
         Notify.show(resources.getString(R.string.cache_cleanup_full_started));
-        CacheCleanupManager.execute(CachePolicyEngine.plan(CacheCleanupMode.FULL), "shortcut",
+        CacheCleanupManager.execute(CachePolicyEngine.plan(CacheCleanupMode.FULL), "settings_row",
                 result -> Notify.show(describe(result, resources)));
     }
 
     /**
-     * The resources the shortcut's toasts resolve their text from.
+     * The resources the row's toasts resolve their text from.
      *
      * <p>{@link Notify} renders through the application context, whose resources carry the system
-     * locale instead of the in-app language the settings screens apply, so a shortcut toast would
+     * locale instead of the in-app language the settings screens apply, so a row toast would
      * otherwise disagree with the panel that reports the identical outcome. Resolving through the
      * same helper the settings screens use keeps both surfaces in one language.</p>
      */
-    private static Resources shortcutResources() {
+    private static Resources rowResources() {
         return Setting.wrapLanguage(App.get()).getResources();
     }
 
     /**
      * Words a cleanup outcome exactly as the panel's status line does, so the same action reads the
-     * same way whether it was started from the panel or from the settings row's shortcut.
+     * same way whether it was started from the panel or from the settings row.
      *
      * <p>The resources are passed in rather than read globally: the panel renders - and notifies -
-     * through its host context, which carries the in-app language choice, while the shortcut has to
+     * through its host context, which carries the in-app language choice, while the row has to
      * ask for that same choice explicitly.</p>
      */
     static String describe(CacheCleanupResult result, Resources resources) {

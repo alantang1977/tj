@@ -77,6 +77,8 @@
             android:minHeight="40dp"
             android:textColor="@color/dialog_primary_button_text"
             app:backgroundTint="@color/dialog_primary_button_bg"
+            app:strokeWidth="@dimen/webhtv_focus_ring_width"
+            app:strokeColor="@color/focus_ring_primary_container"
             tools:text="发送搜索" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>

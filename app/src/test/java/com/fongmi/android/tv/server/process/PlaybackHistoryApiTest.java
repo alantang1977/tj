@@ -10,8 +10,11 @@ import org.junit.Test;
 /**
  * 按站点读历史端点的参数归一化契约。
  *
- * <p>只测纯逻辑部分（参数解析与夹取）。真正的 HTTP 行为（状态码、CORS、
- * 响应体形态）由 {@code PlaybackHistoryApi} 的集成路径覆盖，不在这里重复。
+ * <p>只测纯逻辑部分（参数解析与夹取）。HTTP 层（状态码、CORS、响应体形态、
+ * 观影记录同步开关的 403 门控）**目前没有自动化覆盖**：实例化端点需要
+ * {@code IHTTPSession} 与运行中的 {@code NanoHTTPD}，纯 JVM 单测无法构造。
+ * 那部分靠真机手工验证（开关关闭 → 403；开启 → 200 且 items 只含 apiSafe 字段）。
+ * 本类不声称覆盖它。
  */
 public class PlaybackHistoryApiTest {
 

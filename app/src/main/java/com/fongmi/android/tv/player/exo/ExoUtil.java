@@ -100,7 +100,9 @@ import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegVideoRenderer;
 
 public class ExoUtil {
 
-    static final long ENHANCED_LATE_THRESHOLD_TO_DROP_INPUT_US = 5_000L;
+    // Upstream (media3 1.9.0-rc01+) default is 15 ms. This build previously used 5 ms, which
+    // pre-emptively dropped decoder input frames that upstream would still have presented.
+    static final long ENHANCED_LATE_THRESHOLD_TO_DROP_INPUT_US = 15_000L;
     private static final long ENHANCED_ADAPT_COOLDOWN_MS = 15_000L;
     private static final int ENHANCED_DROPPED_FRAMES_THRESHOLD = 24;
     private static final int ENHANCED_DROPPED_FRAMES_PER_SECOND_THRESHOLD = 4;
@@ -374,8 +376,22 @@ public class ExoUtil {
         return extras.keySet().stream().filter(key -> extras.getString(key) != null).collect(Collectors.toMap(key -> key, extras::getString));
     }
 
+    /**
+     * 硬解仍然让系统 MediaCodec 先接管；「解码器兜底」开启时再把 ffmpeg 作为最后一级视频回退。
+     * <p>
+     * 用 {@link DefaultRenderersFactory#EXTENSION_RENDERER_MODE_ON} 而不是 OFF：附加的 ffmpeg
+     * 渲染器排在所有 MediaCodec 渲染器之后，只有当平台根本没有该编码的解码器（AVS2/AVS3、
+     * 部分 HEVC profile 等）时才接手。旧的 OFF 会让超类完全不注册视频扩展渲染器，视频轨被判
+     * 定为不支持的子类型后整轨丢弃、音频继续播，用户看到的就是「只有声音没有画面」。
+     * <p>
+     * 关闭兜底开关时仍用 OFF：那个开关的合同是「只想快速暴露硬件问题」，此时让 ffmpeg 悄悄
+     * 在硬解标签下接管会同时违背开关语义与 {@code PlayerManager} 的软解切换判断。
+     */
     private static int getVideoRenderMode(int decode) {
-        return decode == PlayerEngine.HARD ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER;
+        if (decode != PlayerEngine.HARD) return DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER;
+        return PlaybackPerformanceSetting.isDecoderFallbackEnabled()
+                ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF;
     }
 
     private static int getAudioRenderMode() {
@@ -937,7 +953,12 @@ public class ExoUtil {
         }
         ExoFrameSchedulingRendererSettings.from(frameSchedulingDecision)
                 .apply(factory);
-        if (PlaybackPerformanceSetting.isLateDropInputEnabled()) factory.experimentalSetLateThresholdToDropDecoderInputUs(ENHANCED_LATE_THRESHOLD_TO_DROP_INPUT_US);
+        // 15 ms is the media3 1.9+ default, so "on" keeps upstream parity. "Off" must pass
+        // C.TIME_UNSET: leaving the setter untouched would keep the same 15 ms default and turn
+        // the user-visible switch into a no-op that still drops late input frames.
+        factory.experimentalSetLateThresholdToDropDecoderInputUs(
+                PlaybackPerformanceSetting.isLateDropInputEnabled()
+                        ? ENHANCED_LATE_THRESHOLD_TO_DROP_INPUT_US : C.TIME_UNSET);
         return factory.setEnableDecoderFallback(PlaybackPerformanceSetting.isDecoderFallbackEnabled()).setExtensionRendererMode(Math.max(audioRenderMode, videoRenderMode));
     }
 
@@ -1154,7 +1175,7 @@ public class ExoUtil {
             } catch (Throwable ignored) {
             }
             if (decoderRuntimeSession != null
-                    && videoRenderMode == EXTENSION_RENDERER_MODE_OFF) {
+                    && videoRenderMode != EXTENSION_RENDERER_MODE_PREFER) {
                 out.add(new ExoRuntimeAwareVideoRenderer(
                         context,
                         getCodecAdapterFactory(),
@@ -1186,14 +1207,13 @@ public class ExoUtil {
                         dolbyVisionPlaybackState));
             } catch (Throwable ignored) {
             }
-            // Video decode mode is explicit for extension renderers: hardware mode
-            // must never register an FFmpeg video fallback, including for AVS3.
-            // getVideoCodecSelector is the one deliberate exception, and only at the
-            // MediaCodec level: it keeps a platform software decoder as the last
-            // resort so the track stays alive instead of being dropped. PlayerManager
-            // reads that state as "hard decode has no hardware video path" and moves
-            // the session to soft decode, so the two must stay consistent.
-            // Audio has its own policy.
+            // Video decode mode is explicit for extension renderers: with 「解码器兜底」 on, hardware
+            // mode keeps the system MediaCodec renderers first and only appends FFmpeg afterwards,
+            // so a codec without any platform decoder (AVS2/AVS3, unsupported HEVC profiles) still
+            // gets a video path instead of being dropped as an unsupported subtype while audio keeps
+            // playing. With the switch off the mode stays OFF and no FFmpeg video renderer is added.
+            // getVideoCodecSelector narrows the MediaCodec list in hard mode, so the two must stay
+            // consistent. Audio has its own policy.
             if (videoRenderMode == EXTENSION_RENDERER_MODE_OFF) return;
             try {
                 out.add(getExtensionRendererIndex(videoRenderMode, videoPrefer, out), buildFfmpegVideoRenderer(allowedVideoJoiningTimeMs, eventHandler, eventListener));
@@ -1207,7 +1227,7 @@ public class ExoUtil {
         }
 
         private MediaCodecSelector getVideoCodecSelector(MediaCodecSelector mediaCodecSelector) {
-            if (videoRenderMode != EXTENSION_RENDERER_MODE_OFF) return mediaCodecSelector;
+            if (videoRenderMode == EXTENSION_RENDERER_MODE_PREFER) return mediaCodecSelector;
             return (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) -> {
                 List<MediaCodecInfo> infos = mediaCodecSelector.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
                 if (mimeType == null || !mimeType.startsWith("video/")) return infos;

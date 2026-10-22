@@ -103,11 +103,11 @@
                 android:layout_weight="1"
                 android:minHeight="44dp"
                 android:text="@string/about_check_update"
-                android:textColor="?attr/colorOnPrimary"
+                android:textColor="@color/dialog_primary_button_text"
                 android:textSize="14sp"
-                app:backgroundTint="?attr/colorPrimary"
+                app:backgroundTint="@color/dialog_primary_button_bg"
                 app:cornerRadius="8dp"
-                app:strokeColor="@color/focus_ring_primary"
+                app:strokeColor="@color/focus_ring_primary_container"
                 app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
@@ -119,11 +119,11 @@
                 android:minHeight="44dp"
                 android:nextFocusUp="@id/checkUpdate"
                 android:text="@string/setting_github_proxy_short"
-                android:textColor="?attr/colorOnPrimary"
+                android:textColor="@color/dialog_primary_button_text"
                 android:textSize="14sp"
-                app:backgroundTint="?attr/colorPrimary"
+                app:backgroundTint="@color/dialog_primary_button_bg"
                 app:cornerRadius="8dp"
-                app:strokeColor="@color/focus_ring_primary"
+                app:strokeColor="@color/focus_ring_primary_container"
                 app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
@@ -141,7 +141,7 @@
             android:textSize="14sp"
             app:backgroundTint="@color/dialog_primary_button_bg"
             app:cornerRadius="8dp"
-            app:strokeColor="@color/focus_ring_primary"
+            app:strokeColor="@color/focus_ring_primary_container"
             app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
         <androidx.appcompat.widget.AppCompatImageButton
@@ -154,7 +154,7 @@
             android:contentDescription="@string/update_settings"
             android:padding="10dp"
             android:src="@drawable/ic_remote_settings"
-            app:tint="?attr/colorOnPrimary" />
+            app:tint="@color/about_primary_icon_tint" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 </androidx.appcompat.widget.LinearLayoutCompat>

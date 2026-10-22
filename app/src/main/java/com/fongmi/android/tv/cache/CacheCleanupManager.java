@@ -150,8 +150,8 @@ public final class CacheCleanupManager {
     /**
      * Clears everything the registry can name, then whatever no module claimed.
      *
-     * <p>The settings row's long-press shortcut is documented as "the one-key clear from before the
-     * cache management split", so it must not inherit the tiered plans' deliberate omissions: L1/L2
+     * <p>The settings row's plain click is the one-key clear from before the cache management
+     * split, so it must not inherit the tiered plans' deliberate omissions: L1/L2
      * keep age windows, L3 still skips the diagnostic log family and the report-only unclassified
      * cache. Here every module is cleaned through its owner first - several caches (Exo's
      * SimpleCache, Glide's disk cache, the rolling diagnostic log) must be released by their owner
@@ -380,7 +380,7 @@ public final class CacheCleanupManager {
 
     /**
      * True when the user asked for exactly these files (the per-row button, or the settings row's
-     * long-press "clear everything").
+     * "clear everything" tap).
      *
      * <p>An explicit request ignores the age windows a tiered or automatic run keeps. That rule
      * already applied to the legacy paths, and the temporary-file row was the one module that

@@ -14,6 +14,7 @@
     <string name="live_refresh">刷新</string>
     <string name="live_line">來源 <ns0:g name="name">%s</ns0:g></string>
     <string name="live_control_source">直播源</string>
+    <string name="live_control_source_named">直播源：<ns0:g name="name">%s</ns0:g></string>
 
     
     <string name="detail_title"><ns0:g name="name">%s</ns0:g>：<ns0:g name="name">%s</ns0:g></string>
@@ -1015,6 +1016,7 @@
     <string name="cache_cleanup_failed">暫存清理失敗</string>
     <string name="cache_cleanup_cancelled">暫存清理已取消</string>
     <string name="cache_cleanup_full_started">正在清理全部暫存…</string>
+    <string name="cache_cleanup_busy">正在清理，請稍候</string>
     <string name="cache_module_exo">Exo 播放暫存</string>
     <string name="cache_module_mpv_hls">MPV HLS/ISO 分片</string>
     <string name="cache_module_mpv_demuxer">MPV demuxer 預載</string>
@@ -1454,6 +1456,7 @@ TVData</string>
     <string name="player_auto_play">點播自動播放</string>
     <string name="player_live_source_fallback">直播源失效自動切換</string>
     <string name="player_auto_change">自動換源</string>
+    <string name="player_defer_flag_switch">切換線路不自動播放</string>
     <string name="player_remember_brightness">記住播放亮度</string>
     <string name="player_failure_fallback">播放失敗回退</string>
     <string name="player_speed">長按倍速</string>

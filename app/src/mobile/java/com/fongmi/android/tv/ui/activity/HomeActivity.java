@@ -222,8 +222,9 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
              *
              * <p>这不是失败：没有地址可请求、没有失败原因、重试也永远不会成功。改动前
              * {@code BaseConfig} 把它当 {@code error("")} 抛出来，首页便显示「内容源加载失败 /
-             * 重试」——一个不存在的故障加一个点了没用的按钮。这里改发「未配置」空态，
-             * 主动作是去添加接口。
+             * 重试」——一个不存在的故障加一个点了没用的按钮。这里改发「未配置」状态：
+             * 不接管首页，由 {@code VodFragment} 收起状态浮层、保留底部导航；添加接口仍走
+             * 既有的「设置 → 点播」管理面板（{@code HistoryDialog} 的「添加」）。
              */
             @Override
             public void noConfig() {

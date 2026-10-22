@@ -79,7 +79,9 @@
             android:minWidth="0dp"
             android:text="@string/dialog_positive"
             android:textColor="@color/dialog_primary_button_text"
-            app:backgroundTint="@color/dialog_primary_button_bg" />
+            app:backgroundTint="@color/dialog_primary_button_bg"
+            app:strokeWidth="@dimen/webhtv_focus_ring_width"
+            app:strokeColor="@color/focus_ring_primary_container" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 

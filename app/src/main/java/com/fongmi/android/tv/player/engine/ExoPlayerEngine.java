@@ -157,8 +157,26 @@ public class ExoPlayerEngine implements PlayerEngine {
             App.removeCallbacks(tunnelingWatchdogRunnable);
             cancelTunnelingProgressWatchdog();
             cancelDecoderRuntimeStableWindow();
+            logPlaybackError(error);
         }
     };
+
+    /**
+     * 失败原因必须无条件进 logcat：release 构建里 SpiderDebug 默认关闭，直播排障
+     * （EXO 落到黑屏、随后被降级到其它内核）时曾拿不到 errorCode 与 cause 链。
+     */
+    private static void logPlaybackError(PlaybackException error) {
+        StringBuilder chain = new StringBuilder();
+        int depth = 0;
+        for (Throwable t = error.getCause(); t != null && depth++ < 8 && chain.length() < 512;
+             t = t.getCause() == t ? null : t.getCause()) {
+            if (chain.length() > 0) chain.append(" <- ");
+            chain.append(t.getClass().getSimpleName());
+            if (t.getMessage() != null) chain.append('(').append(t.getMessage().replace('\n', ' ')).append(')');
+        }
+        android.util.Log.e("TV-exo-error", "code=" + error.getErrorCodeName() + " message=" + error.getMessage()
+                + " causeChain=" + chain, error);
+    }
 
     public ExoPlayerEngine(int decode, Player.Listener listener) {
         this(decode, listener, null, null);

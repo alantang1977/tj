@@ -110,6 +110,35 @@ public class PlaybackPerformanceSettingSourceTest {
         assertFalse(buildPlayer.contains("buildLoadControl()"));
     }
 
+    @Test
+    public void lateDropThresholdSwitchCanActuallyDisableDropping() throws Exception {
+        // media3 defaults lateThresholdToDropDecoderInputUs to 15 ms, which is exactly the value
+        // this build passes when the switch is on. If the wiring skipped the setter when the
+        // switch is off, the default would keep dropping input frames and the switch would lie.
+        String util = read(sourcePath("main", "java", "com", "fongmi", "android", "tv", "player", "exo", "ExoUtil.java"));
+        String renderer = read(sourcePath("main", "java", "com", "fongmi", "android", "tv", "player", "exo", "ExoRuntimeAwareVideoRenderer.java"));
+
+        assertContainsAll(util,
+                "ENHANCED_LATE_THRESHOLD_TO_DROP_INPUT_US = 15_000L",
+                "PlaybackPerformanceSetting.isLateDropInputEnabled()",
+                "C.TIME_UNSET");
+        assertContainsAll(renderer, "C.TIME_UNSET", "isLateDropInputEnabled()");
+        assertTrue(renderer.contains("import androidx.media3.common.C;"));
+    }
+
+    @Test
+    public void durationProgressKeepsUpstreamDefaultUntilMigrated() throws Exception {
+        String source = read(sourcePath("main", "java", "com", "fongmi", "android", "tv", "setting", "PlaybackPerformanceSetting.java"));
+        String getter = methodBody(source, "public static boolean isVideoDurationProgressEnabled()", "public static void putVideoDurationProgressEnabled");
+        String recommended = methodBody(source, "private static void putRecommendedFlags()", "private static int clampProfile(int profile)");
+        String init = methodBody(source, "public static void ensureInitialized()", "public static int getProfile()");
+
+        assertTrue(getter.contains("Prefers.getBoolean(KEY_VIDEO_DURATION_PROGRESS, false)"));
+        assertFalse(recommended.contains("put(KEY_VIDEO_DURATION_PROGRESS, true)"));
+        assertTrue(recommended.contains("put(KEY_VIDEO_DURATION_PROGRESS, false)"));
+        assertTrue(init.contains("migrateExoFrameSchedulingParity();"));
+    }
+
     private static void assertContainsAll(String source, String... values) {
         for (String value : values) assertTrue("Missing: " + value, source.contains(value));
     }

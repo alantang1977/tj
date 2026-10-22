@@ -161,10 +161,10 @@
                         android:minWidth="70dp"
                         android:text="@string/following_continue"
                         android:textSize="12sp"
-                        app:backgroundTint="?attr/colorPrimary"
-                        app:strokeColor="@color/focus_ring_primary"
+                        app:backgroundTint="@color/dialog_primary_button_bg"
+                        app:strokeColor="@color/focus_ring_primary_container"
                         app:strokeWidth="@dimen/webhtv_focus_ring_width"
-                        android:textColor="?attr/colorOnPrimary"/>
+                        android:textColor="@color/dialog_primary_button_text"/>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/check"

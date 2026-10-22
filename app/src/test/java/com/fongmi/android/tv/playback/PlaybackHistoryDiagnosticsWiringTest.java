@@ -58,8 +58,18 @@ public class PlaybackHistoryDiagnosticsWiringTest {
         int start = -1;
         for (int i = 0; i <= index; i++) start = source.indexOf("catch (Throwable e) {", start + 1);
         if (start < 0) throw new IllegalStateException("找不到第 " + index + " 个 catch 块");
-        int end = source.indexOf("\n        }", start);
-        return source.substring(start, end < 0 ? source.length() : end);
+        // 用花括号配平定位块尾，而不是匹配字面缩进（原先找 "\n        }"）。
+        // 字面缩进有两个失效面：失配时回退到 source.length() 会让块体延伸到文件尾，
+        // 于是"块里含某段文本"对后续任何 catch 都恒真；即便改成显式失败，缩进一变
+        // 也会匹配到**更靠后的**同缩进花括号，块体同样被撑大。配平扫描对缩进免疫。
+        int open = source.indexOf('{', start);
+        int depth = 0;
+        for (int i = open; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return source.substring(start, i + 1);
+        }
+        throw new IllegalStateException("第 " + index + " 个 catch 块缺少配对的结束花括号");
     }
 
     @Test

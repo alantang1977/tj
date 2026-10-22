@@ -175,8 +175,8 @@
                 app:autoSizeStepGranularity="1sp"
                 app:autoSizeTextType="uniform"
                 app:backgroundTint="@color/dialog_primary_button_bg"
-                app:strokeColor="?attr/colorOutline"
-                app:strokeWidth="1dp" />
+                app:strokeColor="@color/focus_ring_primary_container"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/negative"

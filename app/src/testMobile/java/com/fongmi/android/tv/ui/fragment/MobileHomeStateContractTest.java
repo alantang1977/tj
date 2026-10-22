@@ -169,21 +169,20 @@ public class MobileHomeStateContractTest {
         assertTrue("Fragment 必须处理 NO_CONFIG 分支", handler.contains("case NO_CONFIG:"));
         // NO_CONFIG 是最后一个分支，取到方法体末尾即可（用固定结尾串切分会踩 CRLF 的坑）。
         String noConfigCase = handler.substring(handler.indexOf("case NO_CONFIG:"));
-        assertTrue("NO_CONFIG 必须显示空态而不是错误态", noConfigCase.contains("showNoConfig()"));
+        assertTrue("NO_CONFIG 必须走 showNoConfig() 而不是显示错误态", noConfigCase.contains("showNoConfig()"));
         assertFalse("NO_CONFIG 不得渲染错误态", noConfigCase.contains("showError("));
 
         String showNoConfig = methodBody(fragment, "private void showNoConfig()");
-        for (String string : new String[]{
-                "home_no_config_title", "home_no_config_description", "home_no_config_action"}) {
-            assertTrue("必须引用 " + string, showNoConfig.contains(string));
-            assertTrue("默认字符串表必须声明 " + string, read(STRINGS).contains("name=\"" + string + "\""));
-            assertTrue("简中字符串表必须声明 " + string, read(STRINGS_CN).contains("name=\"" + string + "\""));
-        }
-        // 主动作必须是"添加接口"这种真的能出去的动作，不能是重试。
-        assertTrue("主动作必须打开接口管理", showNoConfig.contains("openVodConfig()"));
-        assertTrue("接口管理必须落到既有的接口列表（自带新增，不另写第二个入口）",
-                methodBody(fragment, "private void openVodConfig()").contains("HistoryDialog.create().vod().manage()"));
+        // 未配置不再独占首页：收起状态浮层、回到原生内容态，底部导航（点播/设置）照常可用。
+        assertTrue("未配置必须收起状态浮层", showNoConfig.contains("hideState()"));
+        assertTrue("未配置必须回到原生内容态", showNoConfig.contains("showNativeContent()"));
+        assertFalse("未配置不得再用全屏空态", showNoConfig.contains("showEmpty()"));
         assertFalse("未配置态的主动作不得是重试", showNoConfig.contains("retryConfig"));
+        // 导航栏只由既有项构成：未配置时不再额外插入任何入口。
+        assertFalse("未配置不得在导航栏里插入额外项",
+                home.contains("home_no_config_action") || home.contains("MENU_NO_CONFIG"));
+        assertFalse("未配置不再要求 Fragment 承载第二个配置入口",
+                fragment.contains("openVodConfig"));
     }
 
     /**

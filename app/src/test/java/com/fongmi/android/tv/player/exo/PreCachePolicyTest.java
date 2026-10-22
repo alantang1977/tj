@@ -4,6 +4,7 @@ import androidx.media3.common.Player;
 
 import org.junit.Test;
 
+import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
@@ -120,8 +121,13 @@ public class PreCachePolicyTest {
      * <p>双向断言：枚举里的每个原因都必须被明确分类，既不能漏登记硬暂停，也不能把
      * 缓冲区/吞吐类原因误升为硬暂停（那会停掉既有的「降级继续跑」行为）。
      *
-     * <p>本用例按枚举名逐项比对，所以新增原因时会**立即**失败，迫使作者显式决定它属于
-     * 硬暂停还是降级——这正是漏登 {@code FOREGROUND_EOF_RECOVERY} 时缺失的保护。
+     * <p>本用例把枚举的**每一个**原因都显式归入「硬暂停」或「降级继续跑」两张表，
+     * 再断言两表并集恰好覆盖枚举全集。因此新增原因时本用例会**立即**失败（新标签
+     * 两张表都不在），迫使作者显式决定它属于哪一类——这正是漏登
+     * {@code FOREGROUND_EOF_RECOVERY} 时缺失的保护。
+     *
+     * <p>为什么不能只写「硬暂停表」再逐个比对：那样新增的原因在两张表里都是
+     * {@code false}，{@code false == false} 恒真，用例照样全绿，守卫形同虚设。
      */
     @Test
     public void hardAutomaticPauseMatchesTheResourceReasonSet() {
@@ -134,6 +140,43 @@ public class PreCachePolicyTest {
                 AutoPreloadPolicy.Reason.POWER_SAVE.label(),
                 AutoPreloadPolicy.Reason.THERMAL_PRESSURE.label(),
                 AutoPreloadPolicy.Reason.FOREGROUND_EOF_RECOVERY.label());
+        // 其余原因只降级（缩任务/降线程），不停磁盘预载。这张表同样必须显式维护。
+        Set<String> degraded = Set.of(
+                AutoPreloadPolicy.Reason.REBUFFER.label(),
+                AutoPreloadPolicy.Reason.NETWORK_CHANGED.label(),
+                AutoPreloadPolicy.Reason.METERED.label(),
+                AutoPreloadPolicy.Reason.ROAMING.label(),
+                AutoPreloadPolicy.Reason.DATA_SAVER_WHITELISTED.label(),
+                AutoPreloadPolicy.Reason.THERMAL_MODERATE.label(),
+                AutoPreloadPolicy.Reason.FOREGROUND_RECOVERY.label(),
+                AutoPreloadPolicy.Reason.FRONT_BUFFER_LOW.label(),
+                AutoPreloadPolicy.Reason.FRONT_BUFFER_MARGIN.label(),
+                AutoPreloadPolicy.Reason.BUFFER_DECLINING.label(),
+                AutoPreloadPolicy.Reason.BUFFER_EVIDENCE_UNKNOWN.label(),
+                AutoPreloadPolicy.Reason.TIME_TO_EMPTY.label(),
+                AutoPreloadPolicy.Reason.THROUGHPUT_DEFICIT.label(),
+                AutoPreloadPolicy.Reason.SHORT_WINDOW_DEFICIT.label(),
+                AutoPreloadPolicy.Reason.THROUGHPUT_MARGIN.label(),
+                AutoPreloadPolicy.Reason.SHORT_WINDOW_DECLINE.label(),
+                AutoPreloadPolicy.Reason.THROUGHPUT_EVIDENCE_UNKNOWN.label(),
+                AutoPreloadPolicy.Reason.MEDIA_BITRATE_UNKNOWN.label(),
+                AutoPreloadPolicy.Reason.PREDICTION_ERROR.label(),
+                AutoPreloadPolicy.Reason.PATH_LIMITED.label(),
+                AutoPreloadPolicy.Reason.VPN.label(),
+                AutoPreloadPolicy.Reason.PRELOAD_CONTENTION.label(),
+                AutoPreloadPolicy.Reason.SYSTEM_EVIDENCE_UNKNOWN.label(),
+                AutoPreloadPolicy.Reason.EXTERNAL_BUFFER_MARGIN.label(),
+                AutoPreloadPolicy.Reason.EVIDENCE_UNKNOWN.label(),
+                AutoPreloadPolicy.Reason.RECOVERY_STABILIZING.label(),
+                AutoPreloadPolicy.Reason.STABLE_NORMAL.label(),
+                AutoPreloadPolicy.Reason.STABLE_FAST.label(),
+                AutoPreloadPolicy.Reason.FAST_FALLBACK.label(),
+                AutoPreloadPolicy.Reason.DISRUPTED.label());
+
+        Set<String> classified = new HashSet<>(hard);
+        classified.addAll(degraded);
+        assertEquals("every Reason must be classified as hard-pause or degraded",
+                AutoPreloadPolicy.Reason.values().length, classified.size());
 
         for (AutoPreloadPolicy.Reason reason : AutoPreloadPolicy.Reason.values()) {
             assertEquals("hard-pause classification of " + reason.label(),

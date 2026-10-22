@@ -90,6 +90,7 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
         setPreloadText();
         mBinding.autoPlayText.setText(getSwitch(PlayerSetting.isAutoPlay()));
         mBinding.autoChangeText.setText(getSwitch(PlayerSetting.isAutoChange()));
+        mBinding.deferFlagSwitchText.setText(getSwitch(PlayerSetting.isDeferFlagSwitchPlayback()));
         mBinding.liveSourceFallbackText.setText(getSwitch(LiveSetting.isSourceFallback()));
         mBinding.rememberBrightnessText.setText(getSwitch(PlayerSetting.isRememberBrightness()));
         mBinding.failureFallbackText.setText((failureFallback = ResUtil.getStringArray(R.array.select_player_failure_fallback))[PlayerSetting.getFailureFallback()]);
@@ -140,6 +141,7 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
         mBinding.preloadPause.setOnClickListener(this::onPreloadPause);
         mBinding.autoPlay.setOnClickListener(this::setAutoPlay);
         mBinding.autoChange.setOnClickListener(this::setAutoChange);
+        mBinding.deferFlagSwitch.setOnClickListener(this::setDeferFlagSwitch);
         mBinding.liveSourceFallback.setOnClickListener(view -> {
             LiveSetting.putSourceFallback(!LiveSetting.isSourceFallback());
             mBinding.liveSourceFallbackText.setText(getSwitch(LiveSetting.isSourceFallback()));
@@ -436,6 +438,11 @@ public class SettingPlayerFragment extends BaseFragment implements UaListener, B
     private void setAutoChange(View view) {
         PlayerSetting.putAutoChange(!PlayerSetting.isAutoChange());
         mBinding.autoChangeText.setText(getSwitch(PlayerSetting.isAutoChange()));
+    }
+
+    private void setDeferFlagSwitch(View view) {
+        PlayerSetting.putDeferFlagSwitchPlayback(!PlayerSetting.isDeferFlagSwitchPlayback());
+        mBinding.deferFlagSwitchText.setText(getSwitch(PlayerSetting.isDeferFlagSwitchPlayback()));
     }
 
     private void setRememberBrightness(View view) {

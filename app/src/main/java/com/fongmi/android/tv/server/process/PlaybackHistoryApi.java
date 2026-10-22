@@ -4,6 +4,7 @@ import android.text.TextUtils;
 
 import com.fongmi.android.tv.playback.PlaybackApi;
 import com.fongmi.android.tv.playback.PlaybackRecord;
+import com.fongmi.android.tv.playback.ViewingRecordSyncStore;
 import com.fongmi.android.tv.server.Nano;
 import com.fongmi.android.tv.server.impl.Process;
 import com.github.catvod.crawler.SpiderDebug;
@@ -35,6 +36,9 @@ import fi.iki.elonen.NanoHTTPD.Response;
  *       （{@link com.fongmi.android.tv.playback.PlaybackFieldPolicy#apiSafe()}），
  *       不因为新增端点而多暴露字段；</li>
  *   <li><b>隐身模式返回空数组</b>：隐身是用户显式表达的"不要记录/不要外泄"意图；</li>
+ *   <li><b>观影记录同步关闭时返回 403</b>：与写端点 {@code /api/playback/progress}
+ *       同款开关（{@link com.fongmi.android.tv.playback.ViewingRecordSyncStore#isEnabled()}），
+ *       关闭后本端点不再向局域网暴露任何历史；</li>
  *   <li><b>siteKey 用精确前缀匹配</b>（{@code substr}），不用 {@code LIKE}——
  *       siteKey 可能含 {@code %} / {@code _}，{@code LIKE} 会误命中。</li>
  * </ul>
@@ -47,6 +51,10 @@ import fi.iki.elonen.NanoHTTPD.Response;
  *   "total": 3
  * }
  * </pre>
+ *
+ * <p>{@code total} 是**本次响应 items 的长度**，不是该站点的历史总数：
+ * 本端点没有分页参数，结果被 {@code limit} 截断（默认 20，上限 100）后一次返回。
+ * 对端若看到 {@code total == limit}，不能据此推断"已取全"。
  */
 public class PlaybackHistoryApi implements Process {
 
@@ -59,6 +67,10 @@ public class PlaybackHistoryApi implements Process {
     public Response doResponse(IHTTPSession session, String url, Map<String, String> files) {
         if (session.getMethod() == NanoHTTPD.Method.OPTIONS) return cors(json(Response.Status.NO_CONTENT, ""), session);
         if (session.getMethod() != NanoHTTPD.Method.GET) return cors(error(Response.Status.METHOD_NOT_ALLOWED, 405, "只支持 GET"), session);
+        // 与写端点 /api/playback/progress 同款门控：观影记录同步关闭时，本端点会一次
+        // 暴露整站最多 100 条历史（vodName/episodeName/positionMs），暴露面远大于
+        // /api/playback/current（1 条且要求正在播放），因此必须同样受开关约束。
+        if (!ViewingRecordSyncStore.isEnabled()) return cors(error(Response.Status.FORBIDDEN, 403, "观影记录同步未开启"), session);
         Map<String, String> params = session.getParms();
         String siteKey = siteKey(params);
         if (TextUtils.isEmpty(siteKey)) return cors(error(Response.Status.BAD_REQUEST, 400, "siteKey不能为空"), session);
@@ -71,7 +83,9 @@ public class PlaybackHistoryApi implements Process {
             // 默认发行版里不会落盘，必须补 printStackTrace 才能让 500 在 Logcat 里可查。
             SpiderDebug.log("playback-api", e);
             e.printStackTrace();
-            return cors(error(Response.Status.INTERNAL_ERROR, 500, e.getMessage()), session);
+            // 不回显 e.getMessage()：本端点在局域网内无需鉴权即可访问，SQLite 异常文本
+            // 会泄露表名/列名等结构信息。诊断走上面的 Logcat。
+            return cors(error(Response.Status.INTERNAL_ERROR, 500, "读取播放历史失败"), session);
         }
     }
 

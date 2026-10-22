@@ -52,6 +52,7 @@ import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.setting.PlayerButtonSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.ui.adapter.ChannelAdapter;
 import com.fongmi.android.tv.ui.adapter.EpgDataAdapter;
@@ -78,8 +79,10 @@ import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CustomKeyDownLive.Listener, CustomLiveListView.Callback, TrackDialog.Listener, PassListener, ConfigListener, LiveListener {
 
@@ -101,6 +104,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     private LiveViewModel mViewModel;
     private PlayerOsdController mOsd;
     private List<Group> mHides;
+    private Map<String, View> mActionButtons;
     private String mPlaybackKey;
     private String mPendingReloadUrl;
     private String mPendingReloadMsg;
@@ -217,6 +221,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         }, 14f);
         setVideoView();
         setViewModel();
+        setupActionButtons();
     }
 
     @Override
@@ -263,6 +268,42 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         mBinding.group.setAdapter(mGroupAdapter = new GroupAdapter(this));
         mBinding.channel.setAdapter(mChannelAdapter = new ChannelAdapter(this));
         mBinding.epgData.setAdapter(mEpgDataAdapter = new EpgDataAdapter(this));
+    }
+
+    /**
+     * 直播动作栏登记点播同名的播放器按钮，使「设置-播放-播放器按钮」的开关与排序对直播同样生效。
+     * 直播专属按钮（配置、OSD 设置、直播源、播放/暂停、线路、反色、跨类）不登记，始终按布局显示。
+     */
+    private void setupActionButtons() {
+        mActionButtons = new HashMap<>();
+        addActionButton(PlayerButtonSetting.PLAYER, mBinding.control.action.player);
+        addActionButton(PlayerButtonSetting.DECODE, mBinding.control.action.decode);
+        addActionButton(PlayerButtonSetting.PLAY_PARAMS, mBinding.control.action.playParams);
+        addActionButton(PlayerButtonSetting.SPEED, mBinding.control.action.speed);
+        addActionButton(PlayerButtonSetting.SCALE, mBinding.control.action.scale);
+        addActionButton(PlayerButtonSetting.CHANGE, mBinding.control.action.change);
+        addActionButton(PlayerButtonSetting.TEXT, mBinding.control.action.text);
+        addActionButton(PlayerButtonSetting.AUDIO, mBinding.control.action.audio);
+        addActionButton(PlayerButtonSetting.VIDEO, mBinding.control.action.video);
+        PlayerButtonSetting.applyOrder(mBinding.control.action.container, mActionButtons);
+    }
+
+    private void addActionButton(String id, View view) {
+        mActionButtons.put(id, view);
+    }
+
+    /**
+     * 先恢复无动态条件的按钮，再统一套用用户关闭项。
+     * 顺序不能反过来：applyVisibility 只隐藏、不恢复，必须在条件判定之后执行。
+     */
+    private void applyActionButtonVisibility() {
+        if (mActionButtons == null) return;
+        mBinding.control.action.player.setVisibility(View.VISIBLE);
+        mBinding.control.action.decode.setVisibility(View.VISIBLE);
+        mBinding.control.action.playParams.setVisibility(View.VISIBLE);
+        mBinding.control.action.scale.setVisibility(View.VISIBLE);
+        mBinding.control.action.change.setVisibility(View.VISIBLE);
+        PlayerButtonSetting.applyVisibility(mActionButtons);
     }
 
     private void setVideoView() {
@@ -322,8 +363,23 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void getLive() {
-        mViewModel.parse(getHome());
+        Live live = getHome();
+        setSource(live);
+        mViewModel.parse(live);
         showProgress();
+    }
+
+    /**
+     * 控制栏的「直播源」按钮显示当前直播源名称：固定写「直播源」看不出此刻播的是哪一路源，
+     * 用户换源（含失效自动换源）都会重新走 {@link #getLive()} 刷新。名称为空时回退原文案。
+     * 按钮文案被源名取代后读屏会只剩一个孤立的源名，因此同步补回「直播源」动作语义。
+     */
+    private void setSource(Live live) {
+        String name = live == null ? "" : live.getName();
+        boolean named = !name.isEmpty();
+        String label = named ? name : getString(R.string.live_control_source);
+        mBinding.control.action.source.setText(label);
+        mBinding.control.action.source.setContentDescription(named ? getString(R.string.live_control_source_named, name) : null);
     }
 
     private void renderLive(Live live) {
@@ -721,6 +777,8 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void showControl(View view) {
+        // 与 mobile 一致：唤出控制栏时重算轨道类按钮，用户重新开启后不必等下一次轨道变化。
+        if (service() != null) setTrackVisible();
         setPlayParamsState();
         mBinding.control.getRoot().setVisibility(View.VISIBLE);
         // 控制栏显示时统一由 PlayerOsdController 显示标题、分辨率和时间，避免旧栏重影
@@ -749,6 +807,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     private void setPlayParamsState() {
         mBinding.control.action.playParams.setSelected(mOsd != null && mOsd.isDiagnosticsVisible());
+        applyActionButtonVisibility();
     }
 
     private void hideCenter() {
@@ -1059,6 +1118,7 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
         mBinding.control.action.audio.setVisibility(player().haveTrack(C.TRACK_TYPE_AUDIO) ? View.VISIBLE : View.GONE);
         mBinding.control.action.video.setVisibility(player().haveTrack(C.TRACK_TYPE_VIDEO) ? View.VISIBLE : View.GONE);
         mBinding.control.action.speed.setVisibility(player().isVod() ? View.VISIBLE : View.GONE);
+        applyActionButtonVisibility();
     }
 
     private MediaMetadata buildMetadata() {

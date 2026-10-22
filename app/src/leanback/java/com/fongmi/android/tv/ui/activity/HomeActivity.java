@@ -629,8 +629,9 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
              *
              * <p>这不是失败：没有地址可请求、没有失败原因、重试也永远不会成功。改动前
              * {@code BaseConfig} 把它当 {@code error("")} 抛出来，首页便显示「内容源加载失败 /
-             * 重试」——一个不存在的故障加一个点了没用的按钮。这里改走「未配置」空态，
-             * 主动作是把用户带到添加接口。
+             * 重试」——一个不存在的故障加一个点了没用的按钮。这里改走「未配置」状态：
+             * 不接管首页、直接进入内容态（导航恢复）；添加接口仍走既有的
+             * 「设置 → 点播」里的管理面板（`HistoryDialog` 的「添加」→ `ConfigDialog`）。
              */
             @Override
             public void noConfig() {
@@ -666,23 +667,17 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
     }
 
     /**
-     * 还没有配置内容源：进入空态，主动作打开接口列表让用户添加。
+     * 还没有配置内容源：这不是失败，所以**不接管首页**。
      *
-     * <p>刻意不复用错误态：没有失败原因可显示，重试也没有意义；用户此时唯一能做的是
-     * 「添加一个接口」。动作直接落到既有的 {@link HistoryDialog}（它自带「新增」，且
-     * 空列表时会自己关掉并让位给 ConfigDialog），不新写第二条配置入口。
+     * <p>点播/直播/设置这一行不是独立导航栏，而是首页列表的第一行（{@link #setFunc()}
+     * 往 {@code mFuncAdapter} 里填按钮）；一旦走 {@code progressLayout.showEmpty()}，
+     * {@code ProgressLayout} 会把内容视图整块 INVISIBLE，导航行跟着消失——新装用户只剩一个
+     * 「添加接口」按钮，连设置都进不去。因此这里照常进入内容态（导航恢复）；导航行仍只由
+     * {@code HomeButton.getVisibleButtons()} 构成，不再额外插入「添加接口」入口（添加接口走
+     * 既有的「设置 → 点播」管理面板）。
      */
     private void showNoConfig() {
-        mBinding.progressLayout.setEmptyContent(
-                R.string.home_no_config_title,
-                R.string.home_no_config_description,
-                R.string.home_no_config_action,
-                view -> openVodConfig());
-        mBinding.progressLayout.showEmpty();
-    }
-
-    private void openVodConfig() {
-        HistoryDialog.create().vod().manage().show(this);
+        showContent();
     }
 
     private void showContent() {

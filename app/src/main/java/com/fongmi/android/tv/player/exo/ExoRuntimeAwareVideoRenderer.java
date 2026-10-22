@@ -3,6 +3,7 @@ package com.fongmi.android.tv.player.exo;
 import android.content.Context;
 import android.os.Handler;
 
+import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter;
@@ -109,6 +110,9 @@ final class ExoRuntimeAwareVideoRenderer extends MediaCodecVideoRenderer {
         if (PlaybackPerformanceSetting.isLateDropInputEnabled()) {
             builder.experimentalSetLateThresholdToDropDecoderInputUs(
                     ExoUtil.ENHANCED_LATE_THRESHOLD_TO_DROP_INPUT_US);
+        } else {
+            // MediaCodecVideoRenderer defaults to 15 ms, so only C.TIME_UNSET disables dropping.
+            builder.experimentalSetLateThresholdToDropDecoderInputUs(C.TIME_UNSET);
         }
         return builder;
     }

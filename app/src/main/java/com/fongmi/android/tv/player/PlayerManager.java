@@ -165,6 +165,11 @@ public class PlayerManager implements ParseCallback {
     private static final long EXO_DV7_FIRST_FRAME_FALLBACK_DELAY_MS = 1200;
     private static final long MPV_AUTO_OUTPUT_PROBE_INTERVAL_MS = 250;
     private static final int LOCAL_PROXY_MAX_RETRY = 2;
+    /** 直播合并源会整段返回空体/400：取不到流时重试本项远比重试换内核有效。 */
+    private static final int TRANSIENT_SOURCE_MAX_RETRY = 6;
+    /** 点播失败要尽快暴露给换源/换线路径，只给两次短重试，避免死链让用户等十几秒。 */
+    private static final int TRANSIENT_SOURCE_VOD_MAX_RETRY = 2;
+    private static final long[] TRANSIENT_SOURCE_RETRY_DELAYS_MS = {600, 1200, 2000, 3000, 3000, 3000};
     // 以内核常量为下标，长度随顺序表推导，避免新增内核时标记表长度漏改。
     private static final int PLAYER_COUNT = PlayerSetting.kernelIndexSize();
     private static final int MPV_AUTO_OUTPUT_PROBE_MAX_ATTEMPTS = 20;
@@ -311,6 +316,7 @@ public class PlayerManager implements ParseCallback {
     private int playerType;
     private int retry;
     private int localProxyRetry;
+    private int transientSourceRetry;
     private int prepareSeq;
     private int lutApplySeq;
     private long parseHealthStartedAt;
@@ -1042,9 +1048,12 @@ public class PlayerManager implements ParseCallback {
      * `switch player type=…`、`switch decode decode=…`），无法回答“这次到底是为什么换的”。
      * 现在所有路径都经过这里，统一输出：
      * <ul>
-     *   <li>{@code kind=kernel|decode} 区分换内核与换软硬解；</li>
+     *   <li>{@code kind=kernel|decode|none} 区分换内核、换软硬解，以及两者都没变
+     *       （{@code none}：调用方只是想记一条原因，实际切换参数与当前一致）；</li>
      *   <li>{@code cause=} 机器可读原因（见各调用点）；</li>
-     *   <li>{@code chosen=} 是否用户显式选定，用于区分「用户选择」与「自动回退」；</li>
+     *   <li>{@code chosen=} 本次切换是否把用户选定的内核记为会话内核
+     *       （即是否执行 {@code PlayerSetting.putActivePlayer(type)}），
+     *       不是「是否由用户发起」——用户手动换软硬解时它是 {@code false}；</li>
      *   <li>{@code from/to} 同时给出内核名与软硬解，避免只看到其中一个维度。</li>
      * </ul>
      *
@@ -1804,6 +1813,7 @@ public class PlayerManager implements ParseCallback {
         else resetNetworkProtectionSession("reset");
         retry = 0;
         localProxyRetry = 0;
+        transientSourceRetry = 0;
         resetPlayerFallback();
         hardDecodeSwitchRetryArmed = false;
         clearPendingSwitchRestore();
@@ -6036,6 +6046,7 @@ public void resetTrack(int type) {
         this.playWhenReady = playWhenReady;
         manualPlayerSwitchPending = false;
         localProxyRetry = 0;
+        transientSourceRetry = 0;
         resetPlayerFallback();
         hardDecodeSwitchRetryArmed = false;
         softDecodeFallbackAttempted = false;
@@ -8747,6 +8758,7 @@ public void resetTrack(int type) {
             if (decoderRuntimeObserved && retryExoDecoderRuntimeFailure(e)) return;
             if (action == PlayerEngine.ErrorAction.DECODE && retryHardDecodeSwitch(e)) return;
             if (action == PlayerEngine.ErrorAction.FATAL && retryLocalProxy(e)) return;
+            if (retryTransientSourceFailure(e, failure)) return;
             if (shouldStopOnManualSwitchFailure(manualPlayerSwitchPending, action)) {
                 finishPlaybackProfileAbSession(
                         "manual-switch-error", SystemClock.elapsedRealtime());
@@ -9284,6 +9296,49 @@ public void resetTrack(int type) {
         return true;
     }
 
+    /**
+     * 取不到/读不懂流时重试本项，而不是换内核。
+     * <p>
+     * 实测（2026-10，本地包直播）：合并源会整段返回空体 / 400 / 非 m3u8 文本，
+     * EXO 报 {@code code=2000}，旧逻辑立刻换内核（EXO→系统→软解）把可用内核一并烧掉，
+     * 用户看到的就是「0 KB/s 黑屏、标签一路变」。这类失败与解码器无关，重试本项才有意义；
+     * 重试窗口用完才继续走换线/换源的既有路径。
+     */
+    private boolean retryTransientSourceFailure(PlaybackException e, PlaybackErrorClassifier.Failure failure) {
+        if (spec == null || spec.getUrl() == null || engine == null || failure == null) return false;
+        if (!PlaybackErrorClassifier.isTransientSourceFailure(failure.stage(), e.errorCode)) return false;
+        // 直播端点抖动值得多等；点播死链不该把「换源」推迟十几秒，因此用更小的窗口让上层尽早接管。
+        int maxRetry = isLive() ? TRANSIENT_SOURCE_MAX_RETRY : TRANSIENT_SOURCE_VOD_MAX_RETRY;
+        if (transientSourceRetry >= maxRetry) return false;
+        int attempt = ++transientSourceRetry;
+        long delay = TRANSIENT_SOURCE_RETRY_DELAYS_MS[Math.min(attempt - 1, TRANSIENT_SOURCE_RETRY_DELAYS_MS.length - 1)];
+        PlaybackTrace.log("player", playbackTrace.current(),
+                "transient-source-retry attempt=%d/%d delay=%d stage=%s errorCode=%s",
+                attempt, maxRetry, delay, failure.stage().label(), failure.errorCode());
+        App.removeCallbacks(runnable);
+        App.post(() -> {
+            if (spec == null || attempt != transientSourceRetry) return;
+            setMediaItem();
+        }, delay);
+        return true;
+    }
+
+    /**
+     * 网络/解析/本机端点故障只是「取不到流」，换内核解不了它；只有解码器相关失败才值得换核。
+     * <p>
+     * 这里必须比 {@link #retryTransientSourceFailure} 更严格：媒体容器/编解码「不支持」是内容
+     * 能力边界，换 IJK/MPV 往往仍能播（AVS3、RMVB 等），把整类 MEDIA_PARSING 都挡在内核回退
+     * 之外会让这些源从「换核可播」退化成「直接报错」，所以只把 manifest 格式错误视为临时失败，
+     * 其余解析失败仍允许换核。
+     */
+    private boolean isKernelFallbackEligible(PlaybackException e) {
+        PlaybackErrorClassifier.Failure failure = PlaybackErrorClassifier.classify(e, getEffectivePlaybackRoute());
+        if (!PlaybackErrorClassifier.isTransientSourceFailure(failure.stage(), e.errorCode)) return true;
+        PlaybackTrace.log("player", playbackTrace.current(),
+                "skip-kernel-fallback stage=%s errorCode=%s", failure.stage().label(), failure.errorCode());
+        return false;
+    }
+
     private boolean fallbackPlayback(PlaybackException e) {
         if (engine == null) return false;
         if (retryMpvGpuCopyFailure(e)) return true;
@@ -9306,6 +9361,7 @@ public void resetTrack(int type) {
 
     private boolean fallbackPlayer(PlaybackException e) {
         if (spec == null || spec.getUrl() == null || engine == null) return false;
+        if (!isKernelFallbackEligible(e)) return false;
         int next = nextFallbackPlayer();
         if (next == PlayerSetting.NONE) return false;
         String from = getPlayerText(playerType);

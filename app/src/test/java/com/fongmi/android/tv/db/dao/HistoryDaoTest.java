@@ -35,6 +35,16 @@ public class HistoryDaoTest {
         String siteQuery = queryOf(source, "public abstract List<History> findBySiteKey(");
         assertTrue("findBySiteKey legitimately caps its row count",
                 siteQuery.toLowerCase(Locale.ROOT).contains("limit"));
+
+        // findBySiteKey 必须用 substr 做精确前缀匹配，**不能**用 LIKE。
+        // siteKey 形如 `csp_xxx`，其中 `_` 是 LIKE 的单字符通配符、`%` 是多字符通配符；
+        // 一旦改成 LIKE，`csp_a` 会命中 `csp_ab`，且含 `%` 的站点配置会读出别的站点历史。
+        // 这是本端点的核心安全决策，因此单独锁定，而不是只断言"查询里有 limit"——
+        // 后者在把 substr 变异成 LIKE 之后仍然全绿。
+        assertTrue("findBySiteKey must match the site key by exact prefix (substr)",
+                siteQuery.contains("substr(`key`, 1, length(:keyPrefix)) = :keyPrefix"));
+        assertFalse("findBySiteKey must not use LIKE: `_` / `%` in a site key would wildcard-match",
+                siteQuery.toUpperCase(Locale.ROOT).contains("LIKE"));
     }
 
     /** 取某个方法声明**紧邻其前**的 {@code @Query} 注解文本。 */

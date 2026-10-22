@@ -14,6 +14,7 @@
     <string name="live_refresh">Refresh</string>
     <string name="live_line">Line <ns0:g name="name">%s</ns0:g></string>
     <string name="live_control_source">Live source</string>
+    <string name="live_control_source_named">Live source: <ns0:g name="name">%s</ns0:g></string>
     <string name="live_no_epg">00:00 - 23:59 No program info</string>
 
     
@@ -1063,6 +1064,7 @@
     <string name="cache_cleanup_failed">Cache cleanup failed</string>
     <string name="cache_cleanup_cancelled">Cache cleanup cancelled</string>
     <string name="cache_cleanup_full_started">Cleaning all cache…</string>
+    <string name="cache_cleanup_busy">Cleaning, please wait</string>
     <string name="cache_module_exo">Exo playback cache</string>
     <string name="cache_module_mpv_hls">MPV HLS/ISO segments</string>
     <string name="cache_module_mpv_demuxer">MPV demuxer preload</string>
@@ -1502,6 +1504,7 @@ TVData</string>
     <string name="player_auto_play">Auto play VOD</string>
     <string name="player_live_source_fallback">Switch live source on failure</string>
     <string name="player_auto_change">Auto source change</string>
+    <string name="player_defer_flag_switch">Don\'t auto-play on line switch</string>
     <string name="player_remember_brightness">Remember playback brightness</string>
     <string name="player_failure_fallback">Failure fallback</string>
     <string name="player_speed">Press speed</string>

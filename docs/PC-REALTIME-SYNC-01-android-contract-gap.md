@@ -230,8 +230,8 @@ logcat 实验）确认提前 EOF 是否真的报 `STATE_ENDED`，再决定是否
 
 | # | 改动 | 验证 | 判据 |
 | --- | --- | --- | --- |
-| V1 | A | `HistoryDao` 定向单测：`findBySiteKey` 对含 `%`/`_` 的 siteKey 精确匹配 | 断言不误命中 |
-| V2 | A | `PlaybackHistoryApiTest`：无记录 → 200 空数组；缺 siteKey → 400；非 GET → 405 | 状态码与体精确 |
+| V1 | A | `HistoryDao` 定向单测：`findBySiteKey` 用 `substr` 精确前缀匹配、**不得**用 `LIKE` | `HistoryDaoTest` 断言查询文本含 `substr(\`key\`, 1, length(:keyPrefix)) = :keyPrefix` 且不含 `LIKE`（含 `%`/`_` 的 siteKey 不误命中由该 SQL 形态保证，单测锁形态） |
+| V2 | A | `PlaybackHistoryApiTest`：无记录 → 200 空数组；缺 siteKey → 400；非 GET → 405 | **未自动化**：实例化端点需要 `IHTTPSession` 与运行中的 `NanoHTTPD`，纯 JVM 单测无法构造；该测试只覆盖 `siteKey()`/`limit()` 纯逻辑。`200`/`400` 由真机 curl 覆盖（§10.2 第 7–10 项）；**`405` 与 `403`（观影记录同步开关）至今无任何实测或自动化证据**，属已知缺口 |
 | V3 | A | `PlaybackApi.history` 的 limit 夹取（0 → 默认、>100 → 100） | 边界精确 |
 | V4 | C | `apiSafe()` 含 `episodeId`，且**不含** `episodeUrl` | 两项都断言 |
 | V5 | C | `PlaybackRecord.episodeId(url)`：空串 → 空串；非空 → 稳定 64 位 hex | 确定性与长度 |
@@ -287,13 +287,13 @@ logcat 实验）确认提前 EOF 是否真的报 `STATE_ENDED`，再决定是否
 
 | 类别 | 路径 | 说明 |
 | --- | --- | --- |
-| 新增端点 | `app/src/main/java/com/fongmi/android/tv/server/process/PlaybackHistoryApi.java` | `GET /api/playback/history`（含 `/playback/history` 别名）；`OPTIONS`→204、非 GET→405、缺 `siteKey`→400、无记录→`200 {"items":[],"total":0}` |
+| 新增端点 | `app/src/main/java/com/fongmi/android/tv/server/process/PlaybackHistoryApi.java` | `GET /api/playback/history`（含 `/playback/history` 别名）；`OPTIONS`→204、非 GET→405、**观影记录同步未开启→403**、缺 `siteKey`→400、无记录→`200 {"items":[],"total":0}`。`total` 是**本次响应 items 的长度**（无分页参数，结果被 `limit` 截断：默认 20、上限 100），不是该站点历史总数 |
 | 新增 DAO | `HistoryDao.findBySiteKey(cid, keyPrefix, limit)` | `substr(\`key\`,1,length(:keyPrefix)) = :keyPrefix`，**不用 LIKE** |
 | 新增逻辑 | `PlaybackApi.history(siteKey, limit)`、`PlaybackApi.effectiveHistoryLimit(limit)` | 从 `HistoryDao` 读；隐身→空；`limit<=0`→20，`>100`→100；读库/单条异常均记日志后跳过，不让整批失败 |
-| 新增字段 | `PlaybackFieldPolicy.API_SAFE_EXTRA = {"episodeId"}` | 只给集指纹，不给 `episodeUrl`；**声明必须排在 `CUSTOM_SAFE` 之前**（Java 静态字段按文本顺序初始化，写后面会 NPE） |
+| 新增字段 | `PlaybackFieldPolicy.API_SAFE_EXTRA = {"episodeId"}` | 只给集指纹，不给 `episodeUrl`；只被 `apiSafe()` 运行时读取，无静态初始化顺序约束；`customSafe()` 刻意不含它（webhook 白名单由 `PlaybackWebhookDialog.FIELD_KEYS` 驱动，那里没有 `episodeId`） |
 | 新增字段值 | `PlaybackRecord.episodeId(url)` + `from()` 自动派生 | `episodeUrl` 的 SHA-256（64 位小写 hex）；空串→空串 |
 | 路由注册 | `app/src/main/java/com/fongmi/android/tv/server/Nano.java` | 追加一行，未改既有路由 |
-| 单测 | `PlaybackEpisodeIdTest`、`PlaybackHistoryLimitTest`、`PlaybackHistoryApiTest` | 17 个用例 |
+| 单测 | `PlaybackEpisodeIdTest`（8）、`PlaybackHistoryLimitTest`（4）、`PlaybackHistoryApiTest`（6） | 18 个用例 |
 | 新增入参 | `PlaybackProgressInput.episodeId` | 对端回推时可带集指纹 |
 
 ### 10.2 验证证据
@@ -324,7 +324,7 @@ logcat 实验）确认提前 EOF 是否真的报 `STATE_ENDED`，再决定是否
 
 | # | 问题 | 修正 |
 | --- | --- | --- |
-| 1 | `PlaybackFieldPolicy` 静态初始化 NPE | `API_SAFE_EXTRA` 移到 `CUSTOM_SAFE` 之前（Java 静态字段按文本顺序初始化） |
+| 1 | `PlaybackFieldPolicy` 静态初始化 NPE | `API_SAFE_EXTRA` 移到 `CUSTOM_SAFE` 之前（Java 静态字段按文本顺序初始化）。**2026-10-19 由 `C84` 复评废止**：`customSafe()` 已不再读 `API_SAFE_EXTRA`（它只被 `apiSafe()` 运行时读取），该顺序约束随之消失，字段位置不再有要求 |
 | 2 | 读库异常时静默返回空数组，把「库挂了」伪装成「没有历史」 | `catch` 内补 `SpiderDebug.log` |
 | 3 | 单条坏记录会让整批读取失败 | 单条 `try/catch` + 记日志后跳过 |
 
@@ -419,3 +419,26 @@ logcat 实验）确认提前 EOF 是否真的报 `STATE_ENDED`，再决定是否
   未重新安装 APK。第 3 项的端到端效果（PC 回推后从历史续播仍能定位集）需 PC 端联调才能实测，
   属本任务边界外的对侧验收。
 - **`completed` 阈值与 `STATE_ENDED` 闸门**（改动 D/E）仍按 §5.4/§5.5 暂缓，本次未动。
+
+### 11.7 `C84` 复评补充（2026-10-19）
+
+`dev3` 把 `origin/beta` 合并回来时对本文件涉及的端点做了第二轮复评，新增/修正如下：
+
+- **新增 `403` 门控**：`PlaybackHistoryApi` 原先只校验 method 与 `siteKey`，观影记录同步关闭后
+  局域网仍可 `GET` 走整站最多 100 条历史（`vodName`/`episodeName`/`positionMs`），暴露面远大于
+  `/api/playback/current`（1 条且要求正在播放）。现已与写端点 `PlaybackProgressApi` 同口径加
+  `if (!ViewingRecordSyncStore.isEnabled()) return 403 "观影记录同步未开启"`，位置在
+  `OPTIONS`(204) → 非 `GET`(405) 之后、`siteKey` 校验(400) 之前。
+  **本项尚无实测证据**（未重装 APK），见 §6 V2 的已知缺口。
+- **`500` 不再回显 `e.getMessage()`**：改为固定文案 `"读取播放历史失败"`，诊断仍走
+  `SpiderDebug.log` + `printStackTrace`。理由是本端点局域网免鉴权可达，SQLite 异常文本会泄露
+  表名/列名。同组 `PlaybackProgressApi`/`PlaybackRecordApi` 仍回显，属既有口径未统一，未在本轮扩大改动面。
+- **`API_SAFE_EXTRA` 的静态初始化顺序约束已废止**：`customSafe()` 不再并入该集合，
+  它只被 `apiSafe()` 运行时读取（见 §10.1 与 §10.3 第 1 项的废止说明）。
+- **`total` 语义**：等于本次响应 `items` 的长度，不是站点历史总数；无分页参数，
+  结果被 `limit` 截断（默认 20、上限 100）。对端看到 `total == limit` 不能推断"已取全"。
+- **`episodeId` 已知限制（不改）**：它由带时效签名的 `episodeUrl` 做 SHA-256，源站签名刷新后
+  同一集会得到不同 `episodeId`；对端匹配应结合 `flag`/`episodeName` 兜底。改派生方式会破坏
+  已发布到 beta 的 PC 侧契约，属跨仓协同，本轮只记录。
+- **`episodeId` 同名不同义**：本文件指的是集地址哈希；`app/src/main/java/com/fongmi/android/tv/web/WebHomeVodContract.java`
+  里的 `episodeId` 是会话引用令牌（`String episodeId = playRef;`），两者不可混用。

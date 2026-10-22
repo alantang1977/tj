@@ -27,6 +27,70 @@ public class LiveActivityLayoutTest {
     }
 
     @Test
+    public void liveControlSourceButtonShowsTheCurrentLiveSourceName() throws Exception {
+        assertLiveSourceLabelFollowsHome(findMobileJavaPath());
+        assertLiveSourceLabelFollowsHome(findLeanbackJavaPath());
+    }
+
+    private static void assertLiveSourceLabelFollowsHome(Path javaRoot) throws Exception {
+        Path sourcePath = javaRoot.resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "activity", "LiveActivity.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        String getLiveBody = section(source, "private void getLive()", "private void setSource(Live live)");
+        String setSourceBody = section(source, "private void setSource(Live live)", "private void renderLive(Live live)");
+
+        assertFalse(sourcePath + " is missing getLive", getLiveBody.isEmpty());
+        assertTrue("every live load (including a source switch and the automatic fallback) must refresh the control bar label",
+                getLiveBody.contains("setSource(live);"));
+        assertTrue("the control bar source button must show the current live source name and fall back to its own label when the name is empty",
+                setSourceBody.contains("boolean named = !name.isEmpty();")
+                        && setSourceBody.contains("String label = named ? name : getString(R.string.live_control_source);")
+                        && setSourceBody.contains("mBinding.control.action.source.setText(label);"));
+        assertTrue("replacing the label with a bare source name must not drop the switch-source meaning for screen readers",
+                setSourceBody.contains("mBinding.control.action.source.setContentDescription(named ? getString(R.string.live_control_source_named, name) : null);"));
+    }
+
+    @Test
+    public void liveControlSourceChipClampsLongSourceNames() throws Exception {
+        assertSourceChipIsClamped(findMobileJavaPath(), "160dp");
+        assertSourceChipIsClamped(findLeanbackJavaPath(), "240dp");
+    }
+
+    private static void assertSourceChipIsClamped(Path javaRoot, String maxWidth) throws Exception {
+        Path layoutPath = javaRoot.getParent().resolve(Path.of("res", "layout", "view_control_live_action.xml"));
+        String layout = new String(Files.readAllBytes(layoutPath), StandardCharsets.UTF_8);
+        int id = layout.indexOf("android:id=\"@+id/source\"");
+        int tagStart = id < 0 ? -1 : layout.lastIndexOf("<com.google.android.material.textview.MaterialTextView", id);
+        int tagEnd = id < 0 ? -1 : layout.indexOf("/>", id);
+        String chip = tagStart >= 0 && tagEnd > tagStart ? layout.substring(tagStart, tagEnd) : "";
+
+        assertFalse(layoutPath + " is missing the live source chip", chip.isEmpty());
+        assertTrue("a user-defined live source name must stay on one line and ellipsize instead of expanding the action row",
+                chip.contains("android:maxLines=\"1\"") && chip.contains("android:ellipsize=\"end\""));
+        assertTrue("the live source chip must cap its width so a long source name cannot crowd the primary live actions",
+                chip.contains("android:maxWidth=\"" + maxWidth + "\""));
+    }
+
+    @Test
+    public void liveControlSheetMirrorsTheCurrentLiveSourceName() throws Exception {
+        Path sourcePath = findMobileJavaPath().resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "dialog", "LiveControlDialog.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        String initViewBody = section(source, "protected void initView()", "protected void initEvent()");
+        String setPlayerBody = section(source, "public void setPlayer()", "private void setScale(int mode)");
+
+        assertFalse(sourcePath + " is missing initView", initViewBody.isEmpty());
+        assertTrue("the control sheet must open with the current live source name",
+                initViewBody.contains("binding.source.setText(parent.control.action.source.getText());"));
+        assertTrue("the control sheet must open with the current live source accessibility label",
+                initViewBody.contains("binding.source.setContentDescription(parent.control.action.source.getContentDescription());"));
+        assertTrue("an open control sheet must follow a live source switch",
+                setPlayerBody.contains("binding.source.setText(parent.control.action.source.getText());"));
+        assertTrue("an open control sheet must follow a live source switch for screen readers too",
+                setPlayerBody.contains("binding.source.setContentDescription(parent.control.action.source.getContentDescription());"));
+    }
+
+    @Test
     public void explicitLivePiPPreparesVideoBeforeEnteringSystemPiP() throws Exception {
         Path sourcePath = findMobileJavaPath().resolve(Path.of(
                 "com", "fongmi", "android", "tv", "ui", "activity", "LiveActivity.java"));
@@ -347,6 +411,143 @@ public class LiveActivityLayoutTest {
         int onDestroy = source.indexOf("protected void onDestroy()");
         assertTrue("destroying the activity must cancel a delayed end retry",
                 onDestroy >= 0 && source.indexOf("App.removeCallbacks(mEndRetry);", onDestroy) >= onDestroy);
+    }
+
+    @Test
+    public void liveActionBarFollowsPlayerButtonSettings() throws Exception {
+        assertLiveActionBarFollowsPlayerButtonSettings(findMobileJavaPath());
+        assertLiveActionBarFollowsPlayerButtonSettings(findLeanbackJavaPath());
+    }
+
+    private static void assertLiveActionBarFollowsPlayerButtonSettings(Path javaRoot) throws Exception {
+        Path layoutPath = javaRoot.getParent().resolve(Path.of("res", "layout", "view_control_live_action.xml"));
+        String layout = new String(Files.readAllBytes(layoutPath), StandardCharsets.UTF_8);
+        assertTrue("the live action row must expose @id/container so player button order can be applied",
+                layout.contains("android:id=\"@+id/container\""));
+
+        Path sourcePath = javaRoot.resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "activity", "LiveActivity.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        String setupBody = section(source, "private void setupActionButtons()", "private void addActionButton(");
+        String visibilityBody = methodBody(source, "private void applyActionButtonVisibility()");
+        String trackBody = section(source, "private void setTrackVisible()", "private MediaMetadata buildMetadata()");
+
+        assertFalse(sourcePath + " is missing setupActionButtons", setupBody.isEmpty());
+        assertFalse(sourcePath + " is missing applyActionButtonVisibility", visibilityBody.isEmpty());
+        assertTrue("the live action row must register every player button that shares a name with the VOD row",
+                setupBody.contains("addActionButton(PlayerButtonSetting.PLAYER, mBinding.control.action.player);")
+                        && setupBody.contains("addActionButton(PlayerButtonSetting.DECODE, mBinding.control.action.decode);")
+                        && setupBody.contains("addActionButton(PlayerButtonSetting.PLAY_PARAMS, mBinding.control.action.playParams);")
+                        && setupBody.contains("addActionButton(PlayerButtonSetting.SPEED, mBinding.control.action.speed);")
+                        && setupBody.contains("addActionButton(PlayerButtonSetting.SCALE, mBinding.control.action.scale);")
+                        && setupBody.contains("addActionButton(PlayerButtonSetting.CHANGE, mBinding.control.action.change);")
+                        && setupBody.contains("addActionButton(PlayerButtonSetting.TEXT, mBinding.control.action.text);")
+                        && setupBody.contains("addActionButton(PlayerButtonSetting.AUDIO, mBinding.control.action.audio);")
+                        && setupBody.contains("addActionButton(PlayerButtonSetting.VIDEO, mBinding.control.action.video);"));
+        assertTrue("the live action row must register itself before applying the configured order",
+                setupBody.indexOf("PlayerButtonSetting.applyOrder(mBinding.control.action.container, mActionButtons);")
+                        > setupBody.indexOf("addActionButton(PlayerButtonSetting.PLAYER"));
+        assertTrue("live must hide the buttons the user disabled in the shared player button settings",
+                setupBody.contains("PlayerButtonSetting.applyOrder(mBinding.control.action.container, mActionButtons);")
+                        && visibilityBody.contains("PlayerButtonSetting.applyVisibility(mActionButtons);"));
+        assertTrue("live must keep unconditioned buttons restorable when the user re-enables them",
+                visibilityBody.contains("mBinding.control.action.playParams.setVisibility(View.VISIBLE);")
+                        && visibilityBody.contains("mBinding.control.action.player.setVisibility(View.VISIBLE);"));
+        assertTrue("live must register the action row during view setup",
+                source.contains("setupActionButtons();"));
+        assertFalse(sourcePath + " is missing setTrackVisible", trackBody.isEmpty());
+        assertTrue("dynamic track visibility must be decided before the user-hidden overlay is applied",
+                trackBody.indexOf("applyActionButtonVisibility();") > trackBody.indexOf("mBinding.control.action.speed.setVisibility("));
+    }
+
+    @Test
+    public void liveControlRevealRefreshesTrackButtons() throws Exception {
+        assertShowControlRefreshesTracks(findMobileJavaPath(), "private void showControl()");
+        assertShowControlRefreshesTracks(findLeanbackJavaPath(), "private void showControl(View view)");
+    }
+
+    private static void assertShowControlRefreshesTracks(Path javaRoot, String signature) throws Exception {
+        Path sourcePath = javaRoot.resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "activity", "LiveActivity.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        String showBody = section(source, signature, "private void hideControl()");
+
+        assertFalse(sourcePath + " is missing " + signature, showBody.isEmpty());
+        assertTrue("revealing live controls must recompute the track buttons so re-enabled text/audio/video return",
+                showBody.contains("setTrackVisible();"));
+        assertTrue("dynamic track buttons must be recomputed before the configured-hidden overlay is applied",
+                showBody.indexOf("setTrackVisible();") < showBody.indexOf("setPlayParamsState();"));
+    }
+
+    @Test
+    public void livePlayParamsEntryFollowsTheSharedSetting() throws Exception {
+        Path sourcePath = findMobileJavaPath().resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "activity", "LiveActivity.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        String stateBody = section(source, "private void setPlayParamsState()", "private void showInfo()");
+
+        assertFalse(sourcePath + " is missing setPlayParamsState", stateBody.isEmpty());
+        assertTrue("hiding the playback params button must also hide the live top-bar shortcut",
+                stateBody.contains("PlayerButtonSetting.isVisible(PlayerButtonSetting.PLAY_PARAMS)")
+                        && stateBody.contains("mBinding.control.osdDiagnostics.setVisibility(entry ? View.VISIBLE : View.GONE);"));
+        assertTrue("the playback params button itself must follow the shared settings overlay too",
+                stateBody.contains("applyActionButtonVisibility();"));
+    }
+
+    @Test
+    public void liveControlSheetMirrorsConfiguredButtons() throws Exception {
+        Path sourcePath = findMobileJavaPath().resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "dialog", "LiveControlDialog.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        String initViewBody = section(source, "protected void initView()", "protected void initEvent()");
+        String setPlayerBody = section(source, "public void setPlayer()", "private void setScale(int mode)");
+        String syncBody = methodBody(source, "private void syncConfiguredButtonVisibility()");
+
+        assertTrue("the live control sheet must mirror the configured player buttons on open",
+                initViewBody.contains("syncConfiguredButtonVisibility();"));
+        assertTrue("an open live control sheet must follow a player button settings change",
+                setPlayerBody.contains("syncConfiguredButtonVisibility();"));
+        assertFalse(sourcePath + " is missing syncConfiguredButtonVisibility", syncBody.isEmpty());
+        assertTrue("the sheet must mirror player, decode and playback params visibility from the action row",
+                syncBody.contains("binding.player.setVisibility(parent.control.action.player.getVisibility());")
+                        && syncBody.contains("binding.decode.setVisibility(parent.control.action.decode.getVisibility());")
+                        && syncBody.contains("binding.playParams.setVisibility(parent.control.action.playParams.getVisibility());"));
+    }
+
+    @Test
+    public void padLiveFullscreenRotatesWithoutLeavingFullscreen() throws Exception {
+        Path sourcePath = findMobileJavaPath().resolve(Path.of(
+                "com", "fongmi", "android", "tv", "ui", "activity", "LiveActivity.java"));
+        String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+        String showControlBody = section(source, "private void showControl()", "private void hideControl()");
+        String onRotateBody = section(source, "private void onRotate()", "private void toggleFullscreenOrientation()");
+        String toggleBody = section(source, "private void toggleFullscreenOrientation()", "private void onPiP()");
+        String orientBody = section(source, "private int getFullscreenOrient()", "private int getEmbeddedOrient()");
+        String exitBody = section(source, "private void exitFullscreenLive()", "private int getLaunchOrient()");
+
+        assertTrue("the rotate action must stay reachable on a tablet running pad fullscreen live",
+                showControlBody.contains("mBinding.control.right.rotate.setVisibility(isLock() ? View.GONE : View.VISIBLE);"));
+        assertFalse("pad fullscreen live must not keep hiding the rotate action",
+                showControlBody.contains("mBinding.control.right.rotate.setVisibility(isLock() || isPadLiveFullscreenMode()"));
+        assertTrue("the rotate action must branch into the tablet fullscreen orientation toggle",
+                onRotateBody.contains("ResUtil.isPad()")
+                        && onRotateBody.contains("toggleFullscreenOrientation();"));
+        assertTrue("the tablet toggle must flip the portrait override and re-request orientation",
+                toggleBody.contains("livePortraitFullscreen = !livePortraitFullscreen;")
+                        && toggleBody.contains("requestOrientation(\"rotate-fullscreen-pad\", getFullscreenOrient());"));
+        assertFalse("rotating on a tablet must not leave fullscreen",
+                toggleBody.contains("exitFullscreenLive()"));
+        assertTrue("pad fullscreen orientation must support the portrait direction",
+                orientBody.contains("ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT"));
+        assertTrue("leaving fullscreen must reset the tablet portrait override",
+                exitBody.contains("livePortraitFullscreen = false;"));
+    }
+
+    private static String methodBody(String source, String startMarker) {
+        int start = source.indexOf(startMarker);
+        if (start < 0) return "";
+        int end = source.indexOf("\n    private ", start + startMarker.length());
+        return end > start ? source.substring(start, end) : source.substring(start);
     }
 
     private static String section(String source, String startMarker, String endMarker) {

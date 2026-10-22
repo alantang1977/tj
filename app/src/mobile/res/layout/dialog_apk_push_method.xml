@@ -32,7 +32,7 @@
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/local"
-        style="@style/Widget.Material3.Button.OutlinedButton"
+        style="@style/Widget.Material3.Button"
         android:layout_width="match_parent"
         android:layout_height="52dp"
         android:layout_marginTop="18dp"
@@ -40,14 +40,15 @@
         android:minHeight="52dp"
         android:text="@string/apk_push_method_local"
         android:textAllCaps="false"
-        android:textColor="?attr/colorOnSurface"
-        app:backgroundTint="?attr/colorPrimary"
+        android:textColor="@color/dialog_primary_button_text"
+        app:backgroundTint="@color/dialog_primary_button_bg"
+        app:strokeWidth="@dimen/webhtv_focus_ring_width"
         app:cornerRadius="8dp"
         app:icon="@drawable/ic_file"
         app:iconGravity="textStart"
         app:iconPadding="12dp"
-        app:iconTint="?attr/colorPrimary"
-        app:strokeColor="?attr/colorOutline" />
+        app:iconTint="@color/dialog_primary_button_text"
+        app:strokeColor="@color/focus_ring_primary_container" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/link"
@@ -61,6 +62,8 @@
         android:textAllCaps="false"
         android:textColor="@color/dialog_primary_button_text"
         app:backgroundTint="@color/dialog_primary_button_bg"
+        app:strokeWidth="@dimen/webhtv_focus_ring_width"
+        app:strokeColor="@color/focus_ring_primary_container"
         app:cornerRadius="8dp"
         app:icon="@drawable/ic_fab_link"
         app:iconGravity="textStart"

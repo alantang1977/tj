@@ -128,6 +128,7 @@ import com.fongmi.android.tv.setting.MultiThreadProxySetting;
 import com.fongmi.android.tv.setting.PlaybackExperimentSetting;
 import com.fongmi.android.tv.setting.PreloadSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
+import com.fongmi.android.tv.setting.FlagSwitchPlaybackPolicy;
 import com.fongmi.android.tv.ui.dialog.PlayerKernelDialog;
 import com.fongmi.android.tv.ui.dialog.PlaybackSpeedDialog;
 import com.fongmi.android.tv.setting.Setting;
@@ -311,6 +312,8 @@ private KaraokeResult mPendingKaraokeResult;
 private AlertDialog mKaraokeResultDialog;
 private boolean mSuppressKaraokeResultAction;
 private boolean mRestoringConfigurationPlayback;
+private boolean mProgrammaticFlagSwitch;
+private boolean mDeferFlagSwitchPlayback;
 private boolean mSkipKaraokeTrackAutoLoad;
 private BottomSheetDialog mLyricsResultDialog;
 private BottomSheetDialog mAudioQueueDialog;
@@ -1384,7 +1387,9 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
             tmdbHistoryResumePending = true;
         }
         if (!targetFlag.isSelected() || !targetEpisode.isSelected()) {
+            mProgrammaticFlagSwitch = true;
             onItemClick(targetFlag);
+            mProgrammaticFlagSwitch = false;
             return;
         }
 
@@ -3237,12 +3242,16 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
         if (mTmdbUIAdapter != null) mTmdbUIAdapter.setActiveFlag(resolved);
         rememberFlagSelection(resolved);
         scrollToPosition(mBinding.flag, mFlagAdapter.getPosition());
+        boolean deferFlagSwitch = FlagSwitchPlaybackPolicy.shouldDeferPlayback(PlayerSetting.isDeferFlagSwitchPlayback(), mProgrammaticFlagSwitch);
+        mDeferFlagSwitchPlayback = deferFlagSwitch && !initialBinding;
         boolean episodeChanged = seamless(resolved);
         if (!episodeChanged) setEpisodeAdapter(resolved.getEpisodes());
         scrollEpisodeToSelected();
         setQualityVisible(false);
         if (initialBinding && !episodeChanged) onRefresh();
+        else if (deferFlagSwitch && !episodeChanged) onRefresh();
         loadTmdbRelatedVideosForCurrentEpisode();
+        mDeferFlagSwitchPlayback = false;
     }
 
     @Override
@@ -5115,8 +5124,17 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
     }
 
     private void onRefresh() {
-        invalidateShortDramaQueue("refresh");
         saveHistory();
+        // 「切换线路不自动播放」：线路点击只换线路/选集列表，旧流继续播。
+        // 抑制必须先于拆流，否则用户还没点具体集数，正在看的视频就先被停掉了；
+        // 但仍在途的旧线路取流结果必须就地作废，否则它稍后返回会替用户自动起播旧线路。
+        if (mDeferFlagSwitchPlayback) {
+            mDeferFlagSwitchPlayback = false;
+            if (mViewModel != null) mViewModel.cancelPlayerContent();
+            invalidatePlayerContent();
+            return;
+        }
+        invalidateShortDramaQueue("refresh");
         if (mViewModel != null) mViewModel.cancelPlayerContent();
         invalidatePlayerContent();
         subtitlePlaybackSession.stop(this);
@@ -5895,7 +5913,9 @@ private final Task.Scope mPersonalRecommendationTasks = new Task.Scope(Task.reco
             applyImmersiveAudioSelection(mImmersiveAudioResolved);
             if (mHistory.isRevSort()) reverseEpisode(true);
         } else {
+            mProgrammaticFlagSwitch = true;
             onItemClick(resolveHistoryPlaybackFlag(item.getFlags()));
+            mProgrammaticFlagSwitch = false;
             if (mHistory.isRevSort()) reverseEpisode(true);
         }
         if (preservePlayback) SpiderDebug.log("karaoke-result", "configuration restore preserved playback key=%s episode=%s", player().getKey(), mHistory.getVodRemarks());
@@ -8367,7 +8387,9 @@ private void checkOrientation() {
     private void nextFlag(int position) {
         Flag flag = mFlagAdapter.get(position + 1);
         Notify.show(getString(R.string.play_switch_flag, flag.getFlag()));
+        mProgrammaticFlagSwitch = true;
         onItemClick(flag);
+        mProgrammaticFlagSwitch = false;
     }
 
     private void nextSite() {

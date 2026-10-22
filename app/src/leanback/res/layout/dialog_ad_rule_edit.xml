@@ -154,7 +154,9 @@
                 android:text="@android:string/ok"
                 android:textColor="@color/dialog_primary_button_text"
                 android:textSize="14sp"
-                app:backgroundTint="@color/dialog_primary_button_bg" />
+                app:backgroundTint="@color/dialog_primary_button_bg"
+                app:strokeWidth="@dimen/webhtv_focus_ring_width"
+                app:strokeColor="@color/focus_ring_primary_container" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 

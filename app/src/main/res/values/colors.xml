@@ -69,6 +69,7 @@
         配对按“焦点态填充家族”各一条，错配会让环贴在近似色上而完全看不见
         （实机曾把 FOCUS 填充配成 on_secondary_container，环与填充仅 1.33:1）：
           primary / focus 填充  -> on_primary
+          primaryContainer      -> on_primary_container
           secondaryContainer    -> on_secondary_container
           errorContainer        -> on_error_container
         注意 `following_button_*_bg` 的焦点态填充就是 FOCUS 色(== primary)，追更页
@@ -76,6 +77,14 @@
         “检查/提醒开/换源/下季”才取 on_secondary_container。
     -->
     <color name="focus_ring_on_primary">@color/webhtv_color_on_primary</color>
+    <!--
+        `focus_ring_on_primary_container` 是 2026-10-19 第二轮补的：主按钮的**默认**填充
+        是浅色 colorPrimary，环取 on_primary 时对填充有 7.50:1，但环的外沿贴在弹窗面板上
+        只有 1.05:1（夜间）/ 1.22:1（浅色），看起来像按钮自带的深边而不是焦点高亮。
+        取值空间是空集（证明见 color/focus_ring_primary_container.xml），所以主按钮的
+        聚焦填充改为 primaryContainer，环随之取 on_primary_container。
+    -->
+    <color name="focus_ring_on_primary_container">@color/webhtv_color_on_primary_container</color>
     <color name="focus_ring_on_secondary_container">@color/webhtv_color_on_secondary_container</color>
     <color name="focus_ring_on_error_container">@color/webhtv_color_on_error_container</color>
     <color name="site_health_good">@color/webhtv_color_health_good</color>
