@@ -132,6 +132,7 @@ import com.fongmi.android.tv.setting.FlagSwitchPlaybackPolicy;
 import com.fongmi.android.tv.ui.dialog.PlayerKernelDialog;
 import com.fongmi.android.tv.ui.dialog.PlaybackSpeedDialog;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.theme.PlaybackMenuScrim;
 import com.fongmi.android.tv.setting.SiteHealthStore;
 import com.fongmi.android.tv.setting.DetailRuntimeModePolicy;
 import com.fongmi.android.tv.setting.TmdbSitePolicy;
@@ -11465,7 +11466,8 @@ private void dismissKaraokeResultDialogForRecreation() {
 
     private void applyPlaybackOverlay() {
         mBinding.control.getRoot().setBackgroundResource(R.color.transparent);
-        mBinding.control.bottom.setBackgroundResource(Setting.isPlaybackOverlayEnabled() ? R.drawable.shape_controller_scrim : R.color.transparent);
+        if (Setting.isPlaybackOverlayEnabled()) mBinding.control.bottom.setBackground(PlaybackMenuScrim.create(this));
+        else mBinding.control.bottom.setBackgroundResource(R.color.transparent);
     }
 
 }

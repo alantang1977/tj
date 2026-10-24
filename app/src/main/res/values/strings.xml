@@ -962,6 +962,7 @@
     <string name="theme_editor_slot_scrim_opacity">Scrim opacity</string>
     <string name="theme_editor_slot_dialog_opacity">Dialog opacity</string>
     <string name="theme_editor_slot_overlay_opacity">Overlay opacity (web theme only)</string>
+    <string name="theme_editor_slot_player_scrim_opacity">Playback menu overlay opacity</string>
     <string name="theme_editor_import">Import palette</string>
     <string name="theme_editor_palette_style">Palette style · keeps manual edits</string>
     <string name="theme_editor_palette_tonal">Tonal</string>
@@ -1854,6 +1855,15 @@ TVData</string>
     <string name="crash_details_title">Error details</string>
     <string name="crash_details_message">App version: %1$s\n\n%2$s</string>
     <string name="crash_details_close">Close</string>
+    <string name="crash_log_title">Log download address</string>
+    <string name="crash_log_hint">Open this address in a browser on a phone or computer on the same network to view and download this crash log.</string>
+    <string name="crash_log_preparing">Preparing the log service…</string>
+    <string name="crash_log_unavailable">Log service unavailable. Use Error details to read the stack trace.</string>
+    <string name="crash_log_no_lan">No LAN address found. Open locally:\n%1$s</string>
+    <string name="crash_log_service_failed">Log service unavailable</string>
+    <string name="crash_log_copy">Copy address</string>
+    <string name="crash_log_copied">Address copied</string>
+    <string name="crash_log_open">Open in browser</string>
 
     
     <string name="copied">Copied</string>
@@ -1972,6 +1982,7 @@ TVData</string>
     <string-array name="select_fullscreen_menu_key">
         <item>Control</item>
         <item>Episodes</item>
+        <item>Next episode</item>
     </string-array>
 
     <string-array name="select_home_menu_key">

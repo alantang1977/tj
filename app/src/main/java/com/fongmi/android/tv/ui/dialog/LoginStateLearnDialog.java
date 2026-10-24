@@ -105,7 +105,7 @@ public final class LoginStateLearnDialog extends BaseAlertDialog {
 
     private void setScrollHeight(FragmentActivity activity) {
         ViewGroup.LayoutParams params = binding.contentScroll.getLayoutParams();
-        params.height = Math.max(ResUtil.dp2px(190), Math.min(ResUtil.dp2px(300), (int) (ResUtil.getScreenHeight(activity) * 0.34f)));
+        params.height = Math.max(ResUtil.dp2px(190), Math.min(ResUtil.dp2px(300), (int) (DialogSafeArea.height(activity) * 0.34f)));
         binding.contentScroll.setLayoutParams(params);
     }
 

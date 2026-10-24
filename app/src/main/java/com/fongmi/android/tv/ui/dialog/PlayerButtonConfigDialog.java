@@ -66,8 +66,8 @@ public class PlayerButtonConfigDialog extends BaseAlertDialog {
         if (dialog == null) return;
         Window window = dialog.getWindow();
         if (window == null) return;
-        int screenWidth = ResUtil.getScreenWidth(requireContext());
-        int screenHeight = ResUtil.getScreenHeight(requireContext());
+        int screenWidth = DialogSafeArea.width(requireActivity(), window);
+        int screenHeight = DialogSafeArea.height(requireActivity(), window);
         boolean land = ResUtil.isLand(requireContext());
         WindowManager.LayoutParams params = window.getAttributes();
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));

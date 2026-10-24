@@ -956,10 +956,28 @@ public class ExoUtil {
         // 15 ms is the media3 1.9+ default, so "on" keeps upstream parity. "Off" must pass
         // C.TIME_UNSET: leaving the setter untouched would keep the same 15 ms default and turn
         // the user-visible switch into a no-op that still drops late input frames.
+        long lateDropThresholdUs = effectiveLateDropThresholdUs();
         factory.experimentalSetLateThresholdToDropDecoderInputUs(
-                PlaybackPerformanceSetting.isLateDropInputEnabled()
-                        ? ENHANCED_LATE_THRESHOLD_TO_DROP_INPUT_US : C.TIME_UNSET);
+                lateDropThresholdUs);
+        ExoPlaybackDiagnostics.logFrameScheduling(
+                frameSchedulingDecision,
+                frameSchedulingSettings.codecQueueModeLabel(),
+                frameSchedulingSettings.dynamicSchedulingEnabled(),
+                lateDropThresholdUs);
         return factory.setEnableDecoderFallback(PlaybackPerformanceSetting.isDecoderFallbackEnabled()).setExtensionRendererMode(Math.max(audioRenderMode, videoRenderMode));
+    }
+
+    /**
+     * The late-drop threshold handed to every MediaCodec video renderer path.
+     *
+     * <p>Both construction paths must read this one value: the {@code DefaultRenderersFactory}
+     * path covers software decode, while hard decode with 「解码器兜底」 on builds an
+     * {@link ExoRuntimeAwareVideoRenderer} instead. Duplicating the choice there once let the two
+     * drift, and a drifted threshold silently reports the wrong configuration in diagnostics.
+     */
+    static long effectiveLateDropThresholdUs() {
+        return PlaybackPerformanceSetting.isLateDropInputEnabled()
+                ? ENHANCED_LATE_THRESHOLD_TO_DROP_INPUT_US : C.TIME_UNSET;
     }
 
     public static ExoFrameSchedulingExperimentPolicy.Decision

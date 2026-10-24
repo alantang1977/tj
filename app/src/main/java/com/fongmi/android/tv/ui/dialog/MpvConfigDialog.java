@@ -392,8 +392,8 @@ public class MpvConfigDialog extends BaseAlertDialog implements MpvConfigProfile
         boolean land = ResUtil.isLand(requireContext());
         WindowManager.LayoutParams params = window.getAttributes();
         float width = Util.isLeanback() ? 0.68f : land ? 0.62f : 0.94f;
-        params.width = Math.min((int) (ResUtil.getScreenWidth(requireContext()) * width), ResUtil.dp2px(760));
-        params.height = (int) (ResUtil.getScreenHeight(requireContext()) * (land ? 0.88f : 0.82f));
+        params.width = Math.min((int) (DialogSafeArea.width(requireActivity(), window) * width), ResUtil.dp2px(760));
+        params.height = (int) (DialogSafeArea.height(requireActivity(), window) * (land ? 0.88f : 0.82f));
         params.dimAmount = 0.58f;
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);

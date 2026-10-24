@@ -106,8 +106,8 @@ public class MpvConfigEditorDialog extends BaseAlertDialog {
         if (window == null) return;
         boolean land = ResUtil.isLand(requireContext());
         WindowManager.LayoutParams params = window.getAttributes();
-        params.width = (int) (ResUtil.getScreenWidth(requireContext()) * (land ? 0.72f : 0.96f));
-        params.height = (int) (ResUtil.getScreenHeight(requireContext()) * (land ? 0.9f : 0.88f));
+        params.width = (int) (DialogSafeArea.width(requireActivity(), window) * (land ? 0.72f : 0.96f));
+        params.height = (int) (DialogSafeArea.height(requireActivity(), window) * (land ? 0.9f : 0.88f));
         params.dimAmount = 0.58f;
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);

@@ -133,13 +133,13 @@ public final class UpdateSettingsDialog {
         Window window = dialog.getWindow();
         if (window == null) return;
         WindowManager.LayoutParams params = window.getAttributes();
-        params.width = (int) (ResUtil.getScreenWidth(activity) * (ResUtil.isLand(activity) ? 0.62f : 0.92f));
+        params.width = (int) (DialogSafeArea.width(activity) * (ResUtil.isLand(activity) ? 0.62f : 0.92f));
         params.height = WindowManager.LayoutParams.WRAP_CONTENT;
         params.gravity = Gravity.CENTER;
         params.dimAmount = 0.58f;
         // Reserve the title, save button, margins and padding outside the scroll area.
         binding.contentScroll.setMaxHeight(Math.max(1,
-                (int) (ResUtil.getScreenHeight(activity) * 0.90f) - ResUtil.dp2px(150)));
+                (int) (DialogSafeArea.height(activity) * 0.90f) - ResUtil.dp2px(150)));
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
         window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);

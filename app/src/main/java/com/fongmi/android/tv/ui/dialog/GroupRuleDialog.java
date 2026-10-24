@@ -511,8 +511,8 @@ public final class GroupRuleDialog {
     private void configureAiPreviewWindow(AlertDialog dialog, NestedScrollView contentScroll) {
         Window window = dialog.getWindow();
         if (window == null) return;
-        int screenWidth = ResUtil.getScreenWidth(activity);
-        int screenHeight = ResUtil.getScreenHeight(activity);
+        int screenWidth = DialogSafeArea.width(activity, window);
+        int screenHeight = DialogSafeArea.height(activity, window);
         boolean landscape = screenWidth >= screenHeight;
         AiGroupRulePreviewSizing.Size size = AiGroupRulePreviewSizing.calculate(
                 screenWidth, screenHeight, dp(landscape ? 24 : 12), dp(landscape ? 170 : 190));

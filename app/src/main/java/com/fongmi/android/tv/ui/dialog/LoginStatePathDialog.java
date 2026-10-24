@@ -138,8 +138,8 @@ public class LoginStatePathDialog extends BaseAlertDialog {
         Window window = getDialog().getWindow();
         if (window == null) return;
         WindowManager.LayoutParams params = window.getAttributes();
-        int screenWidth = ResUtil.getScreenWidth(requireContext());
-        int screenHeight = ResUtil.getScreenHeight(requireContext());
+        int screenWidth = DialogSafeArea.width(requireActivity(), window);
+        int screenHeight = DialogSafeArea.height(requireActivity(), window);
         boolean land = ResUtil.isLand(requireContext());
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
@@ -462,7 +462,7 @@ public class LoginStatePathDialog extends BaseAlertDialog {
             meta.setPadding(0, ResUtil.dp2px(6), 0, 0);
             container.addView(meta, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-        LinearLayoutCompat.LayoutParams inputParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (ResUtil.getScreenHeight(requireContext()) * 0.52f));
+        LinearLayoutCompat.LayoutParams inputParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (DialogSafeArea.height(requireActivity()) * 0.52f));
         inputParams.topMargin = ResUtil.dp2px(8);
         SafeScrollEditText input = null;
         if (payload.listPreview) {

@@ -1,5 +1,6 @@
 package com.fongmi.android.tv.ui.dialog;
 
+import android.app.Dialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
@@ -7,6 +8,7 @@ import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.format.DateFormat;
+import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -63,18 +65,41 @@ public class SiteHealthReportDialog extends BaseAlertDialog {
     @Override
     public void onStart() {
         super.onStart();
-        if (getDialog() == null) return;
-        Window window = getDialog().getWindow();
-        if (window == null) return;
+        Dialog dialog = getDialog();
+        if (dialog == null || dialog.getWindow() == null) return;
+        Window window = dialog.getWindow();
+        configureWindow(window);
+        // The window can be laid out before the platform reports its system-bar insets, in which
+        // case the first sizing falls back to the display bounds and the footer's cancel button
+        // ends up under the navigation bar. Re-sizing when the real insets arrive is what makes
+        // the fix independent of that ordering.
+        DialogSafeArea.follow(requireActivity(), window, () -> configureWindow(window));
+        binding.close.requestFocus();
+    }
+
+    /**
+     * Sizes the dialog window from the system-bar-safe area instead of the raw display.
+     *
+     * <p>{@link ResUtil#getScreenHeight} returns the whole display, so a window sized from it is
+     * taller than the area the window manager actually offers a floating dialog: the window is
+     * centred in the bar-safe area and its last row - the fixed-height cancel button - is painted
+     * under the navigation bar and clipped. {@link DialogSafeArea} resolves that area for every
+     * dialog in this package; the gutter stays the existing 16dp portrait / 24dp landscape value
+     * so television geometry is unchanged.
+     */
+    private void configureWindow(Window window) {
         WindowManager.LayoutParams params = window.getAttributes();
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
         int margin = ResUtil.dp2px(ResUtil.isLand(requireContext()) ? 24 : 16);
-        params.width = Math.max(1, ResUtil.getScreenWidth(requireContext()) - margin * 2);
-        params.height = Math.max(1, ResUtil.getScreenHeight(requireContext()) - margin * 2);
+        ThemeDialogLayout.Area area = DialogSafeArea.area(requireActivity(), window);
+        params.width = ThemeDialogLayout.width(area.width(), margin);
+        params.height = ThemeDialogLayout.height(area.height(), margin);
+        // Gravity.CENTER centres the window inside the bar-safe area; an explicit params.x/y
+        // offset is re-clamped by the window manager and is deliberately not set.
+        params.gravity = Gravity.CENTER;
         window.setAttributes(params);
         window.setLayout(params.width, params.height);
-        binding.close.requestFocus();
     }
 
     @Override

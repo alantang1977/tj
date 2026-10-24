@@ -265,8 +265,8 @@ public class MpvCustomButtonDialog extends DialogFragment {
         Window window = dialog == null ? null : dialog.getWindow();
         if (window == null) return;
         WindowManager.LayoutParams params = window.getAttributes();
-        params.width = Math.min((int) (ResUtil.getScreenWidth(requireContext()) * (Util.isLeanback() ? 0.68f : 0.94f)), ResUtil.dp2px(760));
-        params.height = (int) (ResUtil.getScreenHeight(requireContext()) * (Util.isLeanback() ? 0.88f : 0.9f));
+        params.width = Math.min((int) (DialogSafeArea.width(requireActivity(), window) * (Util.isLeanback() ? 0.68f : 0.94f)), ResUtil.dp2px(760));
+        params.height = (int) (DialogSafeArea.height(requireActivity(), window) * (Util.isLeanback() ? 0.88f : 0.9f));
         params.dimAmount = 0.58f;
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
@@ -439,8 +439,8 @@ public class MpvCustomButtonDialog extends DialogFragment {
             Window window = dialog == null ? null : dialog.getWindow();
             if (window == null) return;
             WindowManager.LayoutParams params = window.getAttributes();
-            params.width = Math.min((int) (ResUtil.getScreenWidth(requireContext()) * (Util.isLeanback() ? 0.68f : 0.94f)), ResUtil.dp2px(760));
-            params.height = (int) (ResUtil.getScreenHeight(requireContext()) * (Util.isLeanback() ? 0.9f : 0.92f));
+            params.width = Math.min((int) (DialogSafeArea.width(requireActivity(), window) * (Util.isLeanback() ? 0.68f : 0.94f)), ResUtil.dp2px(760));
+            params.height = (int) (DialogSafeArea.height(requireActivity(), window) * (Util.isLeanback() ? 0.9f : 0.92f));
             params.dimAmount = 0.58f;
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             window.getDecorView().setPadding(0, 0, 0, 0);

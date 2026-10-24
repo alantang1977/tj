@@ -2,7 +2,7 @@ package com.fongmi.android.tv.theme;
 
 import java.util.Locale;
 
-/** Persisted B-safe theme profile limited to the 16 user-editable semantic slots. */
+/** Persisted B-safe theme profile limited to the 17 user-editable semantic slots. */
 public final class ThemeProfile {
 
     public static final int SCHEMA_VERSION = 2;
@@ -76,7 +76,7 @@ public final class ThemeProfile {
         return SEED_NONE;
     }
 
-    /** The 13 color slots plus 3 opacity slots a user may edit. */
+    /** The 13 color slots plus 4 opacity slots a user may edit. */
     public static final class SlotSet {
         public String primary;
         public String primaryContainer;
@@ -99,6 +99,11 @@ public final class ThemeProfile {
         public Float scrimOpacity;
         public Float dialogOpacity;
         public Float overlayOpacity;
+        /**
+         * 播放菜单遮盖层（播放页底部控制条黑幕）的强度，只缩放 alpha，色相固定取
+         * colorPlayerScrim；null 表示回落到 {@code PlaybackMenuScrim.DEFAULT_OPACITY}。
+         */
+        public Float playerScrimOpacity;
 
         public SlotSet copy() {
             SlotSet copy = new SlotSet();
@@ -119,6 +124,7 @@ public final class ThemeProfile {
             copy.scrimOpacity = scrimOpacity;
             copy.dialogOpacity = dialogOpacity;
             copy.overlayOpacity = overlayOpacity;
+            copy.playerScrimOpacity = playerScrimOpacity;
             return copy;
         }
     }

@@ -109,7 +109,7 @@ final class PlaybackPerformanceModal {
         ScrollView scroll = new MaxHeightScrollView(
                 context,
                 Math.min(dp(context, 460),
-                        ResUtil.getScreenHeight(context) * 3 / 5));
+                        DialogSafeArea.height(context) * 3 / 5));
         scroll.setFillViewport(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         LinearLayout body = new LinearLayout(context);

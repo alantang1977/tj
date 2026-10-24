@@ -1311,7 +1311,7 @@ public final class RemoteTrustDialog {
 
     private static int configContentHeight(Context context) {
         boolean land = ResUtil.isLand(context);
-        int height = (int) (ResUtil.getScreenHeight(context) * (land ? 0.44f : 0.34f));
+        int height = (int) (DialogSafeArea.height(context) * (land ? 0.44f : 0.34f));
         return Math.max(dp(context, land ? 220 : 190), Math.min(dp(context, land ? 360 : 300), height));
     }
 

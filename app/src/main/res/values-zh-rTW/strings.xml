@@ -914,6 +914,7 @@
     <string name="theme_editor_slot_scrim_opacity">遮罩透明度</string>
     <string name="theme_editor_slot_dialog_opacity">對話框透明度</string>
     <string name="theme_editor_slot_overlay_opacity">浮層透明度（僅 Web 主題生效）</string>
+    <string name="theme_editor_slot_player_scrim_opacity">播放選單遮罩不透明度</string>
     <string name="theme_editor_import">匯入配色</string>
     <string name="theme_editor_palette_style">配色風格 · 保留手動修改</string>
     <string name="theme_editor_palette_tonal">柔和</string>
@@ -1762,6 +1763,15 @@ TVData</string>
     <string name="crash_details_title">錯誤訊息</string>
     <string name="crash_details_message">應用版本：%1$s\n\n%2$s</string>
     <string name="crash_details_close">關閉</string>
+    <string name="crash_log_title">日誌下載位址</string>
+    <string name="crash_log_hint">用同一區域網路內的手機或電腦瀏覽器開啟上面的位址，即可檢視並下載本次崩潰日誌。</string>
+    <string name="crash_log_preparing">正在準備日誌服務…</string>
+    <string name="crash_log_unavailable">日誌服務未啟動，可點按「錯誤訊息」查看堆疊。</string>
+    <string name="crash_log_no_lan">目前沒有區域網路位址（未連線網路？），只能在本機開啟：\n%1$s</string>
+    <string name="crash_log_service_failed">日誌服務未啟動</string>
+    <string name="crash_log_copy">複製位址</string>
+    <string name="crash_log_copied">位址已複製</string>
+    <string name="crash_log_open">在瀏覽器開啟</string>
 
     
     <string name="copied">已複製</string>
@@ -2839,6 +2849,7 @@ TVData</string>
     <string-array name="select_fullscreen_menu_key">
         <item>控制欄</item>
         <item>選集</item>
+        <item>下一集</item>
     </string-array>
     <string-array name="select_home_menu_key">
         <item>選項彈窗</item>

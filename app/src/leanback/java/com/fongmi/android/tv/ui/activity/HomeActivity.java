@@ -141,6 +141,9 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
     private boolean webConfirmKeyDown;
     private boolean webConfirmLongPress;
     private boolean mTypeSelectionFromTouch;
+    private boolean mPendingCategoryCleanup;
+    private boolean mPendingContentRefresh;
+    private boolean mPendingContentRefreshForceNative;
     private int focusGeneration;
     private Runnable mPendingCategoryFocus;
     private final Runnable mTypeSwitch = this::switchType;
@@ -345,7 +348,9 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
         if (mFolder != null && mFolder.isAdded() && !mFolder.isHidden()) {
             mFolder.clearContentFocusRequest();
             mFolder.setUserVisibleHint(false);
-            getSupportFragmentManager().beginTransaction().hide(mFolder).commit();
+            // 这条路径也会从选中监听（updateTypeRecyclerVisibility）进来，同样可能
+            // 落在已保存状态窗口里；本地可见性状态照旧清，事务则只在能提交时才提交。
+            if (canCommitFragmentTransaction()) getSupportFragmentManager().beginTransaction().hide(mFolder).commit();
         }
     }
 
@@ -423,6 +428,34 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
         clearCategoryContent();
     }
 
+    /**
+     * 宿主已保存状态、正在结束或已销毁时不能再提交 Fragment 事务。
+     *
+     * <p>首页的分类页重建由**进程级**单例 {@code VodConfig} 的加载回调驱动
+     * （{@code BaseConfig.loadConfig()} 用 {@code App.post(callback::success)} 投递），
+     * 回调与 Activity 生命周期无关：外观页改主题色/主题模式/UI 缩放都会
+     * {@code recreate()}，而配置加载可能在这个重建窗口里才返回。此前
+     * {@link #clearCategoryContent()} 无条件 {@code commit()}，于是这条延迟回调在
+     * 已保存状态上抛 {@code IllegalStateException: Can not perform this action after
+     * onSaveInstanceState} 并崩溃（见 docs/CRASH-FRAGMENT-STATE-20261022.md）。
+     *
+     * <p>判定条件与文件内既有的 4 处守卫（{@code switchType}、
+     * {@code focusCategoryButton}、{@code showCategoryContent}、
+     * {@code openCustomCsp}）保持一致。
+     */
+    private boolean canCommitFragmentTransaction() {
+        return !isFinishing() && !isDestroyed() && !getSupportFragmentManager().isStateSaved();
+    }
+
+    /**
+     * 宿主仍然存活、只是被保存了状态（例如配置回调在用户切走之后才返回）时，
+     * 被 {@link #canCommitFragmentTransaction()} 拒绝的工作要推迟到回到前台补做；
+     * 正在结束或已销毁的实例没有可恢复的宿主，直接丢弃。
+     */
+    private boolean canDeferFragmentWork() {
+        return !isFinishing() && !isDestroyed();
+    }
+
     private void clearCategoryContent() {
         invalidatePendingFocusRequests();
         mBinding.typeRecycler.removeCallbacks(mTypeSwitch);
@@ -431,7 +464,19 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
         mFolder = null;
         mBinding.progressLayout.setVisibility(View.VISIBLE);
         mBinding.categoryContainer.setVisibility(View.GONE);
+        // 状态清理是纯内存赋值，与能否提交事务无关；这里必须已经丢弃 mFolder，
+        // 否则 isCurrentCategory() 会把一个即将消失的 Fragment 当成当前分类。
+        if (!canCommitFragmentTransaction()) {
+            // 这次移除不能丢：旧站点的分类页（含子 Fragment）会一直留在容器里，
+            // 等容器再次可见就会和新站点的页面叠加。
+            if (canDeferFragmentWork()) mPendingCategoryCleanup = true;
+            return;
+        }
+        removeCategoryFragments();
+    }
 
+    /** 移除所有已加入的分类页；调用方必须先通过 {@link #canCommitFragmentTransaction()}。 */
+    private void removeCategoryFragments() {
         FragmentTransaction transaction = null;
         for (Fragment fragment : getSupportFragmentManager().getFragments()) {
             if (!(fragment instanceof FolderFragment folder)) continue;
@@ -724,6 +769,16 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
 
     private void getVideo(boolean forceNative) {
         syncCategorySite();
+        // 这次刷新打给的是一个已经过去（已保存状态）的窗口：重建后的实例会由
+        // initAfterFirstFrame → initConfig 自己加载。继续重排只会再撞一次事务守卫。
+        if (!canCommitFragmentTransaction()) {
+            // 没有重建、只是被保存了状态时这次刷新不能丢：回到前台（onResume）再补。
+            if (canDeferFragmentWork()) {
+                mPendingContentRefresh = true;
+                mPendingContentRefreshForceNative |= forceNative;
+            }
+            return;
+        }
         if (!forceNative && WebHomeTarget.canLoad(getHome())) {
             ensureWebView();
         }
@@ -1123,6 +1178,12 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
     }
 
     @Override
+    public void onLongPress(Class item) {
+        if (item == null || item.isHome() || !isCurrentCategory(item)) return;
+        mFolder.resetFilter();
+    }
+
+    @Override
     public void onItemClick(Vod item) {
         if (item.isAction()) com.fongmi.android.tv.content.ActionCardHelper.handleAction(this, getHome().getKey(), item.getAction());
         else if (getHome().isIndex()) CollectActivity.start(this, item.getName());
@@ -1342,6 +1403,21 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
         refreshFollowingCount();
         syncTypeItems();
         resumeTypeSwitch();
+        resumeDeferredFragmentWork();
+    }
+
+    /** 回到前台后补做在「已保存状态」窗口里被推迟的分类页清理与首页内容刷新。 */
+    private void resumeDeferredFragmentWork() {
+        if (!canCommitFragmentTransaction()) return;
+        if (mPendingCategoryCleanup) {
+            mPendingCategoryCleanup = false;
+            removeCategoryFragments();
+        }
+        if (!mPendingContentRefresh) return;
+        mPendingContentRefresh = false;
+        boolean forceNative = mPendingContentRefreshForceNative;
+        mPendingContentRefreshForceNative = false;
+        getVideo(forceNative);
     }
 
     @Override

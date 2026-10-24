@@ -281,6 +281,7 @@ Layer 1 DoD：
 | 14 | `scrimOpacity` | 页面/Dialog 外遮罩透明度 | 安全范围 `0.00..0.85` |
 | 15 | `dialogOpacity` | AlertDialog/BottomSheet 表面透明度 | 安全范围 `0.70..1.00` |
 | 16 | `overlayOpacity` | 玻璃卡片、轻遮罩、播放控制外层 | 安全范围 `0.05..0.60` |
+| 17 | `playerScrimOpacity` | 播放页底部菜单黑幕强度（只缩放 alpha，色相固定黑） | 安全范围 `0.20..1.00`，默认 0.80（2026-10-22 追加） |
 
 明确不开放：
 
@@ -295,7 +296,7 @@ Layer 1 DoD：
 
 1. 选择 8 套内置预设，或从 seed 生成完整主题。
 2. 分别编辑浅色/深色模式的 13 个颜色槽。
-3. 单独调节 3 个透明度槽。
+3. 单独调节 4 个透明度槽（第 4 个为播放菜单遮盖层强度）。
 4. 在应用前预览按钮、文字、卡片、Dialog、焦点和透明度。
 5. 应用、取消、恢复默认；应用后全应用统一重建。
 6. 恢复旧 `theme_color` 设置；无需手工编辑 JSON。
@@ -341,6 +342,7 @@ public final class SlotSet {
     public Float scrimOpacity;
     public Float dialogOpacity;
     public Float overlayOpacity;
+    public Float playerScrimOpacity;
 }
 ```
 
@@ -374,7 +376,7 @@ Resolver 使用唯一顺序：
 2. `onPrimary`、`onPrimaryContainer`、`onSecondaryContainer`、`onError`、`onSuccess`、`onWarning` 由 resolver 通过黑/白可读性选择，不直接暴露。
 3. `focus` 与 `surface` 至少 3:1；`outline` 与 `surface` 至少 3:1；普通文本与对应 surface/container 至少 4.5:1。
 4. `surface`/`surfaceContainer`/`surfaceContainerHigh` 必须按层级保持可辨识差；若用户设置相等，编辑器允许保存但 preview 提示“层级不清晰”，应用时自动做最小明度调整。
-5. `dialogOpacity < 0.70`、`scrimOpacity > 0.85`、`overlayOpacity > 0.60` 或非有限数直接拒绝。
+5. `dialogOpacity < 0.70`、`scrimOpacity > 0.85`、`overlayOpacity > 0.60`、`playerScrimOpacity` 超出 `0.20..1.00` 或非有限数直接拒绝。
 6. resolver 的任何异常都回退 `theme_profile_last_good`，再回退 Layer 1 默认；不得阻塞 Activity 启动。
 7. `ThemeResolver.lastDiagnostic()` 保留，扩展为可区分 `default`、`seed`、`profile`、`corrected`、`last-good`、`fallback`。
 
@@ -1143,3 +1145,12 @@ Layer 2 DoD：
 6. 工作树中只包含当前任务声明的路径；所有代码/资源提交原子化，并由 task-guard 创建唯一 recovery tag。
 
 在此之前，不得宣称“全局主题自定义已完成”，也不得把仅通过 JVM 或仅通过 API 28 的结果描述为已全面验收。
+
+---
+
+## 9. 2026-10-22 追加：播放菜单遮盖层强度（第 17 槽）
+
+- 契约：`ThemeProfile.SlotSet.playerScrimOpacity`（`Float`，null = 回落默认 0.80），安全范围 `0.20..1.00`；只缩放播放页底部菜单黑幕的 alpha，色相固定取 `colorPlayerScrim`，不进入 `ThemeTokens`，不改变播放器前景/控制/健康色豁免。
+- 入口：`设置 → 外观 → 主题色彩 → 透明度与浮层` 新增「播放菜单遮盖层不透明度」滑块；`ThemeController.configuredPlayerScrimOpacity(boolean light)` 读取该槽，`PlaybackMenuScrim` 生成顶部 0.75×、底部 1.00× 的黑色渐变（默认 80% → 顶部 60% / 底部 80%）。
+- 旧 profile：字段缺省为 null，加载与保存保持兼容；回滚旧版本时该字段被忽略并在下次保存时丢弃。
+- 验证：`ThemeProfileValidatorTest` / `ThemeProfileCodecTest` / `ThemeEditorContractTest` / `ThemeEditorPanelTest` / `PlaybackMenuScrimTest` / `SettingPlaybackOverlayTest`；双 flavor 定向单测通过。

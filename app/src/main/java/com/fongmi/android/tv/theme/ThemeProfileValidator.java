@@ -17,6 +17,8 @@ public final class ThemeProfileValidator {
     public static final float MAX_DIALOG_OPACITY = 1f;
     public static final float MIN_OVERLAY_OPACITY = 0.05f;
     public static final float MAX_OVERLAY_OPACITY = 0.60f;
+    public static final float MIN_PLAYER_SCRIM_OPACITY = 0.20f;
+    public static final float MAX_PLAYER_SCRIM_OPACITY = 1f;
 
     private static final Set<String> DANGEROUS_KEYS = Set.of(
             "script", "javascript", "resource", "resourcepath", "intent", "classname", "class", "css",
@@ -69,6 +71,7 @@ public final class ThemeProfileValidator {
         slots.scrimOpacity = opacity(slots.scrimOpacity, MIN_SCRIM_OPACITY, MAX_SCRIM_OPACITY, errors, path + ".scrimOpacity");
         slots.dialogOpacity = opacity(slots.dialogOpacity, MIN_DIALOG_OPACITY, MAX_DIALOG_OPACITY, errors, path + ".dialogOpacity");
         slots.overlayOpacity = opacity(slots.overlayOpacity, MIN_OVERLAY_OPACITY, MAX_OVERLAY_OPACITY, errors, path + ".overlayOpacity");
+        slots.playerScrimOpacity = opacity(slots.playerScrimOpacity, MIN_PLAYER_SCRIM_OPACITY, MAX_PLAYER_SCRIM_OPACITY, errors, path + ".playerScrimOpacity");
     }
 
     private static String color(String value, List<String> errors, String path) {

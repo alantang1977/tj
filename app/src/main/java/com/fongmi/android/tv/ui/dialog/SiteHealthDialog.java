@@ -55,7 +55,7 @@ public class SiteHealthDialog extends BaseAlertDialog {
         WindowManager.LayoutParams params = window.getAttributes();
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
-        params.width = (int) (ResUtil.getScreenWidth(requireContext()) * (ResUtil.isLand(requireContext()) ? 0.44f : 0.92f));
+        params.width = (int) (DialogSafeArea.width(requireActivity(), window) * (ResUtil.isLand(requireContext()) ? 0.44f : 0.92f));
         params.height = WindowManager.LayoutParams.WRAP_CONTENT;
         window.setAttributes(params);
         window.setLayout(params.width, params.height);

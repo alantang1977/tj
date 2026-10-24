@@ -136,7 +136,7 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
         list = new LinearLayout(requireContext());
         list.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(list, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.min(dp(460), Math.max(dp(300), ResUtil.getScreenHeight(requireContext()) * 2 / 3)));
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.min(dp(460), Math.max(dp(300), DialogSafeArea.height(requireContext()) * 2 / 3)));
         scrollParams.topMargin = dp(16);
         root.addView(scroll, scrollParams);
         refreshRows();
@@ -179,7 +179,7 @@ public final class PlaybackPerformanceDialog extends DialogFragment {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(4), dp(12), dp(4), dp(8));
         scroll.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.min(dp(560), ResUtil.getScreenHeight(requireContext()) * 3 / 5));
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.min(dp(560), DialogSafeArea.height(requireContext()) * 3 / 5));
         scrollParams.topMargin = dp(10);
         root.addView(scroll, scrollParams);
 

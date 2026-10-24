@@ -107,6 +107,21 @@ public class ThemeProfileValidatorTest {
     }
 
     @Test
+    public void enforcesThePlaybackMenuScrimRangeOnEveryMode() {
+        ThemeProfile profile = ThemeProfile.defaultProfile();
+        profile.light.playerScrimOpacity = ThemeProfileValidator.MIN_PLAYER_SCRIM_OPACITY;
+        profile.dark.playerScrimOpacity = ThemeProfileValidator.MAX_PLAYER_SCRIM_OPACITY;
+        assertTrue(ThemeProfileValidator.validate(profile).valid());
+
+        profile.light.playerScrimOpacity = 0.19f;
+        assertFalse(ThemeProfileValidator.validate(profile).valid());
+        profile.light.playerScrimOpacity = 1.01f;
+        assertFalse(ThemeProfileValidator.validate(profile).valid());
+        profile.light.playerScrimOpacity = Float.NaN;
+        assertFalse(ThemeProfileValidator.validate(profile).valid());
+    }
+
+    @Test
     public void parsesAndFormatsOpaqueColorsForTheLegacyMirror() {
         assertEquals(0xFF155DFC, ThemeProfileValidator.parseColor("#155DFC", -1));
         assertEquals(-1, ThemeProfileValidator.parseColor("#801155FC", -1));

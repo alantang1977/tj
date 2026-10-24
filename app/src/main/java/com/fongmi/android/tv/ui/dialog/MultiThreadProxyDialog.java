@@ -84,8 +84,8 @@ public class MultiThreadProxyDialog extends BaseAlertDialog {
         if (dialog == null) return;
         Window window = dialog.getWindow();
         if (window == null) return;
-        int width = ResUtil.getScreenWidth(requireContext());
-        int height = ResUtil.getScreenHeight(requireContext());
+        int width = DialogSafeArea.width(requireActivity(), window);
+        int height = DialogSafeArea.height(requireActivity(), window);
         boolean land = ResUtil.isLand(requireContext());
         WindowManager.LayoutParams params = window.getAttributes();
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));

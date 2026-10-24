@@ -13,8 +13,13 @@
      浅色表 onSurface 近黑压在常态深靛 chip 上 ≈ 1.68:1
 
    以上两个比值都是不透明原始色对按 WCAG 2.x 相对亮度直接算出的。
-   所以常态取固定浅色（white_90），选中/聚焦/激活/勾选态取固定深色
-   （black，对浅灰选中底 16.87:1）。
+   所以常态取固定浅色（white_90）；勾选/激活/选中取固定深色
+   （black，对浅灰选中底 16.87:1）；**焦点取固定浅色**，因为焦点底是固定的高饱和蓝
+   shape_dialog_glass_chip_focused（#FF1B45B8），黑字压在那块蓝上只有约 2.6:1。
+
+   焦点分支必须排在勾选/激活/选中之前，与 selector_dialog_glass_chip 的背景分支一一对应：
+   Android 取首个全匹配项，背景既然「焦点 > 选中」，前景也必须「焦点 > 选中」；
+   否则聚焦在「在播」那行时会拿到选中分支的黑字，压在焦点蓝底上不可读。
 
    常态值不能只按 chip 原始色核算：它画在**两层半透明**之上——47% 的 chip 压在
    90%–80% 的深靛玻璃上，玻璃再压住任意亮度的画面。两层都半透明，所以亮画面会让
@@ -30,9 +35,9 @@
 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:alpha="0.45" android:color="@color/white_90" android:state_enabled="false" />
+    <item android:color="@color/white_90" android:state_focused="true" />
     <item android:color="@color/black" android:state_checked="true" />
     <item android:color="@color/black" android:state_activated="true" />
     <item android:color="@color/black" android:state_selected="true" />
-    <item android:color="@color/black" android:state_focused="true" />
     <item android:color="@color/white_90" />
 </selector>

@@ -113,6 +113,23 @@ public final class ThemeController {
     }
 
     /**
+     * The user's explicit playback-menu scrim strength for one mode, or {@code null}.
+     *
+     * <p>播放菜单遮盖层是"每个宿主自己决定明暗"的黑幕：它没有 ThemeTokens 分量，
+     * 由播放页在创建时通过本方法读取，未设置时由 {@link PlaybackMenuScrim} 回落到
+     * 它自己的 DEFAULT_OPACITY，因此老 profile 的默认观感是确定的。
+     */
+    public static Float configuredPlayerScrimOpacity(boolean light) {
+        ThemeProfile active = profile;
+        if (active == null) return null;
+        ThemeProfile.SlotSet slots = light ? active.light : active.dark;
+        if (slots == null) return null;
+        Float value = slots.playerScrimOpacity;
+        if (value == null || !Float.isFinite(value)) return null;
+        return Math.max(0f, Math.min(1f, value));
+    }
+
+    /**
      * Applies a scrim opacity to a surface's own scrim colour, replacing only the alpha.
      *
      * <p>{@code null} (the user never set the slot) returns {@code base} untouched, which

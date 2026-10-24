@@ -74,6 +74,10 @@ public class Setting {
     public static final int GLOBAL_HISTORY_OFF = 0;
     public static final int GLOBAL_HISTORY_AUTO = 1;
     public static final int GLOBAL_HISTORY_SEARCH = 2;
+    // 全屏菜单键动作：0/1 为既有取值，2 为新增「下一集」，只能追加不能重排。
+    public static final int FULLSCREEN_MENU_KEY_CONTROL = 0;
+    public static final int FULLSCREEN_MENU_KEY_EPISODES = 1;
+    public static final int FULLSCREEN_MENU_KEY_NEXT_EPISODE = 2;
     public static final int DETAIL_INTERACTION_SYSTEM = 0;
     public static final int INTRO_SKIP_OFF = 0;
     public static final int INTRO_SKIP_AUTO = 1;
@@ -1445,7 +1449,9 @@ public class Setting {
     }
 
     public static int getFullscreenMenuKey() {
-        return Prefers.getInt("fullscreen_menu_key", 0);
+        int menuKey = Prefers.getInt("fullscreen_menu_key", FULLSCREEN_MENU_KEY_CONTROL);
+        // 旧版本不认新增取值，钳制可避免设置页用越界下标取 string-array。
+        return menuKey < FULLSCREEN_MENU_KEY_CONTROL || menuKey > FULLSCREEN_MENU_KEY_NEXT_EPISODE ? FULLSCREEN_MENU_KEY_CONTROL : menuKey;
     }
 
     public static void putFullscreenMenuKey(int menuKey) {

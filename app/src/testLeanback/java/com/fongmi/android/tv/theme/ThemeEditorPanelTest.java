@@ -42,6 +42,9 @@ public class ThemeEditorPanelTest {
         SeekBar bar = panel[0].findViewWithTag("theme-opacity:SCRIM_OPACITY");
         assertNotNull(bar);
         assertTrue("automatic scrim uses the resolved value, not the minimum", bar.getProgress() > 0);
+        SeekBar playerScrim = panel[0].findViewWithTag("theme-opacity:PLAYER_SCRIM_OPACITY");
+        assertNotNull("the playback menu overlay slider must exist", playerScrim);
+        assertEquals("auto strength is 80% of the 20..100 range", 75, playerScrim.getProgress());
         assertTrue(bar.requestFocus());
         int before = bar.getProgress();
         bar.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT));

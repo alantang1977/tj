@@ -18,16 +18,30 @@ public class DialogGlassChipStyleTest {
     private static final double[][] FRAME_EXTREMES = {{0, 0, 0}, {255, 255, 255}};
 
     @Test
-    public void trackAndTitleSelectionsShareTheLightGlassFocusStyle() throws Exception {
-        String selector = readMainResource("drawable", "selector_dialog_glass_chip.xml");
+    public void trackAndTitleRowsKeepASeparateFocusStyleOnTheFixedGlassPanel() throws Exception {
+        String selector = withoutComments(readMainResource("drawable", "selector_dialog_glass_chip.xml"));
         String active = readMainResource("drawable", "shape_dialog_glass_chip_active.xml");
+        String focused = readMainResource("drawable", "shape_dialog_glass_chip_focused.xml");
         String text = readMainResource("color", "selector_dialog_glass_chip_text.xml");
         String track = readLeanbackResource("layout", "adapter_track.xml");
         String title = readLeanbackResource("layout", "adapter_title.xml");
         String danmaku = readLeanbackResource("layout", "adapter_danmaku.xml");
 
-        assertEquals("all focused/selected/checked/activated chip states must share one active drawable",
-                5, occurrences(selector, "@drawable/shape_dialog_glass_chip_active"));
+        // 焦点与「已选中」必须是两种外观。两者共用一张 drawable 正是用户报告
+        // 「遥控器上下键看不出变化，不知道焦点停在哪」的直接原因：视轨列表会整列浅灰，
+        // 焦点行与在播行渲染完全一致。
+        assertEquals("checked/activated/selected chips keep the light selected drawable",
+                3, occurrences(selector, "@drawable/shape_dialog_glass_chip_active"));
+        assertEquals("the single focus branch must use its own drawable",
+                1, occurrences(selector, "@drawable/shape_dialog_glass_chip_focused"));
+        assertTrue("the focus branch must come before the selected branches, because Android takes"
+                        + " the first full match and focus has to win over selection",
+                selector.indexOf("state_focused=\"true\"")
+                        < selector.indexOf("state_activated=\"true\""));
+        assertTrue("the focused chip must not be the selected chip",
+                selector.contains("state_focused=\"true\"")
+                        && !selector.contains("@drawable/shape_dialog_glass_chip_active\" android:state_focused=\"true\""));
+
         assertTrue("active chips must use the light gray fill from the requested selected style",
                 active.contains("android:color=\"#E6E6EA\""));
         assertTrue("active chips must keep a bright two-dp inner border",
@@ -35,6 +49,21 @@ public class DialogGlassChipStyleTest {
                         && active.contains("android:color=\"#F2FFFFFF\""));
         assertTrue("active chips must include the blue-gray lower focus edge",
                 active.contains("android:color=\"#6B6F9F\""));
+
+        String focusedFill = resolve(lastSolidColor(focused));
+        assertNotNull("the focused chip face must resolve to a literal", focusedFill);
+        assertFalse("the focused chip fill must differ from the selected chip fill, otherwise the"
+                        + " two states render identically",
+                focusedFill.equalsIgnoreCase("#E6E6EA"));
+        assertTrue("the focus ring width must use the single ring token",
+                focused.contains("android:width=\"@dimen/webhtv_focus_ring_width\""));
+        String ring = resolve(strokeColor(focused));
+        assertNotNull("the focused chip must declare a resolvable stroke", ring);
+        double ringRatio = contrast(ring, focusedFill);
+        assertTrue("focus ring " + ring + " on the focused fill " + focusedFill + " measures "
+                        + String.format(Locale.ROOT, "%.2f:1", ringRatio) + ", below the 3:1 non-text floor",
+                ringRatio >= 3.0);
+
         // Every chip state the background selector can reach must keep a text entry of its own;
         // a dropped entry silently falls back to the palette-following default and re-ships the
         // reported defect for that state (state_activated is the TV persistent-selection state).
@@ -48,6 +77,18 @@ public class DialogGlassChipStyleTest {
             assertTrue("the chip text selector must keep its " + state + " entry",
                     states.contains(state));
         }
+        // 背景「焦点 > 选中」时前景必须同序：否则聚焦在「在播」那行会拿到选中分支的黑字，
+        // 压在焦点蓝底上不可读。
+        assertTrue("the focused text entry must come before the selected text entries",
+                states.indexOf("state_focused=\"true\"") < states.indexOf("state_selected=\"true\""));
+        String focusedForeground = resolve(colorOf(states, "state_focused=\"true\""));
+        assertNotNull("the focused text colour must resolve to a literal", focusedForeground);
+        double textRatio = contrast(compositeOver(focusedForeground, focusedFill), focusedFill);
+        assertTrue("focused text " + focusedForeground + " on the focused fill " + focusedFill
+                        + " measures " + String.format(Locale.ROOT, "%.2f:1", textRatio)
+                        + ", below the 4.5:1 body-text floor",
+                textRatio >= 4.5);
+
         assertTrue("subtitle rows must use the shared chip background and text selectors",
                 usesSharedSelectors(track));
         assertTrue("title rows must use the shared chip background and text selectors",
@@ -307,6 +348,50 @@ public class DialogGlassChipStyleTest {
     private static boolean usesSharedSelectors(String layout) {
         return layout.contains("android:background=\"@drawable/selector_dialog_glass_chip\"")
                 && layout.contains("android:textColor=\"@color/selector_dialog_glass_chip_text\"");
+    }
+
+    /** The {@code android:color} of the first {@code <stroke .../>} in a drawable, or null. */
+    private static String strokeColor(String drawable) {
+        int at = drawable.indexOf("<stroke");
+        if (at < 0) return null;
+        int end = drawable.indexOf("/>", at);
+        if (end < 0) end = drawable.indexOf('>', at);
+        if (end < 0) return null;
+        int start = drawable.indexOf("android:color=\"", at);
+        if (start < 0 || start > end) return null;
+        start += "android:color=\"".length();
+        return drawable.substring(start, drawable.indexOf('"', start));
+    }
+
+    /** The {@code android:color} on the line carrying {@code marker}, or null. */
+    private static String colorOf(String source, String marker) {
+        for (String line : source.split("\n")) {
+            if (!line.contains(marker)) continue;
+            int at = line.indexOf("android:color=\"");
+            if (at < 0) continue;
+            int start = at + "android:color=\"".length();
+            int end = line.indexOf('"', start);
+            if (end > start) return line.substring(start, end);
+        }
+        return null;
+    }
+
+    /** Alpha-composites a {@code #AARRGGBB}/{@code #RRGGBB} colour over an opaque one. */
+    private static String compositeOver(String colour, String backdrop) {
+        String digits = colour.startsWith("#") ? colour.substring(1) : colour;
+        String back = backdrop.startsWith("#") ? backdrop.substring(1) : backdrop;
+        if (back.length() == 8) back = back.substring(2);
+        if (digits.length() <= 6) return "#" + digits;
+        double alpha = Integer.parseInt(digits.substring(0, 2), 16) / 255.0;
+        String rgb = digits.substring(2);
+        StringBuilder out = new StringBuilder("#");
+        for (int channel = 0; channel < 3; channel++) {
+            int front = Integer.parseInt(rgb.substring(channel * 2, channel * 2 + 2), 16);
+            int behind = Integer.parseInt(back.substring(channel * 2, channel * 2 + 2), 16);
+            int value = (int) Math.round(alpha * front + (1 - alpha) * behind);
+            out.append(String.format("%02X", Math.min(255, Math.max(0, value))));
+        }
+        return out.toString();
     }
 
     private static boolean usesControlSheetSelectors(String layout) {

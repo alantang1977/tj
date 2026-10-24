@@ -75,6 +75,17 @@ public class ThemeProfileCodecTest {
     }
 
     @Test
+    public void playbackMenuScrimOpacityRoundTripsAndRejectsOutOfRange() {
+        ThemeProfile profile = ThemeProfileCodec.parse("{\"light\":{\"playerScrimOpacity\":0.65}}");
+        assertEquals(0.65f, profile.light.playerScrimOpacity, 0.0001f);
+        assertEquals(0.65f, ThemeProfileCodec.parse(ThemeProfileCodec.encode(profile)).light.playerScrimOpacity, 0.0001f);
+        assertThrows(IllegalArgumentException.class, () -> ThemeProfileCodec.parse(
+                "{\"light\":{\"playerScrimOpacity\":0.19}}"));
+        assertThrows(IllegalArgumentException.class, () -> ThemeProfileCodec.parse(
+                "{\"light\":{\"playerScrimOpacity\":1.01}}"));
+    }
+
+    @Test
     public void encodeRejectsAnInvalidProfileInsteadOfWritingIt() {
         ThemeProfile profile = ThemeProfile.defaultProfile();
         profile.light.primary = "#12";

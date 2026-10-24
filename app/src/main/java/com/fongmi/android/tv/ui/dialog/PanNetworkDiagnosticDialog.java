@@ -123,7 +123,7 @@ public final class PanNetworkDiagnosticDialog extends DialogFragment implements 
         contentScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         content = vertical(0);
         contentScroll.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        int screenHeight = ResUtil.getScreenHeight(requireContext());
+        int screenHeight = DialogSafeArea.height(requireContext());
         int contentHeight = Util.isLeanback()
                 ? Math.min(dp(460), Math.max(dp(400), screenHeight - dp(300)))
                 : Math.min(dp(560), Math.max(dp(350), screenHeight * 5 / 8));

@@ -199,14 +199,15 @@ public class CacheManagementDialog extends DialogFragment {
     public void onStart() {
         super.onStart();
         applyWindowSize();
+        DialogSafeArea.follow(requireActivity(), getDialog() == null ? null : getDialog().getWindow(), this::applyWindowSize);
     }
 
     private void applyWindowSize() {
         Dialog dialog = getDialog();
         Window window = dialog == null ? null : dialog.getWindow();
         if (window == null) return;
-        int width = Math.round(ResUtil.getScreenWidth(requireContext()) * SCREEN_FRACTION);
-        int height = Math.round(ResUtil.getScreenHeight(requireContext()) * SCREEN_FRACTION);
+        int width = Math.round(DialogSafeArea.width(requireActivity(), window) * SCREEN_FRACTION);
+        int height = Math.round(DialogSafeArea.height(requireActivity(), window) * SCREEN_FRACTION);
         WindowManager.LayoutParams params = window.getAttributes();
         params.width = width;
         params.height = height;

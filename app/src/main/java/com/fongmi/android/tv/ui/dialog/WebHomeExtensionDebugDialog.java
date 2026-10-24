@@ -88,8 +88,8 @@ public class WebHomeExtensionDebugDialog extends BaseAlertDialog implements Home
         Window window = getDialog().getWindow();
         if (window == null) return;
         WindowManager.LayoutParams params = window.getAttributes();
-        int screenWidth = ResUtil.getScreenWidth(requireContext());
-        int screenHeight = ResUtil.getScreenHeight(requireContext());
+        int screenWidth = DialogSafeArea.width(requireActivity(), window);
+        int screenHeight = DialogSafeArea.height(requireActivity(), window);
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
         params.width = (int) (screenWidth * (ResUtil.isLand(requireContext()) ? 0.96f : 0.98f));

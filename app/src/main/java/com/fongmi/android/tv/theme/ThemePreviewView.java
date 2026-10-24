@@ -54,7 +54,8 @@ public final class ThemePreviewView extends LinearLayout {
                         ThemeEditor.Slot.WARNING, ThemeEditor.Slot.ERROR));
         Group layers = group(R.string.theme_editor_group_layers);
         for (ThemeEditor.Slot slot : new ThemeEditor.Slot[]{ThemeEditor.Slot.SCRIM_OPACITY,
-                ThemeEditor.Slot.DIALOG_OPACITY, ThemeEditor.Slot.OVERLAY_OPACITY}) {
+                ThemeEditor.Slot.DIALOG_OPACITY, ThemeEditor.Slot.OVERLAY_OPACITY,
+                ThemeEditor.Slot.PLAYER_SCRIM_OPACITY}) {
             OpacityRow row = new OpacityRow(slot);
             opacities.put(slot, row);
             layers.view.addView(row.view, ThemeEditorUi.fullWidth(context, 8));
@@ -239,6 +240,7 @@ public final class ThemePreviewView extends LinearLayout {
             float opacity = switch (slot) {
                 case SCRIM_OPACITY -> ThemeEditorUi.alpha(tokens.colorScrim());
                 case DIALOG_OPACITY -> tokens.dialogOpacity();
+                case PLAYER_SCRIM_OPACITY -> PlaybackMenuScrim.DEFAULT_OPACITY;
                 default -> ThemeEditorUi.alpha(tokens.colorOverlayLight());
             };
             if (raw != null) opacity = Float.parseFloat(raw);
@@ -295,6 +297,7 @@ public final class ThemePreviewView extends LinearLayout {
         return switch (slot) {
             case SCRIM_OPACITY -> ThemeProfileValidator.MIN_SCRIM_OPACITY;
             case DIALOG_OPACITY -> ThemeProfileValidator.MIN_DIALOG_OPACITY;
+            case PLAYER_SCRIM_OPACITY -> ThemeProfileValidator.MIN_PLAYER_SCRIM_OPACITY;
             default -> ThemeProfileValidator.MIN_OVERLAY_OPACITY;
         };
     }
@@ -303,6 +306,7 @@ public final class ThemePreviewView extends LinearLayout {
         return switch (slot) {
             case SCRIM_OPACITY -> ThemeProfileValidator.MAX_SCRIM_OPACITY;
             case DIALOG_OPACITY -> ThemeProfileValidator.MAX_DIALOG_OPACITY;
+            case PLAYER_SCRIM_OPACITY -> ThemeProfileValidator.MAX_PLAYER_SCRIM_OPACITY;
             default -> ThemeProfileValidator.MAX_OVERLAY_OPACITY;
         };
     }
@@ -326,6 +330,7 @@ public final class ThemePreviewView extends LinearLayout {
             case SCRIM_OPACITY -> R.string.theme_editor_slot_scrim_opacity;
             case DIALOG_OPACITY -> R.string.theme_editor_slot_dialog_opacity;
             case OVERLAY_OPACITY -> R.string.theme_editor_slot_overlay_opacity;
+            case PLAYER_SCRIM_OPACITY -> R.string.theme_editor_slot_player_scrim_opacity;
         };
     }
 }

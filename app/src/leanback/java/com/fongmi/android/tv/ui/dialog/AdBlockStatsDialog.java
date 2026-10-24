@@ -84,8 +84,8 @@ public class AdBlockStatsDialog {
         if (window == null) return;
         int horizontalMargin = ResUtil.dp2px(24);
         int verticalMargin = ResUtil.dp2px(24);
-        int width = Math.max(1, ResUtil.getScreenWidth(activity) - horizontalMargin * 2);
-        int height = Math.max(1, ResUtil.getScreenHeight(activity) - verticalMargin * 2);
+        int width = Math.max(1, DialogSafeArea.width(activity, window) - horizontalMargin * 2);
+        int height = Math.max(1, DialogSafeArea.height(activity, window) - verticalMargin * 2);
         WindowManager.LayoutParams params = window.getAttributes();
         params.width = width;
         params.height = height;

@@ -75,8 +75,8 @@ public class AdBlockStatsDialog {
             android.util.DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
             int horizontalMargin = Math.round(16 * metrics.density);
             int verticalMargin = Math.round(16 * metrics.density);
-            int width = Math.max(1, metrics.widthPixels - horizontalMargin * 2);
-            int height = Math.max(1, metrics.heightPixels - verticalMargin * 2);
+            int width = Math.max(1, DialogSafeArea.width(activity, window) - horizontalMargin * 2);
+            int height = Math.max(1, DialogSafeArea.height(activity, window) - verticalMargin * 2);
             android.view.WindowManager.LayoutParams params = window.getAttributes();
             params.width = width;
             params.height = height;

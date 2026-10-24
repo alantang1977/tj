@@ -24,6 +24,10 @@ import android.graphics.drawable.InsetDrawable;
  * and the buttons were cut off. {@link #safeArea} subtracts the window's status-bar,
  * navigation-bar and display-cutout insets instead, so the result stays inside every
  * system bar and any TV overscan.
+ *
+ * <p>The same contract also sizes the playback-link health report dialog
+ * ({@code SiteHealthReportDialog}), whose footer cancel button was clipped for exactly the
+ * same reason. The arithmetic lives here so the two dialogs cannot drift apart.
  */
 final class ThemeDialogLayout {
 

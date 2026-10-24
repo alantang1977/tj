@@ -59,6 +59,16 @@ public class PlayerOsdController {
     private static volatile String cachedSystemText;
     private static volatile String cachedWebViewText;
     private static volatile String cachedHevcDecoderText;
+    /**
+     * The verdict threshold for "掉帧较多". It used to be a bare raw count of 60, but media3
+     * settles its dropped-frame accumulator whenever the renderer stops, so the count also
+     * jumps at every pause. The rate is the comparable measure; it matches
+     * ExoUtil.ENHANCED_DROPPED_FRAMES_PER_SECOND_THRESHOLD, the local downgrade trigger.
+     */
+    private static final double DROPPED_FRAMES_PER_SECOND_DIAGNOSIS = 4d;
+    /** Below this played time a rate is not yet meaningful; the raw count is used instead. */
+    private static final long DROPPED_FRAMES_RATE_MIN_PLAY_TIME_MS = 30_000L;
+    private static final long DROPPED_FRAMES_RAW_COUNT_DIAGNOSIS = 60;
 
     private final SimpleDateFormat timeFormat;
     private final TextView topLeft;
@@ -79,6 +89,7 @@ public class PlayerOsdController {
     private final DecimalFormat frameFormat;
     private final DecimalFormat refreshFormat;
     private final DecimalFormat bitrateFormat;
+    private final DecimalFormat frameDropRateFormat;
     private final PlaybackSpeedMeter speedMeter = new PlaybackSpeedMeter();
     private long lastSpeedKBps;
     private String lastSpeedText;
@@ -91,6 +102,8 @@ public class PlayerOsdController {
     public PlayerOsdController(View root, TextView topLeft, TextView topRight, TextView bottomLeft, TextView bottomRight, TextView diagnostics, MiniProgressView miniProgress, Source source, float miniSp) {
         this.timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
         this.bitrateFormat = new DecimalFormat("#.0");
+        // "#.0" prints 0.5 as ".5"; a rate must keep its leading digit.
+        this.frameDropRateFormat = new DecimalFormat("0.0");
         this.refreshFormat = new DecimalFormat("#.##");
         this.frameFormat = new DecimalFormat("#.###");
         this.miniProgress = miniProgress;
@@ -458,7 +471,7 @@ public class PlayerOsdController {
         String frameRateMatch = player.isExo() ? "帧率匹配 开" : "";
         String softTune = getSoftDecodeTuneText(player);
         String playerText = join(" / ", player.getPlayerText(), player.getDecodeText(), render, "隧道" + tunnel, "性能" + performance, frameRateMatch, preload, softTune, player.isExo() ? "兜底开" : "");
-        String playback = join(" / ", state, buffer, "重缓冲 " + rebuffer, "掉帧 " + player.getDroppedFrames());
+        String playback = join(" / ", state, buffer, "重缓冲 " + rebuffer, droppedFrameText(player));
         String startup = getStartupText(player);
         String error = getErrorText(player, snapshot);
         String main = join("\n",
@@ -498,6 +511,33 @@ public class PlayerOsdController {
         return TextUtils.isEmpty(slowest) ? summary : summary + "  最慢 " + slowest;
     }
 
+    /**
+     * "掉帧 12（1.4/秒）" for EXO. The rate is what the number should be read against: media3
+     * settles a renderer's dropped-frame accumulator from onStopped(), so a pause adds
+     * whatever tail accumulated while playing and a bare total looks like pause damage.
+     * MPV and the other engines keep reporting their own raw counter unchanged.
+     */
+    private String droppedFrameText(PlayerManager player) {
+        long dropped = player.getDroppedFrames();
+        if (!player.isExo()) return "掉帧 " + dropped;
+        double rate = PlaybackAnalyticsListener.droppedFramesPerSecond();
+        return "掉帧 " + dropped + "（" + frameDropRateFormat.format(rate) + "/秒）";
+    }
+
+    /**
+     * Whether the drop count is worth a verdict. The raw total is only comparable to a fixed
+     * budget while there is no measured play time to divide by; after that the rate decides,
+     * so a pause that settles the accumulator no longer reads as decoder pressure.
+     */
+    private boolean excessiveDroppedFrames(PlayerManager player) {
+        if (!player.isExo()) return player.getDroppedFrames() >= DROPPED_FRAMES_RAW_COUNT_DIAGNOSIS;
+        long playTimeMs = PlaybackAnalyticsListener.playTimeMs();
+        if (playTimeMs < DROPPED_FRAMES_RATE_MIN_PLAY_TIME_MS) {
+            return player.getDroppedFrames() >= DROPPED_FRAMES_RAW_COUNT_DIAGNOSIS;
+        }
+        return PlaybackAnalyticsListener.droppedFramesPerSecond() >= DROPPED_FRAMES_PER_SECOND_DIAGNOSIS;
+    }
+
     private String getDiagnosis(PlayerManager player, PlaybackAnalyticsListener.Snapshot snapshot, Format video, VideoTrackState videoTrack, AudioTrackState audioTrack, AudioPlaybackDiagnostics.Snapshot audioDetails, boolean localSource) {
         if (audioDetails.runtimeState() == AudioPlaybackDiagnostics.RuntimeState.FAILED) return "音频链路失败，先看音频和错误行";
         if (isDecodeError(snapshot) && player.isHardDecode()) return "硬件解码失败：设备可能不支持该视频编码、分辨率、帧率或规格";
@@ -519,7 +559,7 @@ public class PlayerOsdController {
             // disk ranges, which reads high enough that this hint could never fire.
             if (player.isLoading() && player.getNativeBufferedDuration() < 3000) return "缓冲偏少，可能是网络或源响应慢";
         }
-        if (player.getDroppedFrames() >= 60) return "掉帧较多，可能是解码或渲染压力";
+        if (excessiveDroppedFrames(player)) return "掉帧较多，可能是解码或渲染压力";
         if (!localSource && formatBitrateValue(video) >= 30_000_000) return "资源码率较高，对网络和解码要求高";
         // Use the same observed output as the audio row. A missing decoder name
         // is not a failure signal, and encoded output does not need an app decoder.

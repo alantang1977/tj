@@ -180,8 +180,8 @@ public class GitCloudDialog extends BaseAlertDialog {
         if (window == null) return;
         WindowManager.LayoutParams params = window.getAttributes();
         boolean land = ResUtil.isLand(requireContext());
-        params.width = (int) (ResUtil.getScreenWidth(requireContext()) * (land ? 0.72f : 0.94f));
-        params.height = (int) (ResUtil.getScreenHeight(requireContext()) * 0.86f);
+        params.width = (int) (DialogSafeArea.width(requireActivity(), window) * (land ? 0.72f : 0.94f));
+        params.height = (int) (DialogSafeArea.height(requireActivity(), window) * 0.86f);
         params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
         params.y = dp(18);
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));

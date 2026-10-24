@@ -78,8 +78,8 @@ public class PlaybackRemoteSyncDialog extends BaseAlertDialog {
         Window window = getDialog().getWindow();
         if (window == null) return;
         WindowManager.LayoutParams params = window.getAttributes();
-        int screenWidth = ResUtil.getScreenWidth(requireContext());
-        int screenHeight = ResUtil.getScreenHeight(requireContext());
+        int screenWidth = DialogSafeArea.width(requireActivity(), window);
+        int screenHeight = DialogSafeArea.height(requireActivity(), window);
         boolean land = ResUtil.isLand(requireContext());
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);

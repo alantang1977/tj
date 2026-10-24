@@ -959,6 +959,7 @@
     <string name="theme_editor_slot_scrim_opacity">遮罩透明度</string>
     <string name="theme_editor_slot_dialog_opacity">对话框透明度</string>
     <string name="theme_editor_slot_overlay_opacity">浮层透明度（仅 Web 主题生效）</string>
+    <string name="theme_editor_slot_player_scrim_opacity">播放菜单遮盖层不透明度</string>
     <string name="theme_editor_import">导入配色</string>
     <string name="theme_editor_palette_style">配色风格 · 保留手动修改</string>
     <string name="theme_editor_palette_tonal">柔和</string>
@@ -1810,6 +1811,15 @@ TVData</string>
     <string name="crash_details_title">错误信息</string>
     <string name="crash_details_message">应用版本：%1$s\n\n%2$s</string>
     <string name="crash_details_close">关闭</string>
+    <string name="crash_log_title">日志下载地址</string>
+    <string name="crash_log_hint">用同一局域网内的手机或电脑浏览器打开上面的地址，即可查看并下载本次崩溃日志。</string>
+    <string name="crash_log_preparing">正在准备日志服务…</string>
+    <string name="crash_log_unavailable">日志服务未启动，可点按「错误信息」查看堆栈。</string>
+    <string name="crash_log_no_lan">当前没有局域网地址（未连接网络？），只能在本机打开：\n%1$s</string>
+    <string name="crash_log_service_failed">日志服务未启动</string>
+    <string name="crash_log_copy">复制地址</string>
+    <string name="crash_log_copied">地址已复制</string>
+    <string name="crash_log_open">在浏览器打开</string>
 
     
     <string name="copied">已复制</string>
@@ -1923,6 +1933,7 @@ TVData</string>
     <string-array name="select_fullscreen_menu_key">
         <item>控制栏</item>
         <item>选集</item>
+        <item>下一集</item>
     </string-array>
 
     <string-array name="select_home_menu_key">

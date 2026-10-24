@@ -52,6 +52,7 @@ import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.theme.PlaybackMenuScrim;
 import com.fongmi.android.tv.setting.PlayerButtonSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.ui.adapter.ChannelAdapter;
@@ -315,7 +316,8 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
     }
 
     private void applyPlaybackOverlay() {
-        mBinding.control.getRoot().setBackgroundResource(Setting.isPlaybackOverlayEnabled() ? R.drawable.shape_controller_scrim : R.color.transparent);
+        if (Setting.isPlaybackOverlayEnabled()) mBinding.control.getRoot().setBackground(PlaybackMenuScrim.create(this));
+        else mBinding.control.getRoot().setBackgroundResource(R.color.transparent);
     }
 
     private void setDecode() {
