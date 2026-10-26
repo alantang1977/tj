@@ -2155,6 +2155,7 @@ TVData</string>
         <item>@string/display_mini</item>
         <item>@string/display_title</item>
         <item>Playback params</item>
+        <item>@string/display_media_badges</item>
     </string-array>
 
     <string-array name="select_live_player_osd">
@@ -2358,6 +2359,14 @@ TVData</string>
     <string name="display_progress">Progress</string>
     <string name="display_mini">Mini</string>
     <string name="display_title">Title</string>
+    <string name="display_media_badges">Media info</string>
+    <string name="osd_media_badge_position">Media info position</string>
+    <string-array name="select_media_badge_position">
+        <item>Top left</item>
+        <item>Top right</item>
+        <item>Bottom left</item>
+        <item>Bottom right</item>
+    </string-array>
     <string name="play_decode_idle">Decode</string>
     <string name="detail_close">Close</string>
     <string name="detail_expand">Read more</string>
