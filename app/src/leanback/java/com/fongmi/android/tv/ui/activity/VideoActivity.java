@@ -2447,7 +2447,7 @@ private boolean runtimeSourceOnly;
     }
 
     private String currentTmdbLanguage() {
-        return TmdbLanguagePolicy.requestLanguage(currentTmdbConfig());
+        return TmdbLanguagePolicy.requestLanguage(currentTmdbConfig(), Setting.getLanguage());
     }
 
     private String cachedTmdbImage(JsonObject detail, String key) {
@@ -6065,6 +6065,15 @@ private boolean runtimeSourceOnly;
     @Override
     protected String getPlaybackKey() {
         return getHistoryKey();
+    }
+
+    // C101: creating PlayerManager + ExoPlayer inside PlaybackService.onCreate is a
+    // multi-hundred-millisecond main-thread stall that freezes the loading spinner.
+    // PlaybackActivity already ships this gate; waiting for the first frame lets the
+    // spinner keep animating while the service is built.
+    @Override
+    protected boolean deferPlaybackServiceBinding() {
+        return true;
     }
 
     @Override
