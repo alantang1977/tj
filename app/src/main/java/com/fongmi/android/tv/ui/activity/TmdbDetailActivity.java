@@ -508,6 +508,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     private int renderedEpisodeRangeIndex = -1;
     private int pendingEpisodeRangeFocus = -1;
     private int lastDetailEpisodeFocusRowStart = RecyclerView.NO_POSITION;
+    // 长按连续选集：最近一次请求的目标卡片。焦点落地前按住方向的重复按键以它为基准继续推进，
+    // 同时充当待定对焦回调的失效令牌（换目标即作废旧回调）。
+    private int pendingDetailEpisodeTarget = RecyclerView.NO_POSITION;
+    private static final int DETAIL_EPISODE_FOCUS_MAX_ATTEMPTS = 6;
     private boolean tmdbMediaLoading;
     private boolean lightTheme;
     private boolean backdropSlideLoading;
@@ -1135,6 +1139,12 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             public boolean suppressPersistentOsd() {
                 // 统一使用 OSD 系统，不再使用独立的 playerDisplay* 面板
                 return false;
+            }
+
+            @Override
+            public boolean isFullscreen() {
+                // 详情页内嵌小窗只有在用户点了小窗全屏之后才算全屏；媒体信息徽标只在全屏出现
+                return inlineFullscreen;
             }
 
             @Override
@@ -5034,19 +5044,16 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             String remarks = history != null ? history.getVodRemarks() : "";
             if (selectedEpisode == null) selectedEpisode = findEpisodeByUrl(history == null ? "" : history.getEpisodeUrl(), selectedFlag.getEpisodes());
             if (selectedEpisode == null) selectedEpisode = selectedFlag.find(remarks, getMarkText().isEmpty());
+            // 三条身份通道（intent URL / 历史 URL / 历史备注）全失败时才退到第一集，这是最后兜底。
             if (selectedEpisode == null) selectedEpisode = episodes.get(0);
         }
         List<Integer> availableSeasons = availableSeasonNumbers(episodes);
-        if (availableSeasons.isEmpty()) {
-            selectedSeasonNumber = -1;
-        } else if (selectedSeasonNumber < 0 || !availableSeasons.contains(selectedSeasonNumber)) {
-            selectedSeasonNumber = seasonForEpisode(selectedEpisode, episodes);
-        }
+        // seasonForEpisode 在可选季非空时必返回其中之一（其唯一返回 -1 的路径是可选季为空），
+        // 因此这里不需要再判断季号是否落在可选季内，也不存在"选不到集"的分支：
+        // selectedEpisode 已由上一段四通道兜到首集，恒非空。
+        selectedSeasonNumber = availableSeasons.isEmpty() ? -1 : seasonForEpisode(selectedEpisode, episodes);
         refreshSeasonContext();
         List<Episode> visibleEpisodes = visibleEpisodes(episodes);
-        if (!visibleEpisodes.isEmpty() && !visibleEpisodes.contains(selectedEpisode)) {
-            selectedEpisode = visibleEpisodes.get(0);
-        }
         renderSeasonSelection();
         bindSeasonEpisodes(episodes);
         refreshCurrentHistoryEpisodeTitle();
@@ -5420,6 +5427,9 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         boolean down = KeyUtil.isDownKey(event);
         int target = TmdbEpisodeGridPolicy.verticalFocusTarget(position, span, episodeAdapter.getItemCount(), down);
         if (target == TmdbEpisodeGridPolicy.NO_FOCUS_TARGET) {
+            // 长按撞到首行/末行时停在原地。把焦点甩出网格会让"按住方向浏览选集"在边界处
+            // 突然跳到 TMDB 行并继续横向跑；松手后再按一次才按原规则离开网格。
+            if (event.getRepeatCount() > 0) return true;
             if (!down) {
                 if (focusDetailEpisodeRangeButton()) return true;
                 if (focusDetailEpisodeToolButton(View.FOCUS_UP)) return true;
@@ -5427,6 +5437,9 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             }
             return focusFirstVisibleTmdbRow();
         }
+        // 首次按键继续交给 RecyclerView 原生焦点搜索；只有长按重复事件才显式接管，
+        // 因为此时焦点尚未落到新卡片，FocusFinder 会按旧焦点再算一次，表现为按住上下只走一格。
+        if (event.getRepeatCount() > 0) return focusDetailEpisode(target);
         return false;
     }
 
@@ -5836,29 +5849,38 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private boolean focusDetailEpisode(int position) {
+        return focusDetailEpisode(position, 0);
+    }
+
+    /**
+     * 把焦点送到选集网格的某一集，直到真正落地为止。
+     *
+     * <p>原来未命中可见卡片时排一次 {@code post} + {@code postDelayed(80ms)}：按住方向键时每个重复
+     * 事件都会再排一条，焦点还没落到上一集就又被下一个 80ms 回调按过期坐标 {@code scrollToPosition}
+     * 拽回去，表现为长按只走一格、松手后选集列表闪回原处（用户报告）。
+     * 这里改成「按帧重试 + 目标即令牌」：目标换了作废旧回调，成功落地即停。
+     */
+    private boolean focusDetailEpisode(int position, int attempt) {
         if (binding == null || episodeAdapter == null || episodeAdapter.getItemCount() == 0) return false;
         int target = Math.max(0, Math.min(position, episodeAdapter.getItemCount() - 1));
         int span = detailEpisodeSpanCount();
         int rowStart = Math.max(0, target - target % span);
+        pendingDetailEpisodeTarget = target;
         RecyclerView.ViewHolder visibleHolder = binding.episodeContainer.findViewHolderForAdapterPosition(target);
         if (visibleHolder != null) {
             binding.episodeContainer.stopScroll();
-            visibleHolder.itemView.requestFocus();
-            if (episodeGridMode) alignDetailEpisodeFocusedRow(visibleHolder.itemView, target);
-            return true;
-        }
-        binding.episodeContainer.post(() -> {
+            if (visibleHolder.itemView.requestFocus()) {
+                if (episodeGridMode) alignDetailEpisodeFocusedRow(visibleHolder.itemView, target);
+                return true;
+            }
+        } else if (attempt == 0) {
             binding.episodeContainer.stopScroll();
             scrollEpisodeToPosition(rowStart, ResUtil.dp2px(8));
-            binding.episodeContainer.postDelayed(() -> {
-                RecyclerView.ViewHolder holder = binding.episodeContainer.findViewHolderForAdapterPosition(target);
-                if (holder == null) {
-                    binding.episodeContainer.requestFocus();
-                    return;
-                }
-                holder.itemView.requestFocus();
-                if (episodeGridMode) alignDetailEpisodeFocusedRow(holder.itemView, target);
-            }, 80);
+        }
+        if (attempt >= DETAIL_EPISODE_FOCUS_MAX_ATTEMPTS) return true;
+        binding.episodeContainer.postOnAnimation(() -> {
+            if (binding == null || pendingDetailEpisodeTarget != target) return;
+            focusDetailEpisode(target, attempt + 1);
         });
         return true;
     }
@@ -6746,6 +6768,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         selectedSeasonNumber = getIntentPlaybackSeasonNumber();
         resetEpisodeRange();
         renderFlagSelection();
+        renderEpisodes();
     }
 
     private float getInlinePlaybackSpeed() {
@@ -6779,15 +6802,26 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             long start = System.currentTimeMillis();
             logTmdbMatch("原生增强播放标题：raw=%s，缓存标题=%s，详情标题=%s，播放标题=%s", getTmdbRawTitle(), matchedTmdbItem == null ? "" : matchedTmdbItem.getTitle(), tmdbDetailTitle(matchedTmdbItem, matchedTmdbDetail), playbackHistoryName());
             TmdbItem item = playbackTmdbItem();
-            EpisodePosition position = historyEpisodePosition(selectedEpisode);
+            EpisodePosition position = historyEpisodePosition(playbackEpisode());
             String tmdbDetailCacheKey = TmdbDetailCache.put(item, matchedTmdbDetail, detailCastItems, TmdbLanguagePolicy.requestLanguage(tmdbConfig, Setting.getLanguage()), tmdbSeasonEpisodes);
             SpiderDebug.log("tmdb-tv", "play launch prep cost=%dms title=%s", System.currentTimeMillis() - start, playbackHistoryName());
             VideoActivity.startDirectTmdb(this, getKeyText(), getIdText(), playbackHistoryName(), playbackHistoryPic(), playbackMark(), fastPlaybackEpisodeTitles(), item, playbackTmdbVod(), vod, tmdbDetailCacheKey, playbackFlag(), selectedSeasonFlagKey(), playbackEpisodeName(), playbackEpisodeUrl(), position.season(), position.number(), isResumeFromHistory() ? getIntentResumeHistory() : null);
         });
     }
 
+    private Episode playbackEpisode() {
+        if (selectedEpisode != null) return selectedEpisode;
+        List<Episode> episodes = selectedFlag == null ? null : selectedFlag.getEpisodes();
+        Episode requested = findEpisodeByUrl(getIntentPlaybackEpisodeUrl(), episodes);
+        if (requested != null) return requested;
+        Episode saved = history == null ? null : history.getEpisode();
+        if (saved == null || episodes == null || episodes.isEmpty()) return null;
+        return selectedFlag.find(saved, true);
+    }
+
     private String playbackMark() {
-        if (selectedEpisode != null && !TextUtils.isEmpty(selectedEpisode.getName())) return selectedEpisode.getName();
+        Episode episode = playbackEpisode();
+        if (episode != null && !TextUtils.isEmpty(episode.getName())) return episode.getName();
         return getMarkText();
     }
 
@@ -6796,17 +6830,20 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private String playbackEpisodeName() {
-        return selectedEpisode == null ? playbackMark() : selectedEpisode.getName();
+        Episode episode = playbackEpisode();
+        return episode == null ? "" : Objects.toString(episode.getName(), "");
     }
 
     private String playbackEpisodeUrl() {
-        return selectedEpisode == null ? "" : selectedEpisode.getUrl();
+        Episode episode = playbackEpisode();
+        return episode == null ? "" : Objects.toString(episode.getUrl(), "");
     }
 
     private ArrayList<String> fastPlaybackEpisodeTitles() {
         ArrayList<String> result = new ArrayList<>(1);
-        if (selectedEpisode == null) return result;
-        int number = episodeNumberForHistory(selectedEpisode);
+        Episode episode = playbackEpisode();
+        if (episode == null) return result;
+        int number = episodeNumberForHistory(episode);
         String title = tmdbEpisodeTitle(number);
         if (number > 0 && !TextUtils.isEmpty(title)) result.add(number + "\t" + title);
         return result;
@@ -7898,6 +7935,11 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         inlineStartPosition = resumePosition == C.TIME_UNSET ? getInlineResumePosition() : Math.max(0, resumePosition);
         inlineStartPositionApplied = false;
         player().preparePlayer(inlineHistoryPlayerKernel());
+        // 内核不一致时 preparePlayer() 会在 PlaySpec 建立之前就重建引擎，那一刻 getKey() 还是
+        // null、归属判定必为假，PlaybackActivity.onPlayerRebuild() 会整段跳过——其中就包含
+        // setProgressPlayer()。进度视图于是继续读已被 release 的旧引擎，读到时长 0、位置 0，
+        // 进度条恒为 00:00。这里在重建刚发生后显式跟上新引擎，对齐 leanback VideoActivity 的同一处理。
+        getSeekView().setProgressPlayer(player().getPlayer());
         setInlineSpeed(getInlinePlaybackSpeed());
         updateInlineButtons(false);
         Site site = getCurrentSite();
@@ -10958,12 +11000,16 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
 
     private boolean onDetailEpisodeContainerKey(View focus, KeyEvent event) {
         if (!KeyUtil.isUpKey(event) && !KeyUtil.isDownKey(event) && !KeyUtil.isLeftKey(event) && !KeyUtil.isRightKey(event)) return false;
-        if (!KeyUtil.isActionDown(event)) return true;
+        if (!KeyUtil.isActionDown(event)) {
+            pendingDetailEpisodeTarget = RecyclerView.NO_POSITION;
+            return true;
+        }
         RecyclerView.ViewHolder holder = binding.episodeContainer.findContainingViewHolder(focus);
         if (holder == null) return true;
         int position = holder.getBindingAdapterPosition();
         if (position == RecyclerView.NO_POSITION) return true;
-        return moveDetailEpisodeFocus(position, event);
+        if (event.getRepeatCount() == 0) pendingDetailEpisodeTarget = RecyclerView.NO_POSITION;
+        return moveDetailEpisodeFocus(TmdbEpisodeGridPolicy.holdBasePosition(position, pendingDetailEpisodeTarget), event);
     }
 
     private boolean isFocusInside(View focus, View parent) {
@@ -11419,7 +11465,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private void refreshSelectionAfterExternalPlayback() {
-        if (vod == null || vod.getFlags() == null || vod.getFlags().isEmpty()) return;
+        if (playbackSelectionTouched || vod == null || vod.getFlags() == null || vod.getFlags().isEmpty()) return;
         try {
             history = History.findPlayback(getHistoryKey(), List.of(vod.getName(), getNameText()),
                     vod.getFlags(), null, sourceTitleSeasonNumber());

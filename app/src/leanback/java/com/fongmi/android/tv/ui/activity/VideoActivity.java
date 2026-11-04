@@ -16,6 +16,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.widget.HorizontalScrollView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -157,6 +158,7 @@ import com.fongmi.android.tv.ui.helper.SourceEpisodeSeasonCache;
 import com.fongmi.android.tv.ui.helper.PlayerControlFocusHelper;
 import com.fongmi.android.tv.ui.helper.TouchOptimizationHelper;
 import com.fongmi.android.tv.ui.helper.TmdbEpisodeGridPolicy;
+import com.fongmi.android.tv.ui.helper.TmdbMatchPolicy;
 import com.fongmi.android.tv.ui.helper.TmdbNavigation;
 import com.fongmi.android.tv.ui.helper.TmdbBundle;
 import com.fongmi.android.tv.ui.helper.TmdbSourceAdapter;
@@ -196,6 +198,7 @@ import com.google.gson.JsonObject;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 import java.io.File;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -359,6 +362,10 @@ private boolean runtimeSourceOnly;
     private static final int TMDB_CACHED_DETAIL_APPLY_DELAY_MS = 16;
     private static final int TMDB_FAST_PLAYBACK_START_DELAY_MS = 16;
     private static final int TMDB_BIND_AFTER_REVEAL_DELAY_MS = 96;
+    private static final int INIT_VIEW_STAGE_FALLBACK_DELAY_MS = 500;
+    // The safety net must not outrun a slow first frame: the frame-paced chain legitimately stays silent
+    // until the first traversal, so only a chain that has not advanced for this long counts as stalled.
+    private static final int INIT_VIEW_STAGE_STALL_TIMEOUT_MS = 1_000;
     private static final int TMDB_OVERVIEW_ROW_GAP_DP = 12;
     private static final int TMDB_OVERVIEW_BOTTOM_GUARD_DP = 6;
     private static final int OMDB_FULL_RATING_TEXT_MAX_LENGTH = 20;
@@ -432,6 +439,10 @@ private boolean runtimeSourceOnly;
     private boolean quickSearchDialogClosed;
     private boolean useParse;
     private boolean detailRequested;
+    private final ArrayDeque<Runnable> mInitViewStages = new ArrayDeque<>();
+    private boolean mInitViewStagesLaunched;
+    private long mInitViewLastPumpAt;
+    private boolean mFlagSelectionListenerRegistered;
     private boolean detailHealthRecorded;
     private boolean playHealthRecorded;
     private int followingUiGeneration;
@@ -489,6 +500,16 @@ private boolean runtimeSourceOnly;
     private Clock mClock;
     private PiP mPiP;
     private View mFocus1;
+    private ViewTreeObserver.OnGlobalLayoutListener mEpisodeGridFocusListener;
+    private int mEpisodeGridFocusTarget = -1;
+    // 长按连续选集：最近一次请求的目标卡片。焦点落地前按住方向的重复按键以它为基准继续推进，
+    // 同时充当待定对焦回调的失效令牌（换目标即作废旧回调，避免过期坐标把列表滚回原处）。
+    private int mEpisodeHoldTarget = RecyclerView.NO_POSITION;
+    private static final int EPISODE_HOLD_FOCUS_MAX_ATTEMPTS = 6;
+    // 焦点校正的尝试次数上限：只补偿「进场时焦点丢失」这一种情况，冲击几次就放手。
+    private static final int EPISODE_GRID_FOCUS_MAX_ATTEMPTS = 3;
+    private int mEpisodeGridFocusAttempts;
+    private ViewTreeObserver.OnGlobalLayoutListener mArrayFocusListener;
     private PersonalRecommendationService.RecommendationPage mNativePersonalTmdbPage;
     private PersonalRecommendationService.RecommendationPage mNativePersonalDoubanPage;
     private PersonalRecommendationService.RecommendationPage mNativePersonalAiPage;
@@ -518,6 +539,10 @@ private boolean runtimeSourceOnly;
     private Result mAppliedPlayerResult;
     private boolean mPlaybackRequestActive;
     private boolean mPlaybackPlayerStarted;
+    // 用户主动点集（手动播放模式）时临时置位：让本次起播不受「点播自动播放」关闭影响。
+    private boolean mExplicitPlaybackRequest;
+    // 手动播放模式下是否已经由用户显式起播过；未起播前预览位显示封面。
+    private boolean mManualPlaybackStarted;
     private final ShortDramaQueueCoordinator mShortDramaQueue = new ShortDramaQueueCoordinator();
     private PlaySpec mShortDramaQueuedSpec;
     private Result mShortDramaQueuedResult;
@@ -943,8 +968,7 @@ private boolean runtimeSourceOnly;
     public static void startDirectTmdb(Activity activity, String key, String id, String name, String pic, String mark, ArrayList<String> episodeTitles, TmdbItem item, Vod tmdbVod, Vod detailVod, String tmdbDetailCacheKey, String playFlag, String playEpisodeName, String playEpisodeUrl, int playSeasonNumber, int playEpisodeNumber, History resumeHistory) {
         startDirectTmdb(activity, key, id, name, pic, mark, episodeTitles, item, tmdbVod, detailVod,
                 tmdbDetailCacheKey, playFlag,
-                resumeHistory == null ? "" : resumeHistory.getSourceBindingKey(),
-                playEpisodeName, playEpisodeUrl, playSeasonNumber, playEpisodeNumber, resumeHistory);
+                "", playEpisodeName, playEpisodeUrl, playSeasonNumber, playEpisodeNumber, resumeHistory);
     }
 
     public static void startDirectTmdb(Activity activity, String key, String id, String name, String pic, String mark, ArrayList<String> episodeTitles, TmdbItem item, Vod tmdbVod, Vod detailVod, String tmdbDetailCacheKey, String playFlag, String playFlagKey, String playEpisodeName, String playEpisodeUrl, int playSeasonNumber, int playEpisodeNumber, History resumeHistory) {
@@ -1468,6 +1492,16 @@ private boolean runtimeSourceOnly;
     }
 
     @Override
+    protected long getDurationFallbackMs() {
+        return mHistory == null ? C.TIME_UNSET : mHistory.getDuration();
+    }
+
+    private String getTimelineDurationTime() {
+        // 复用 PlayerManager 的兜底，避免同屏出现第二个兜底来源。
+        return player().getDurationTime();
+    }
+
+    @Override
     protected void onServiceConnected() {
         SpiderDebug.log("video-flow", "service ready sinceLaunch=%dms key=%s id=%s", getLaunchCost(System.currentTimeMillis()), getKey(), getId());
         player().setDanmakuController(mBinding.exo.getDanmakuController());
@@ -1476,8 +1510,22 @@ private boolean runtimeSourceOnly;
         setPlayerKernel();
         setDecode();
         setLut();
+        // C111: setViewModel() runs on the initView tick, but the adapters (mFlagAdapter/mQualityAdapter/...)
+        // are only created by stage 1-recycler. A retained ViewModel replays its last Result into
+        // mPendingDetail/mPendingPlayer the moment the service connects, and detail/player results then
+        // dereference a not-yet-created adapter. Queue the whole tail behind the stages instead of running it
+        // inline; a non-empty queue means stage 1 has not run yet, an empty one means it already has, so the
+        // normal path stays inline and unchanged.
+        if (!mInitViewStages.isEmpty()) {
+            deferInitViewStage("4-service-results", this::applyServiceReadyResults);
+            return;
+        }
+        applyServiceReadyResults();
+    }
+
+    private void applyServiceReadyResults() {
         if (consumeImmersiveAudioLaunch()) return;
-        if (!detailRequested) checkId();
+        if (!detailRequested && mViewModel != null) checkId();
         flushPendingFastTmdbPlayback();
         if (mPendingDetail != null) {
             Result result = mPendingDetail;
@@ -1547,6 +1595,11 @@ private boolean runtimeSourceOnly;
             public String osdTitle() {
                 return getOsdTitle();
             }
+
+            @Override
+            public boolean isFullscreen() {
+                return VideoActivity.this.isFullscreen();
+            }
         }, VodPlayerChrome.fromVideo(mBinding, mBinding.widget.clock, 14f), this);
         mClock = mPlayerUi.clock();
         mOsd = mPlayerUi.osd();
@@ -1571,14 +1624,27 @@ private boolean runtimeSourceOnly;
         prepareInitialDetailShell();
         checkCast();
         SpiderDebug.log("video-flow", "initView preview ready cost=%dms", System.currentTimeMillis() - start);
-        setRecyclerView();
-        setShortDisplay();
-        SpiderDebug.log("video-flow", "initView recycler ready cost=%dms", System.currentTimeMillis() - start);
-        setVideoView();
-        SpiderDebug.log("video-flow", "initView video view ready cost=%dms", System.currentTimeMillis() - start);
+        // C111: setViewModel() must stay synchronous. Its LiveData observers are the only receivers of the
+        // detail/player results, and onServiceConnected() can arrive before the deferred stages run, where the
+        // immersive-audio path dereferences mViewModel through playerContent()/updateActionQuality().
         setViewModel();
-        checkId();
+        // C111: the spinner requested by checkCast() needs real frames before the heavy tail runs, so the
+        // tail is queued in original order and pumped one stage per frame (see launchInitViewStages()).
+        deferInitViewStage("1-recycler", () -> {
+            setRecyclerView();
+            registerFlagSelectionListener();
+        });
+        deferInitViewStage("2-chrome", () -> {
+            setShortDisplay();
+            setVideoView();
+        });
+        deferInitViewStage("3-detail", () -> {
+            // Only the detail request is left here; setViewModel() already ran on the initView tick.
+            checkId();
+        });
+        SpiderDebug.log("video-flow", "initView stages queued=%d cost=%dms sinceLaunch=%dms", mInitViewStages.size(), System.currentTimeMillis() - start, getLaunchCost(System.currentTimeMillis()));
         SpiderDebug.log("video-flow", "initView end cost=%dms sinceLaunch=%dms", System.currentTimeMillis() - start, getLaunchCost(System.currentTimeMillis()));
+        launchInitViewStages();
     }
 
     private void applyPlaybackOverlay() {
@@ -1705,7 +1771,7 @@ private boolean runtimeSourceOnly;
         mBinding.control.action.opening.setOnLongClickListener(view -> onOpeningReset());
         setActionFocusScroll();
         mBinding.video.setOnTouchListener(this::onVideoTouch);
-        mBinding.flag.addOnChildViewHolderSelectedListener(new FlagSelectionListener(mBinding.flag, mFlagAdapter, this));
+        registerFlagSelectionListener();
         mBinding.episode.addOnChildViewHolderSelectedListener(new OnChildViewHolderSelectedListener() {
             @Override
             public void onChildViewHolderSelected(@NonNull RecyclerView parent, @Nullable RecyclerView.ViewHolder child, int position, int subposition) {
@@ -2118,6 +2184,10 @@ private boolean runtimeSourceOnly;
         }
         mPendingPlayerKernel = PlayerSetting.NONE;
         player().preparePlayer(kernel, forcePrepare);
+        // preparePlayer() 可能在 PlaySpec 建立前就重建引擎，此窗口内归属判假，
+        // PlaybackActivity.onPlayerRebuild() 整段跳过（其中含 setProgressPlayer），
+        // 进度条会继续读已释放的旧引擎、不再刷新进度，故这里显式跟上新引擎。
+        getSeekView().setProgressPlayer(player().getPlayer());
         setPlayerKernel();
         setDecode();
         return kernel;
@@ -2137,6 +2207,8 @@ private boolean runtimeSourceOnly;
         mPendingPlayerKernel = PlayerSetting.NONE;
         if (!PlayerSetting.isPlayer(kernel)) return;
         player().preparePlayer(kernel);
+        // 同上：服务就绪时补的内核重建同样早于 PlaySpec，重建回调被跳过。
+        getSeekView().setProgressPlayer(player().getPlayer());
     }
 
     /**
@@ -2197,7 +2269,7 @@ private boolean runtimeSourceOnly;
         if (cached == null) return false;
         detailStartTime = System.currentTimeMillis();
         detailHealthRecorded = true;
-        if (!shouldRevealShellWhileLoading()) mBinding.progressLayout.showProgress();
+        if (shouldRequestCachedDetailLoading()) mBinding.progressLayout.showProgress();
         SpiderDebug.log("video-flow", "detail cache hit queued key=%s id=%s name=%s", getKey(), getId(), cached.getName());
         if (tryStartFastTmdbPlayback(cached)) {
             return true;
@@ -2217,6 +2289,121 @@ private boolean runtimeSourceOnly;
     private void queueFastTmdbPlaybackUntilServiceReady(Vod item) {
         mPendingFastTmdbPlaybackVod = item;
         SpiderDebug.log("video-flow", "fast tmdb playback pending service key=%s id=%s name=%s", getKey(), getId(), item.getName());
+    }
+
+    // C111: initView's heavy tail cannot run in the same tick that first requests the loading spinner,
+    // otherwise the spinner never gets a frame. Stages are queued in original order and pumped one per frame.
+    private void deferInitViewStage(String name, Runnable stage) {
+        mInitViewStages.addLast(() -> runInitViewStage(name, stage));
+        // A stage queued after the chain was launched (the service-ready tail) has no scheduler of its own:
+        // the frame-paced chain may already have drained, and pumpInitViewStage() drops the queue on teardown
+        // without rescheduling. Re-arm the net so a late stage is still pumped instead of waiting forever.
+        if (mInitViewStagesLaunched) armInitViewStageSafetyNet();
+    }
+
+    private void runInitViewStage(String name, Runnable stage) {
+        long start = System.currentTimeMillis();
+        SpiderDebug.log("video-flow", "initView stage-%s begin sinceLaunch=%dms", name, getLaunchCost(start));
+        try {
+            stage.run();
+        } finally {
+            SpiderDebug.log("video-flow", "initView stage-%s end cost=%dms", name, System.currentTimeMillis() - start);
+        }
+    }
+
+    private void launchInitViewStages() {
+        if (mInitViewStagesLaunched || mInitViewStages.isEmpty()) return;
+        mInitViewStagesLaunched = true;
+        mInitViewLastPumpAt = System.currentTimeMillis();
+        final View root = mBinding == null ? null : mBinding.getRoot();
+        if (root == null) {
+            SpiderDebug.log("video-flow", "initView stage schedule fallback root=null left=%d", mInitViewStages.size());
+            App.post(this::pumpInitViewStage);
+            return;
+        }
+        ViewTreeObserver observer = root.getViewTreeObserver();
+        if (observer == null || !observer.isAlive()) {
+            SpiderDebug.log("video-flow", "initView stage schedule fallback observer dead left=%d", mInitViewStages.size());
+            App.post(this::pumpInitViewStage);
+            return;
+        }
+        // Wait for one real traversal so the spinner has been painted, then hand the pump to the looper
+        // queue; running inside the frame callback would still sit in front of that frame's draw.
+        observer.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                ViewTreeObserver live = root.getViewTreeObserver();
+                if (live.isAlive()) live.removeOnPreDrawListener(this);
+                SpiderDebug.log("video-flow", "initView first frame drawn sinceLaunch=%dms stages=%d", getLaunchCost(System.currentTimeMillis()), mInitViewStages.size());
+                root.post(VideoActivity.this::pumpInitViewStage);
+                return true;
+            }
+        });
+        armInitViewStageSafetyNet();
+    }
+
+    // Safety net only: the frame-paced chain owns the pacing, but it dies silently if the root detaches
+    // between two stages (postOnAnimation callbacks are then dropped) and the remaining stages never run,
+    // which would leave the detail request unissued. Re-arm while stages are left so a stalled chain still
+    // finishes; a drained queue means the chain already did its job and the net stops.
+    private void armInitViewStageSafetyNet() {
+        final View root = mBinding == null ? null : mBinding.getRoot();
+        if (root == null) return;
+        root.postDelayed(() -> {
+            if (mInitViewStages.isEmpty()) return;
+            // Only take over when the frame-paced chain has really stalled; otherwise the net would add a
+            // second, slower pacing source and drain one stage per 500ms on a slow first frame.
+            if (System.currentTimeMillis() - mInitViewLastPumpAt < INIT_VIEW_STAGE_STALL_TIMEOUT_MS) {
+                armInitViewStageSafetyNet();
+                return;
+            }
+            SpiderDebug.log("video-flow", "initView stage schedule fallback stalled left=%d", mInitViewStages.size());
+            pumpInitViewStage();
+            armInitViewStageSafetyNet();
+        }, INIT_VIEW_STAGE_FALLBACK_DELAY_MS);
+    }
+
+    private void pumpInitViewStage() {
+        mInitViewLastPumpAt = System.currentTimeMillis();
+        Runnable stage = mInitViewStages.pollFirst();
+        if (stage == null) return;
+        if (isFinishing() || isDestroyed()) {
+            int dropped = mInitViewStages.size() + 1;
+            mInitViewStages.clear();
+            SpiderDebug.log("video-flow", "initView stages dropped finishing=%s destroyed=%s dropped=%d key=%s id=%s", isFinishing(), isDestroyed(), dropped, getKey(), getId());
+            return;
+        }
+        stage.run();
+        scheduleNextInitViewStage();
+    }
+
+    private void scheduleNextInitViewStage() {
+        if (mInitViewStages.isEmpty()) return;
+        final View root = mBinding == null ? null : mBinding.getRoot();
+        if (root == null || !root.isAttachedToWindow()) {
+            SpiderDebug.log("video-flow", "initView stage schedule fallback attached=false left=%d", mInitViewStages.size());
+            App.post(this::pumpInitViewStage);
+            return;
+        }
+        // Two frame callbacks leave at least two drawn frames between stages; the looper post then puts the
+        // next stage after that frame's traversal instead of before it.
+        root.postOnAnimation(() -> root.postOnAnimation(() -> root.post(VideoActivity.this::pumpInitViewStage)));
+    }
+
+    private void registerFlagSelectionListener() {
+        if (mFlagSelectionListenerRegistered || mFlagAdapter == null) return;
+        mFlagSelectionListenerRegistered = true;
+        mBinding.flag.addOnChildViewHolderSelectedListener(new FlagSelectionListener(mBinding.flag, mFlagAdapter, this));
+        SpiderDebug.log("video-flow", "flag selection listener registered flags=%d", mFlagAdapter.getItemCount());
+    }
+
+    // C111: request the full-page spinner only when this tick really has nothing to reveal anyway. checkCast()
+    // already revealed the shell/preview for those branches, and the fast playback path forces the content
+    // state a few statements later, so asking for progress there would only flip the visible state back.
+    private boolean shouldRequestCachedDetailLoading() {
+        if (shouldRevealShellWhileLoading()) return false;
+        if (hasInitialPreview() || mAudioStageVisible) return false;
+        return !isIntentTmdbPlayback();
     }
 
     private void flushPendingFastTmdbPlayback() {
@@ -2255,7 +2442,7 @@ private boolean runtimeSourceOnly;
         mBinding.widget.title.setSelected(true);
         setText(item);
         hydrateFastTmdbPlaybackDetail(item);
-        mBinding.video.requestFocus();
+        requestInitialPlaybackFocus();
         showProgress();
         showFastTmdbPlaybackContent();
         SpiderDebug.log("video-flow", "fast tmdb playback reveal cost=%dms key=%s episode=%s", System.currentTimeMillis() - start, getKey(), getIntentPlaybackEpisodeName());
@@ -2295,6 +2482,8 @@ private boolean runtimeSourceOnly;
         Episode episode = findFastTmdbPlaybackEpisode(flag);
         if (flag == null || episode == null || TextUtils.isEmpty(episode.getUrl())) {
             mFastTmdbPlaybackStarted = false;
+            // 快速起播失败回落时从未起播，状态收圈路径全都到不了，这里必须显式收起加载圈，否则转圈永久残留。
+            hideProgress();
             SpiderDebug.log("video-flow", "fast tmdb playback missing playable episode key=%s id=%s", getKey(), getId());
             applyCachedTmdbDetailNextFrame(item);
             return;
@@ -2370,7 +2559,7 @@ private boolean runtimeSourceOnly;
         }
         if (!TextUtils.isEmpty(wall)) setContextWall(wall);
         if (mHistory != null) {
-            if (!TextUtils.isEmpty(item.getName())) mHistory.setVodName(item.getName());
+            if (!TextUtils.isEmpty(item.getName())) mHistory.setVodName(historyVodName(item));
             enrichHistoryMeta(item);
             if (!TextUtils.isEmpty(wall)) mHistory.setWallPic(wall);
             if (!TextUtils.isEmpty(artwork)) {
@@ -2494,16 +2683,14 @@ private boolean runtimeSourceOnly;
 
     private Flag findFastTmdbPlaybackFlag(Vod item) {
         if (item == null) return null;
-        Flag flag = findIntentPlaybackFlag(item.getFlags(), getIntentPlaybackFlagKey(),
+        // 不再退回第一条线路：intent 选集失配时交给正常链路按历史身份重新定位，而不是静默播列表第一条。
+        return findIntentPlaybackFlag(item.getFlags(), getIntentPlaybackFlagKey(),
                 getIntentPlaybackFlag(), getIntentPlaybackEpisodeUrl());
-        if (flag != null) return flag;
-        return item.getFlags().isEmpty() ? null : item.getFlags().get(0);
     }
 
     private Episode findFastTmdbPlaybackEpisode(Flag flag) {
-        Episode episode = findIntentPlaybackEpisode(flag, getIntentPlaybackEpisodeName(), getIntentPlaybackEpisodeUrl());
-        if (episode != null) return episode;
-        return flag == null || flag.getEpisodes().isEmpty() ? null : flag.getEpisodes().get(0);
+        // 同上：定位不到就返回 null，由 startPendingFastTmdbPlayback 回落正常链路，绝不取第一集。
+        return findIntentPlaybackEpisode(flag, getIntentPlaybackEpisodeName(), getIntentPlaybackEpisodeUrl());
     }
 
     private void prepareFastTmdbPlaybackHistory(Vod item, Flag flag, Episode episode) {
@@ -2511,7 +2698,7 @@ private boolean runtimeSourceOnly;
         mHistory = mHistory == null ? createHistory(item) : mHistory;
         if (!TextUtils.isEmpty(getWallPic())) mHistory.setWallPic(getWallPic());
         if (!TextUtils.isEmpty(getMark())) mHistory.setVodRemarks(getMark());
-        mHistory.setVodName(item.getName());
+        mHistory.setVodName(historyVodName(item));
         if (!TextUtils.isEmpty(getInitialArtwork(item))) mHistory.setVodPic(getInitialArtwork(item));
         enrichHistoryMeta(item);
         selectFastTmdbPlaybackEpisode(item, flag, episode);
@@ -2591,10 +2778,14 @@ private boolean runtimeSourceOnly;
         if (mBroken != null) mBroken.clear();
         clearDetailAdapters();
         clearTmdbDetailViews();
+        // 换条目/重新加载：手动播放状态归零，新条目的待播封面与待办焦点重新判定。
+        mManualPlaybackStarted = false;
         mBinding.scroll.scrollTo(0, 0);
         mBinding.name.setText(getName());
         mBinding.widget.title.setText(getName());
-        mBinding.video.requestFocus();
+        // 换条目后初始焦点照旧交给预览框：手动模式下在预览框上按确认键即完成「全屏 + 起播」。
+        requestInitialPlaybackFocus();
+        updateVideoCover();
         if (service() != null) {
             player().reset();
             player().stop();
@@ -2714,7 +2905,10 @@ private boolean runtimeSourceOnly;
             finish();
             return;
         }
-        if (service() == null) {
+        // C111: the adapters are created by initView stage 1-recycler, which now runs after setViewModel()
+        // registered this observer. A Result that arrives before stage 1 must wait like a missing service
+        // instead of dereferencing mFlagAdapter inside setDetail(Vod).
+        if (service() == null || mFlagAdapter == null) {
             mPendingDetail = result;
             SpiderDebug.log("video-flow", "detail pending service key=%s id=%s", getKey(), getId());
             return;
@@ -2774,7 +2968,8 @@ private boolean runtimeSourceOnly;
         if (!loadTmdbDetail) mBinding.progressLayout.showContent();
         mBinding.name.setText(item.getName());
         mFlagAdapter.addAll(item.getFlags());
-        mBinding.video.requestFocus();
+        requestInitialPlaybackFocus();
+        updateVideoCover();
         App.removeCallbacks(mR4);
         if (!checkHistory(item)) return;
         checkFlag(item);
@@ -2862,7 +3057,7 @@ private boolean runtimeSourceOnly;
         if (shouldUseTmdbLayout()) suppressTmdbNativeTextFields();
         if (hiddenByLoading && !mBinding.getRoot().hasFocus()) {
             mBinding.video.post(() -> {
-                if (!mBinding.getRoot().hasFocus()) mBinding.video.requestFocus();
+                if (!mBinding.getRoot().hasFocus()) requestInitialPlaybackFocus();
             });
         }
         SpiderDebug.log("tmdb-tv", "detail shell revealed while tmdb loads (single loading layer)");
@@ -2886,7 +3081,7 @@ private boolean runtimeSourceOnly;
         mBinding.progressLayout.showContent();
         // 内容从 INVISIBLE 恢复为 VISIBLE 后，焦点需要重新回到播放器。
         // 骨架已经先揭开时不能再抢焦点，否则会把用户已经移到选集上的焦点拽回播放器。
-        if (hiddenByLoading) mBinding.video.post(() -> mBinding.video.requestFocus());
+        if (hiddenByLoading) mBinding.video.post(this::requestInitialPlaybackFocus);
         SpiderDebug.log("tmdb-tv", "detail loading reveal (show content)");
     }
 
@@ -3162,7 +3357,8 @@ private boolean runtimeSourceOnly;
         }
         if (isFinishing() || isDestroyed()) return;
         SpiderDebug.log("video-flow", "player finish cost=%dms useParse=%s multi=%s msg=%s", System.currentTimeMillis() - playerStartTime, result.shouldUseParse(), result.getUrl().isMulti(), result.getMsg());
-        if (service() == null) {
+        // C111: same gate as setDetail(Result) — setPlayer() writes mQualityAdapter before any other guard.
+        if (service() == null || mQualityAdapter == null) {
             mPendingPlayer = result;
             SpiderDebug.log("video-flow", "player pending service key=%s id=%s", getKey(), getId());
             return;
@@ -3747,6 +3943,7 @@ private boolean runtimeSourceOnly;
         updateFocus();
         if (scrollToCurrent) scrollToCurrentEpisode();
         setR2Callback();
+        flushPendingManualEpisodeFocus();
     }
 
     private void setUpstreamNativeEpisodeItems(List<Episode> items, boolean scrollToCurrent) {
@@ -3786,6 +3983,7 @@ private boolean runtimeSourceOnly;
         updateFocus();
         if (scrollToCurrent) scrollToCurrentEpisode();
         setR2Callback();
+        flushPendingManualEpisodeFocus();
     }
 
     // 兜底：占位符只在站源一集都没返回时出现（有集数就直接上屏了）。这里负责在 TMDB
@@ -3820,7 +4018,10 @@ private boolean runtimeSourceOnly;
     }
 
     private boolean seamless(Flag flag) {
-        Episode episode = getMark().isEmpty() ? flag.find(mHistory.getEpisode(), true) : flag.find(mHistory.getVodRemarks(), false);
+        // 选集定位以历史身份（URL 优先、集号容错）为主，刮削标题（mark）只作兜底：
+        // 只有走 find(Episode) 才命中 Flag.find 的 URL 优先分支，否则同集多版本会被集名打分选成第一版本。
+        Episode episode = mHistory == null ? null : flag.find(mHistory.getEpisode(), true);
+        if (episode == null && !getMark().isEmpty()) episode = flag.find(getMark(), false);
         setQualityVisible(episode != null && episode.isSelected() && mQualityAdapter.getItemCount() > 1);
         if (episode == null || (isPlaybackFlag(flag) && episode.isSelected())) return false;
         selectEpisode(episode, false);
@@ -3829,9 +4030,39 @@ private boolean runtimeSourceOnly;
 
     @Override
     public void onItemClick(Episode item) {
-        if (shouldEnterFullscreen(item)) return;
+        if (shouldEnterFullscreen(item)) {
+            // 手动播放模式：点「当前已选中集」时 shouldEnterFullscreen 只负责进全屏，
+            // 而自动播放已关闭意味着取流不会自动起播 —— 这里补一次显式起播，
+            // 否则用户会停在全屏的暂停画面上，仍要多按一次 OK。
+            if (isManualPlaybackMode() && !player().isPlaying()) {
+                mManualPlaybackStarted = true;
+                updateVideoCover();
+                onPlay();
+            }
+            return;
+        }
         invalidateShortDramaQueue("manual-episode");
+        // 手动播放模式：本次点集即起播，并紧接全屏，省掉「先全屏、再按一次 OK」。
+        // selectEpisode 内部已经触发 onRefresh() 取流，这里只负责让那次取流必定起播。
+        if (isManualPlaybackMode()) {
+            // 起播是异步的（取流结果经 LiveData 回来才调 startPlayer），所以这里只置位，
+            // 由 shouldAutoPlay() 在真正起播那一刻一次性消费，不能在此处立即复位。
+            mExplicitPlaybackRequest = true;
+            mManualPlaybackStarted = true;
+            updateVideoCover();
+        }
         selectEpisode(item, true);
+        if (isManualPlaybackMode() && !isFullscreen()) enterFullscreen();
+    }
+
+    @Override
+    protected boolean shouldAutoPlay() {
+        // 用户主动点集时必定起播；标志在这里一次性消费（起播是异步的，不能在点集处复位）。
+        if (mExplicitPlaybackRequest) {
+            mExplicitPlaybackRequest = false;
+            return true;
+        }
+        return super.shouldAutoPlay();
     }
 
     private void onEpisodeLongClick(Episode item) {
@@ -4057,13 +4288,7 @@ private boolean runtimeSourceOnly;
                 } else {
                     mBinding.episodeGrid.scrollToPosition(position);
                 }
-                if (!requestFocus) return;
-                mBinding.episodeGrid.post(() -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    RecyclerView.ViewHolder holder = mBinding.episodeGrid.findViewHolderForAdapterPosition(position);
-                    if (holder != null) holder.itemView.requestFocus();
-                    else mBinding.episodeGrid.requestFocus();
-                });
+                if (requestFocus) requestEpisodeGridFocus(position);
             });
         } else {
             mBinding.episode.post(() -> {
@@ -4180,7 +4405,23 @@ private boolean runtimeSourceOnly;
     }
 
     private boolean isEpisodeFocusTarget(View view) {
-        return view != null && isVisible(view) && (view.isFocusable() || view.hasFocusable());
+        return view != null && isEffectivelyVisible(view) && (view.isFocusable() || view.hasFocusable());
+    }
+
+    /**
+     * 自身与全部祖先都必须是 VISIBLE。
+     * 只看自身会误判：upstream-native 选集模式会把整条 episodeHeader（选集·第 N 季 / 倒序 / 列表 / 原文件名）
+     * 置为 GONE，而内部子项自身仍是 VISIBLE，于是 findFocusUp/findFocusDown 把它当成有效邻居，
+     * 声明式 nextFocusDown 与 requestFocus 全部指向不可达目标 —— 表现为切线路后分段行“向下/向左选不到、焦点丢失”。
+     */
+    private boolean isEffectivelyVisible(View view) {
+        View current = view;
+        while (current != null) {
+            if (current.getVisibility() != View.VISIBLE) return false;
+            ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return true;
     }
 
     private List<Integer> getEpisodeFocusOrders() {
@@ -4339,7 +4580,84 @@ private boolean runtimeSourceOnly;
         return false;
     }
 
+    /**
+     * 分段行（倒序 / 分段按钮）的左右移动必须显式接管：切线路会整体重建分段行
+     * （{@code ArrayAdapter.addAll} -> notifyDataSetChanged），重建后 HorizontalGridView 的
+     * 焦点搜索不再在子项之间移动，遥控在分段行按左右没有反应（用户报告"切线路后分组按钮选不到"）。
+     * 注意不能用 {@code getSelectedPosition()} 当当前焦点：重建后它会弹回旧值
+     * （实测已移动到位置 1，松开按键又回到 2），因此以真正持有焦点的子项为基准。
+     */
+    private boolean moveArraySelection(int delta) {
+        if (delta == 0) return false;
+        int count = mArrayAdapter.getItemCount();
+        if (count <= 0) return false;
+        int current = focusedArrayPosition();
+        if (current < 0) current = mBinding.array.getSelectedPosition();
+        int target = Math.max(0, Math.min(count - 1, current + delta));
+        if (target == current) return false;
+        requestArrayFocus(target);
+        return true;
+    }
+
+    /**
+     * 分段行中真正持有焦点的子项位置（按子视图下标），焦点不在分段行时返回 -1。
+     */
+    private int focusedArrayPosition() {
+        View focus = getCurrentFocus();
+        while (focus != null) {
+            ViewParent parent = focus.getParent();
+            if (parent == mBinding.array) return mBinding.array.indexOfChild(focus);
+            focus = parent instanceof View ? (View) parent : null;
+        }
+        return -1;
+    }
+
+    /**
+     * 把焦点移到分段行的指定位置。分段行重建后自身会把选中位置弹回旧值，因此布局结束后再校正一次。
+     */
+    private void requestArrayFocus(int position) {
+        if (isFinishing() || isDestroyed()) return;
+        cancelPendingArrayFocus();
+        applyArrayFocus(position);
+        ViewTreeObserver observer = mBinding.array.getViewTreeObserver();
+        if (!observer.isAlive()) return;
+        mArrayFocusListener = new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                cancelPendingArrayFocus();
+                if (isFinishing() || isDestroyed()) return;
+                if (focusedArrayPosition() == position) return;
+                // 焦点已经离开分段行（用户继续向下/向上）时不要抢回来。
+                if (!isFocusInside(mBinding.array)) return;
+                applyArrayFocus(position);
+            }
+        };
+        observer.addOnGlobalLayoutListener(mArrayFocusListener);
+    }
+
+    private void applyArrayFocus(int position) {
+        mArrayAdapter.setSelectedPosition(position);
+        mBinding.array.setSelectedPosition(position);
+        View child = mBinding.array.getChildAt(position);
+        if (child != null && child.requestFocus()) return;
+        mBinding.array.post(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            View next = mBinding.array.getChildAt(position);
+            if (next != null) next.requestFocus();
+        });
+    }
+
+    private void cancelPendingArrayFocus() {
+        if (mArrayFocusListener == null) return;
+        ViewTreeObserver observer = mBinding.array.getViewTreeObserver();
+        if (observer.isAlive()) observer.removeOnGlobalLayoutListener(mArrayFocusListener);
+        mArrayFocusListener = null;
+    }
+
     private boolean onArrayKey(KeyEvent event) {
+        if (KeyUtil.isActionDown(event) && (KeyUtil.isLeftKey(event) || KeyUtil.isRightKey(event))) {
+            return moveArraySelection(KeyUtil.isLeftKey(event) ? -1 : 1);
+        }
         if (!KeyUtil.isActionDown(event) || !KeyUtil.isDownKey(event)) return false;
         int position = mBinding.array.getSelectedPosition();
         if (position <= 1) return false;
@@ -4378,27 +4696,43 @@ private boolean runtimeSourceOnly;
 
 
     private boolean onEpisodeKey(KeyEvent event) {
-        if (!KeyUtil.isActionDown(event)) return false;
+        if (!KeyUtil.isActionUp(event) && !KeyUtil.isActionDown(event)) return false;
+        if (KeyUtil.isActionUp(event)) {
+            mEpisodeHoldTarget = RecyclerView.NO_POSITION;
+            return false;
+        }
         RecyclerView episodeView = episodeGridMode ? mBinding.episodeGrid : mBinding.episode;
         View focus = getCurrentFocus();
         if (focus == null) return false;
         RecyclerView.ViewHolder holder = episodeView.findContainingViewHolder(focus);
         if (holder == null) return false;
-        int position = holder.getBindingAdapterPosition();
-        if (position == RecyclerView.NO_POSITION) return false;
+        int focusedPosition = holder.getBindingAdapterPosition();
+        if (focusedPosition == RecyclerView.NO_POSITION) return false;
+        if (event.getRepeatCount() == 0) mEpisodeHoldTarget = RecyclerView.NO_POSITION;
+        int position = episodeGridMode ? TmdbEpisodeGridPolicy.holdBasePosition(focusedPosition, mEpisodeHoldTarget) : focusedPosition;
         if (episodeGridMode) {
             RecyclerView.LayoutManager layoutManager = mBinding.episodeGrid.getLayoutManager();
             int spanCount = layoutManager instanceof GridLayoutManager gridLayoutManager ? gridLayoutManager.getSpanCount() : getEpisodeGridSpanCount();
             if (KeyUtil.isDownKey(event)) {
                 int target = TmdbEpisodeGridPolicy.verticalFocusTarget(position, spanCount, mEpisodeGridAdapter.getItemCount(), true);
                 if (target != TmdbEpisodeGridPolicy.NO_FOCUS_TARGET) return focusEpisodeGridPosition(target);
-                // 已到网格最后一行：继续往下必须落到“评分与数据”，否则焦点链在选集底部断掉，
+                // 长按撞到最后一排时停在原地，别让连续按键把焦点甩出网格。
+                if (event.getRepeatCount() > 0) return true;
+                // 单次按下到网格最后一行：必须落到“评分与数据”，否则焦点链在选集底部断掉，
                 // 用户报告“评分与数据下的卡片无法选中容易遥控跳过”。
                 return focusRatingRow();
             }
             if (KeyUtil.isUpKey(event)) {
                 int target = TmdbEpisodeGridPolicy.verticalFocusTarget(position, spanCount, mEpisodeGridAdapter.getItemCount(), false);
                 if (target != TmdbEpisodeGridPolicy.NO_FOCUS_TARGET) return focusEpisodeGridPosition(target);
+                if (event.getRepeatCount() > 0) return true;
+            } else if (KeyUtil.isLeftKey(event) || KeyUtil.isRightKey(event)) {
+                // 集数卡片根视图不可聚焦、adapter 也没写水平 nextFocus，交回系统 FocusFinder 时
+                // 向左找不到同排邻居（按键无效）、向右直接跳出选集网格落到上方「简介」按钮
+                // （用户报告“再左遥控无效右遥控就跑到了简介按钮”）。这里在本排内显式移动。
+                int target = TmdbEpisodeGridPolicy.horizontalFocusTarget(position, spanCount, mEpisodeGridAdapter.getItemCount(), KeyUtil.isRightKey(event));
+                if (target == TmdbEpisodeGridPolicy.NO_FOCUS_TARGET) return true;
+                return focusEpisodeGridPosition(target);
             } else {
                 return false;
             }
@@ -4410,20 +4744,100 @@ private boolean runtimeSourceOnly;
         int target = findFocusUp(episodeFocusIndex(episodeGridMode ? R.id.episodeGrid : R.id.episode));
         if (target == 0) return false;
         View view = findViewById(target);
-        if (view == null || view.getVisibility() != View.VISIBLE) return false;
+        if (!isEpisodeFocusTarget(view)) return false;
         view.requestFocus();
         return true;
     }
 
     private boolean focusEpisodeGridPosition(int position) {
-        RecyclerView.ViewHolder holder = mBinding.episodeGrid.findViewHolderForAdapterPosition(position);
-        if (holder != null && holder.itemView.requestFocus()) return true;
-        mBinding.episodeGrid.scrollToPosition(position);
-        mBinding.episodeGrid.post(() -> {
-            RecyclerView.ViewHolder next = mBinding.episodeGrid.findViewHolderForAdapterPosition(position);
-            if (next != null) next.itemView.requestFocus();
+        return focusEpisodeGridPosition(position, 0);
+    }
+
+    /**
+     * 把焦点送到集数网格的某一格，直到真正落地为止。
+     *
+     * <p>原来只排一次 {@code post}：焦点还没绑到新卡片时那段回调就跑到，取不到 holder 就悄悄放弃，
+     * 于是按住方向键的后续重复事件仍以旧卡片为基准算出同一个目标（只走一格），
+     * 而且同一时刻还挂着多条互不知情的回调，彼此用过期坐标重新对焦、把列表拽回去（用户报告松手后闪回）。
+     * 这里改成「按帧重试 + 目标即令牌」：目标换了就作废旧回调，成功落地就停。
+     */
+    private boolean focusEpisodeGridPosition(int position, int attempt) {
+        if (isFinishing() || isDestroyed()) return false;
+        int count = mEpisodeGridAdapter == null ? 0 : mEpisodeGridAdapter.getItemCount();
+        if (count == 0) return false;
+        int target = Math.max(0, Math.min(position, count - 1));
+        mEpisodeHoldTarget = target;
+        RecyclerView.ViewHolder holder = mBinding.episodeGrid.findViewHolderForAdapterPosition(target);
+        if (holder != null) {
+            mBinding.episodeGrid.stopScroll();
+            if (holder.itemView.requestFocus()) return true;
+        } else if (attempt == 0) {
+            mBinding.episodeGrid.scrollToPosition(target);
+        }
+        if (attempt >= EPISODE_HOLD_FOCUS_MAX_ATTEMPTS) return true;
+        mBinding.episodeGrid.postOnAnimation(() -> {
+            if (mEpisodeHoldTarget != target) return;
+            focusEpisodeGridPosition(target, attempt + 1);
         });
         return true;
+    }
+
+    /**
+     * 选集网格会随切线路/切分段整体重建，RecyclerView 在布局过程中回收仍持有焦点的子项，
+     * 焦点被 rootViewRequestFocus() 重新搜索并落到最上方的预览框，之后遥控无法再离开
+     * （用户报告"分组按钮向下/向左选不到"）。这里在布局结束后再校正一次。
+     */
+    private void requestEpisodeGridFocus(int position) {
+        if (isFinishing() || isDestroyed()) return;
+        mEpisodeGridFocusTarget = position;
+        mEpisodeGridFocusAttempts = 0;
+        ensureEpisodeGridFocusListener();
+        focusEpisodeGridPosition(position);
+    }
+
+    /**
+     * 焦点校正监听。只在「焦点真的丢了」（getCurrentFocus() == null）时补偿，
+     * 一旦焦点落在任何控件（包括预览框）上就立刻注销 —— 校正的目的是把
+     * 进场初始焦点送到当前集，不是长期看门狗。之前允许「焦点在预览框就抢回选集」，
+     * 与 RecyclerView 回收后 rootViewRequestFocus 把焦点交回预览框互相拉锯，
+     * 表现为焦点在播放器和集数按钮之间来回跳（用户报告）。
+     */
+    private void ensureEpisodeGridFocusListener() {
+        if (mEpisodeGridFocusListener != null) return;
+        ViewTreeObserver observer = mBinding.episodeGrid.getViewTreeObserver();
+        if (!observer.isAlive()) return;
+        mEpisodeGridFocusListener = () -> {
+            int target = mEpisodeGridFocusTarget;
+            if (target < 0 || isFinishing() || isDestroyed() || isFullscreen()) {
+                cancelPendingEpisodeGridFocus();
+                return;
+            }
+            if (isFocusInside(mBinding.episodeGrid)) {
+                cancelPendingEpisodeGridFocus();
+                return;
+            }
+            // 焦点已经在任意控件上，说明用户或系统已经安排好焦点：交还控制权，
+            // 绝不把它从预览框或别的行拽回选集。
+            if (getCurrentFocus() != null) {
+                cancelPendingEpisodeGridFocus();
+                return;
+            }
+            if (++mEpisodeGridFocusAttempts > EPISODE_GRID_FOCUS_MAX_ATTEMPTS) {
+                cancelPendingEpisodeGridFocus();
+                return;
+            }
+            focusEpisodeGridPosition(target);
+        };
+        observer.addOnGlobalLayoutListener(mEpisodeGridFocusListener);
+    }
+
+    private void cancelPendingEpisodeGridFocus() {
+        mEpisodeGridFocusTarget = -1;
+        mEpisodeGridFocusAttempts = 0;
+        if (mEpisodeGridFocusListener == null) return;
+        ViewTreeObserver observer = mBinding.episodeGrid.getViewTreeObserver();
+        if (observer.isAlive()) observer.removeOnGlobalLayoutListener(mEpisodeGridFocusListener);
+        mEpisodeGridFocusListener = null;
     }
 
     @Override
@@ -4451,13 +4865,35 @@ private boolean runtimeSourceOnly;
 
     private void selectEpisodeSegment(int position, boolean requestEpisodeFocus) {
         if (position <= 1) return;
+        // 分段位与内容都没变时必须是纯 no-op：selectEpisodeSegmentPosition 里的
+        // BaseGridView.setSelectedPosition / scrollToPosition 会再触发一次布局与选中回调，
+        // 布局里派发的 selectEpisodeSegment(position) 又会回到这里，形成持续自激循环
+        // （实测约 20Hz，日志里 onSegmentFocus / onChildViewHolderSelected /
+        // FlagSelectionListener 三路交替），把分段行刚被左右键移动的选中位冲回原分段。
+        if (!requestEpisodeFocus && position == mBinding.array.getSelectedPosition() && isSegmentContentDisplayed(position)) return;
         selectEpisodeSegmentPosition(position);
         showEpisodeSegment(position);
         if (requestEpisodeFocus) scrollToEpisode(getSelectedEpisodePosition(mEpisodeAdapter.getItems()), true);
     }
 
+    // 该分段位置对应的集数是否已经在选集适配器里展示
+    private boolean isSegmentContentDisplayed(int position) {
+        if (mArrayAdapter == null || getFlag() == null) return false;
+        List<Episode> episodes = getFlag().getEpisodes();
+        if (episodes.isEmpty()) return false;
+        int start = mArrayAdapter.getStart(position);
+        if (start < 0 || start >= episodes.size()) return false;
+        int end = Math.min(start + getEpisodeSegmentSize(episodes.size()), episodes.size());
+        return isSegmentDisplayed(episodes.subList(start, end));
+    }
+
     private void selectEpisodeSegmentPosition(int position) {
         if (position <= 1 || position >= mArrayAdapter.getItemCount()) return;
+        // 用户正在分段行上移动时，焦点位就是权威选中位；此时不要再被线路/选集重建回调
+        // 默认段位拽回去，否则刚按下的左右键会在下一帧被 BaseGridView 的
+        // focusToViewInLayout 按选中位重新回焦，表现为「分段按钮左右不动」。
+        int focused = focusedArrayPosition();
+        if (focused >= 0 && focused != position && isFocusInside(mBinding.array)) return;
         mArrayAdapter.setSelectedPosition(position);
         mBinding.array.setSelectedPosition(position);
         mBinding.array.scrollToPosition(position);
@@ -4471,9 +4907,28 @@ private boolean runtimeSourceOnly;
         int selectedPosition = getSelectedEpisodePosition(episodes);
         int positionInSegment = selectedPosition >= start && selectedPosition < end ? selectedPosition - start : 0;
         List<Episode> items = episodes.subList(start, end);
+        // 分段内容没变时绝不能再 addAll：分段行在布局期间会被 BaseGridView 的
+        // focusToViewInLayout 反复回焦，触发 onSegmentFocus -> selectEpisodeSegment ->
+        // showEpisodeSegment -> addAll(notifyDataSetChanged) -> 再次布局，形成自激循环
+        // （实测约 20Hz，且 flag 网格随之重排会再经 FlagSelectionListener 触发一次
+        // onItemClick(Flag) -> setEpisodeAdapter -> selectEpisodeSegmentPosition）。
+        // 循环里刚用左右键移动的选中位会在 25~35ms 内被弹回原分段，
+        // 表现为「切线路后分段按钮左右选不到」。内容一致就直接返回，从源头断开循环。
+        if (isSegmentDisplayed(items)) return;
         mEpisodeAdapter.addAll(items);
         mEpisodeGridAdapter.addAll(items);
         scrollToEpisode(positionInSegment);
+    }
+
+    /**
+     * 当前选集适配器是否已经在展示同一段集数（按首尾集的同一实例比较：
+     * 这些 Episode 都是同一 Flag 里 subList 出来的对象，倒序 / 换线路 / 换详情都会让首尾不同）。
+     */
+    private boolean isSegmentDisplayed(List<Episode> items) {
+        if (items.isEmpty()) return false;
+        List<Episode> shown = mEpisodeAdapter.getItems();
+        if (shown == null || shown.size() != items.size()) return false;
+        return shown.get(0) == items.get(0) && shown.get(shown.size() - 1) == items.get(items.size() - 1);
     }
 
     private boolean shouldEnterFullscreen(Episode item) {
@@ -4590,7 +5045,20 @@ private boolean runtimeSourceOnly;
     }
 
     private void onVideo() {
-        if (!isFullscreen()) enterFullscreen();
+        if (isFullscreen()) return;
+        // 手动播放模式（关闭「点播自动播放」）：播放器上的确认键一次完成「全屏 + 起播」，
+        // 与详情页“继续播放”按钮的语义一致 —— 用户不必先全屏、再按一次 OK 才看到画面。
+        // 自动播放开启时保持原行为：只进全屏，起播由播放器自身负责。
+        if (isManualPlaybackMode()) {
+            mExplicitPlaybackRequest = true;
+            mManualPlaybackStarted = true;
+            updateVideoCover();
+        }
+        enterFullscreen();
+        if (isManualPlaybackMode() && player() != null) {
+            if (player().isEmpty()) onRefresh();
+            else if (!player().isPlaying()) onPlay();
+        }
     }
 
     private void onChange() {
@@ -4911,6 +5379,7 @@ private boolean runtimeSourceOnly;
         player().stop();
         player().clear();
         mClock.setCallback(null);
+        updateVideoCover();
         if (mFlagAdapter.getItemCount() == 0) return;
         if (mEpisodeAdapter.getItemCount() == 0) return;
         getPlayer(getFlag(), getEpisode());
@@ -5278,7 +5747,7 @@ private boolean runtimeSourceOnly;
     private void showInfo() {
         showTopInfo();
         mBinding.widget.center.setVisibility(View.VISIBLE);
-        mBinding.widget.duration.setText(player().getDurationTime());
+        mBinding.widget.duration.setText(getTimelineDurationTime());
         mBinding.widget.position.setText(player().getPositionTime(0));
     }
 
@@ -5488,7 +5957,7 @@ private boolean runtimeSourceOnly;
         // 如果历史记录中已有有效倍速，使用历史倍速；否则使用默认播放倍速
         float speed = getPlaybackSpeed();
         mBinding.control.action.speed.setText(player().setSpeed(speed));
-        mHistory.setVodName(item.getName());
+        mHistory.setVodName(historyVodName(item));
         mHistory.setVodPic(getInitialArtwork(item));
         enrichHistoryMeta(item);
         PlaybackEventCollector.get().updateHistory(mHistory);
@@ -5557,6 +6026,72 @@ private boolean runtimeSourceOnly;
         return ResUtil.getScreenWidth(this) >= ResUtil.getScreenHeight(this);
     }
 
+    /**
+     * 手动播放模式：关闭「点播自动播放」后，播放页收起自动起播，预览位改显示影片封面，
+     * 点选集直接全屏起播。初始焦点仍留在预览窗口（见 {@link #requestInitialPlaybackFocus()}）。
+     * <p>
+     * 仅 TV 端生效；返回值同时受 leanback 与设置项约束，手机端行为保持不变。
+     */
+    private boolean isManualPlaybackMode() {
+        return Util.isLeanback() && !PlayerSetting.isAutoPlay();
+    }
+
+    /**
+     * 进入播放页时的初始焦点：始终交给预览窗口（与自动播放开启时一致）。
+     * <p>
+     * 曾经在手动播放模式下把初始焦点送到选集，但那会让用户按 UP 到播放器后又被拽回去、
+     * 并在切线路后与 RecyclerView 的焦点回收互相拉锯（焦点来回跳）。用户确认的预期是：
+     * 进来仍然是播放器，关闭自动播放时在播放器上按确认键一次性完成「全屏 + 起播」。
+     */
+    private void requestInitialPlaybackFocus() {
+        mBinding.video.requestFocus();
+    }
+
+    /**
+     * 选集绑定完成钩子。初始焦点已固定交给预览窗口（见 {@link #requestInitialPlaybackFocus()}），
+     * 这里保持空实现：手动播放模式不再需要在选集重建后补一次「回焦选集」的动作，
+     * 那正是焦点在播放器与集数按钮之间来回跳的来源。
+     */
+    private void flushPendingManualEpisodeFocus() {
+    }
+
+    /**
+     * 手动播放模式下、播放器尚无画面时，在预览位盖一层影片封面，避免露出没有内容的黑框。
+     */
+    private void updateVideoCover() {
+        if (mBinding == null) return;
+        // 用「用户是否已显式起播过」判断，而不是 player().isEmpty()：
+        // 手动模式下详情页会先 prepare（播放器非空但没播），用 isEmpty 会把封面误判成该隐藏。
+        boolean show = isManualPlaybackMode()
+                && !mAudioStageVisible
+                && !mManualPlaybackStarted;
+        mBinding.videoCover.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) return;
+        String url = videoCoverUrl();
+        if (TextUtils.isEmpty(url)) {
+            mBinding.videoCover.setVisibility(View.GONE);
+            return;
+        }
+        ImgUtil.load(this, url, ResUtil.dp2px(480), ResUtil.dp2px(270), new CustomTarget<>() {
+            @Override
+            public void onResourceReady(@NonNull Drawable resource, @Nullable Transition<? super Drawable> transition) {
+                mBinding.videoCover.setImageDrawable(resource);
+            }
+
+            @Override
+            public void onLoadFailed(@Nullable Drawable errorDrawable) {
+                mBinding.videoCover.setImageDrawable(null);
+            }
+        });
+    }
+
+    private String videoCoverUrl() {
+        if (!TextUtils.isEmpty(getTmdbVodPic())) return getTmdbVodPic();
+        if (!TextUtils.isEmpty(getPic())) return getPic();
+        if (mVod != null && !TextUtils.isEmpty(mVod.getPic())) return mVod.getPic();
+        return mHistory == null ? "" : mHistory.getVodPic();
+    }
+
     private boolean hasInitialPreview() {
         return !getName().isEmpty() || !getPic().isEmpty() || !getWallPic().isEmpty();
     }
@@ -5567,14 +6102,27 @@ private boolean runtimeSourceOnly;
         if (!getContent().isEmpty()) mBinding.content.setTag(getContent());
         if (!getPic().isEmpty()) setArtwork(getPic());
         else if (!getWallPic().isEmpty()) setContextWall(getWallPic());
-        mBinding.video.requestFocus();
+        requestInitialPlaybackFocus();
+        updateVideoCover();
+    }
+
+    /**
+     * 推送片名：真实片名在 Intent 里，源站 Vod 常常只有裸地址，直接用它弹幕必然搜不到。
+     */
+    private String historyVodName(Vod item) {
+        String name = item == null ? "" : item.getName();
+        if (!SiteApi.PUSH.equals(getKey())) return name;
+        PushParser.Parsed push = PushParser.fromId(getId());
+        if (push.hasExplicitTitle()) return push.getTitle();
+        String intentName = getName();
+        return TmdbMatchPolicy.shouldAutoMatchPushTitle(intentName) ? intentName : name;
     }
 
     private History createHistory(Vod item) {
         History history = new History();
         history.setKey(getHistoryKey());
         history.setCid(VodConfig.getCid());
-        history.setVodName(item.getName());
+        history.setVodName(historyVodName(item));
         history.setVodPic(getInitialArtwork(item));
         history.setWallPic(getWallPic());
         history.findEpisode(item.getFlags());
@@ -5636,7 +6184,15 @@ private boolean runtimeSourceOnly;
         if (!TextUtils.isEmpty(playUrl)) {
             for (Episode episode : flag.getEpisodes()) if (TextUtils.equals(playUrl, episode.getUrl())) return episode;
         }
-        return TextUtils.isEmpty(playName) ? null : flag.find(playName, true);
+        if (!TextUtils.isEmpty(playName)) {
+            Episode episode = flag.find(playName, true);
+            // 名称通道只采纳真实命中：Flag.find 在打分全为 0 时可能用 position 槽位兜底，返回与该集名无关的条目；
+            // strict 只挡首集兜底，不挡位置兜底。命中不了就继续走历史集身份兜底。
+            if (episode != null && (flag.getEpisodes().size() == 1
+                    || episode.getScore(playName, Util.getEpisodeNumber(playName)) > 0)) return episode;
+        }
+        // 集名在换源/刮削后常失真，名称通道又可能被 position 兜底伪命中，最后用历史集身份（URL 优先 + 集号容错）兜底。
+        return mHistory == null ? null : flag.find(mHistory.getEpisode(), true);
     }
 
     private void saveHistory() {
@@ -5854,7 +6410,7 @@ private boolean runtimeSourceOnly;
             }
         }
         boolean historyReloaded = reloadHistoryAfterTmdbMatch();
-        if (name) mHistory.setVodName(item.getName());
+        if (name) mHistory.setVodName(historyVodName(item));
         if (name && !TextUtils.equals(mBinding.name.getText(), item.getName())) {
             mBinding.name.setText(item.getName());
         }
@@ -6134,6 +6690,10 @@ private boolean runtimeSourceOnly;
         clearKaraokeState();
         mPlaybackRequestActive = false;
         mPlaybackPlayerStarted = false;
+        // 起播失败：清掉一次性起播意图与已起播标记，否则之后每次取流都会被当成「用户主动起播」。
+        mExplicitPlaybackRequest = false;
+        mManualPlaybackStarted = false;
+        updateVideoCover();
         player().resetTrack();
         player().reset();
         player().stop();
@@ -6191,6 +6751,7 @@ private boolean runtimeSourceOnly;
                 if (!pendingResumeSeekApplied) applyAutoIntroSkip();
                 setAdFeedbackVisible(); // 播放地址确定后按格式刷新"有广告"按钮
                 if (!mShortDramaQueueSessionActive) beginShortDramaQueue();
+                updateVideoCover();
                 break;
             case Player.STATE_ENDED:
                 if (mShortDramaQueue.shouldSuppressLegacyAutoAdvance()) {
@@ -7912,6 +8473,7 @@ private boolean runtimeSourceOnly;
         if (isRedirect() || !event.isVod()) return;
         if (mTmdbUIAdapter != null) mTmdbUIAdapter.invalidateSubscription();
         if (mParseAdapter != null) mParseAdapter.addAll(VodConfig.get().getParses());
+        if (player() != null) player().dropStaleBundleDanmaku();
     }
 
     /**
@@ -8303,6 +8865,27 @@ private boolean runtimeSourceOnly;
         return false;
     }
 
+    /**
+     * 「倍速」按钮的上下微调。
+     *
+     * <p>控制栏样式只给了 DOWN 方向的邻居（{@code Control.nextFocusDown=timeBar}），UP 方向在
+     * 控制栏内没有可聚焦目标，{@link PlayerControlFocusHelper#handleKey} 因此会把 UP 判成
+     * 「会把焦点甩出控制栏」并吞掉，事件根本到不了 {@code speed.setUpListener()}。
+     * 这里在焦点恰为倍速按钮时先接管，与片头/片尾的写法保持一致。
+     */
+    private boolean dispatchSpeedAdjust(KeyEvent event) {
+        if (!KeyUtil.isActionDown(event) || !isVisible(mBinding.control.getRoot())) return false;
+        if (getCurrentFocus() != mBinding.control.action.speed) return false;
+        if (KeyUtil.isUpKey(event)) {
+            onSpeedAdd();
+            return true;
+        } else if (KeyUtil.isDownKey(event)) {
+            onSpeedSub();
+            return true;
+        }
+        return false;
+    }
+
     @Override
     protected boolean dispatchDiscMenuKey(KeyEvent event) {
         // Let TV controls own DPAD/ENTER while visible, including the shared
@@ -8315,9 +8898,10 @@ private boolean runtimeSourceOnly;
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (dispatchDiscMenuKey(event)) return true;
         if (KeyUtil.isActionUp(event) && KeyUtil.isBackKey(event) && mBinding.lutQuick.hideIfVisible()) return true;
-        if (mKeyDown.isChangingSpeed() && KeyUtil.isActionUp(event)) {
+        if (mKeyDown.isChangingSpeed() && KeyUtil.isActionUp(event) && KeyUtil.isUpKey(event)) {
             mKeyDown.releaseSpeed();
             if (isVisible(mBinding.lutQuick)) return dispatchLutQuickKey(event);
+            return true;
         }
         if (isVisible(mBinding.lutQuick)) return dispatchLutQuickKey(event);
         if (isFullscreen() && KeyUtil.isMenuKey(event)) {
@@ -8329,6 +8913,7 @@ private boolean runtimeSourceOnly;
         if (isVisible(mBinding.control.getRoot())) {
             setR1Callback();
             if (dispatchOpeningEndingAdjust(event)) return true;
+            if (dispatchSpeedAdjust(event)) return true;
             if (PlayerControlFocusHelper.handleKey(mBinding.control.getRoot(), getFocus2(), event)) return true;
             if (PlayerControlFocusHelper.containsFocus(mBinding.control.getRoot())) mFocus2 = getCurrentFocus();
         }
@@ -8475,7 +9060,7 @@ private boolean runtimeSourceOnly;
     @Override
     public void onSeeking(long time) {
         mBinding.widget.center.setVisibility(View.VISIBLE);
-        mBinding.widget.duration.setText(player().getDurationTime());
+        mBinding.widget.duration.setText(getTimelineDurationTime());
         mBinding.widget.position.setText(player().getPositionTime(time));
         mBinding.widget.action.setImageResource(time > 0 ? R.drawable.ic_widget_forward : R.drawable.ic_widget_rewind);
         hideProgress();
@@ -8783,6 +9368,8 @@ private boolean runtimeSourceOnly;
     @Override
     protected void onDestroy() {
         invalidateShortDramaQueue("destroy");
+        cancelPendingEpisodeGridFocus();
+        cancelPendingArrayFocus();
         cancelTvTouch();
         mIntroSkipPlayback.reset();
         cancelAiSeasonAnalysis(false);
@@ -8816,10 +9403,12 @@ private boolean runtimeSourceOnly;
         App.removeCallbacks(mTmdbDetailTimeout);
         App.removeCallbacks(mTmdbEpisodeTimeout);
         resetPendingTmdbBind();
-        mViewModel.getResult().removeObserver(mObserveDetail);
-        mViewModel.getPlayer().removeObserver(mObservePlayer);
-        mViewModel.getSearch().removeObserver(mObserveSearch);
-        mViewModel.getSearchProgress().removeObserver(mObserveSearchProgress);
+        if (mViewModel != null) {
+            mViewModel.getResult().removeObserver(mObserveDetail);
+            mViewModel.getPlayer().removeObserver(mObservePlayer);
+            mViewModel.getSearch().removeObserver(mObserveSearch);
+            mViewModel.getSearchProgress().removeObserver(mObserveSearchProgress);
+        }
         SiteHealthStore.flush();
         super.onDestroy();
     }
