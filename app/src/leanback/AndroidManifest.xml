@@ -144,6 +144,8 @@
 
         <activity android:name=".ui.activity.AppBrandingActivity" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" android:screenOrientation="sensorLandscape" />
 
+        <activity android:name=".ui.activity.PluginManagerActivity" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" android:screenOrientation="sensorLandscape" />
+
        <service android:name=".service.DLNARendererService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
 
         <service android:name=".service.DLNACastService" android:exported="false" />
