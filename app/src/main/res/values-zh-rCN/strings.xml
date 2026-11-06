@@ -890,6 +890,13 @@
     <string name="setting_one_key_sync">一键同步</string>
     <string name="setting_incognito">无痕模式</string>
     <string name="setting_touch_optimization">触屏优化</string>
+    <string name="setting_liquid_glass">液态玻璃特效</string>
+    <string name="setting_short_drama_collected">短剧模式</string>
+    <string name="setting_glass_blur">模糊效果</string>
+    <string name="setting_glass_distortion">扭曲效果</string>
+    <string name="setting_glass_translucency">通透度</string>
+    <string name="setting_glass_dispersion">边缘色散</string>
+    <string name="setting_glass_reset">重置液态玻璃效果</string>
     <string name="setting_drive_check">网盘检测</string>
     <string name="setting_audio_source">音频源配置</string>
     <string name="setting_novel_source">小说源配置</string>

@@ -90,6 +90,14 @@ public class SettingPersonalFragment extends BaseFragment {
         mBinding.searchResultSort.setOnClickListener(this::setSearchResultSort);
         mBinding.resetApp.setOnClickListener(this::showResetAppDialog);
         mBinding.appBranding.setOnClickListener(this::startAppBranding);
+        mBinding.touchOptimization.setOnClickListener(this::setTouchOptimization);
+        mBinding.liquidGlass.setOnClickListener(this::setLiquidGlass);
+        mBinding.dramaCollected.setOnClickListener(this::setShortDramaCollected);
+        mBinding.glassBlur.setOnClickListener(this::setGlassBlur);
+        mBinding.glassDistortion.setOnClickListener(this::setGlassDistortion);
+        mBinding.glassTranslucency.setOnClickListener(this::setGlassTranslucency);
+        mBinding.glassDispersion.setOnClickListener(this::setGlassDispersion);
+        mBinding.glassReset.setOnClickListener(this::resetGlass);
     }
 
     private void setText() {
@@ -108,6 +116,13 @@ public class SettingPersonalFragment extends BaseFragment {
         mBinding.siteColumnText.setText((siteColumn = getResources().getStringArray(R.array.select_site_column))[Setting.getSiteColumn() - 1]);
         mBinding.searchResultSortText.setText((searchResultSort = getResources().getStringArray(R.array.select_search_result_sort))[Setting.getSearchResultSort()]);
         mBinding.appBrandingText.setText(AppBranding.getSummary(requireContext()));
+        mBinding.touchOptimizationText.setText(getSwitch(Setting.isTouchOptimized()));
+        mBinding.liquidGlassText.setText(getSwitch(Setting.isLiquidGlass()));
+        mBinding.dramaCollectedText.setText(getSwitch(Setting.isShortDramaCollected()));
+        mBinding.glassBlurText.setText(String.valueOf(Setting.getGlassBlur()));
+        mBinding.glassDistortionText.setText(String.valueOf(Setting.getGlassDistortion()));
+        mBinding.glassTranslucencyText.setText(Setting.getGlassTranslucency() + "%");
+        mBinding.glassDispersionText.setText(getSwitch(Setting.isGlassDispersion()));
     }
 
     private String getSearchColumnText() {
@@ -234,6 +249,65 @@ public class SettingPersonalFragment extends BaseFragment {
 
     private void startAppBranding(View view) {
         AppBrandingActivity.start(requireActivity());
+    }
+
+    private void setTouchOptimization(View view) {
+        boolean enabled = !Setting.isTouchOptimized();
+        Setting.putTouchOptimized(enabled);
+        mBinding.touchOptimizationText.setText(getSwitch(enabled));
+    }
+
+    private void setLiquidGlass(View view) {
+        Setting.putLiquidGlass(!Setting.isLiquidGlass());
+        ConfigEvent.common();
+        // 开关现在同时管底栏玻璃和系统控件玻璃：控件玻璃走主题 token，改完要全屏重建才生效。
+        RefreshEvent.theme();
+        setText();
+    }
+
+    private void setShortDramaCollected(View view) {
+        Setting.putShortDramaCollected(!Setting.isShortDramaCollected());
+        ConfigEvent.common();
+        setText();
+    }
+
+    private void setGlassBlur(View view) {
+        SliderNumberDialog.show(requireActivity(), R.string.setting_glass_blur, Setting.getGlassBlur(), 0, 40, value -> {
+            Setting.putGlassBlur(value);
+            ConfigEvent.common();
+            setText();
+        });
+    }
+
+    private void setGlassDistortion(View view) {
+        SliderNumberDialog.show(requireActivity(), R.string.setting_glass_distortion, Setting.getGlassDistortion(), 0, 30, value -> {
+            Setting.putGlassDistortion(value);
+            ConfigEvent.common();
+            setText();
+        });
+    }
+
+    private void setGlassTranslucency(View view) {
+        SliderNumberDialog.show(requireActivity(), R.string.setting_glass_translucency, Setting.getGlassTranslucency(), 0, 100, value -> {
+            Setting.putGlassTranslucency(value);
+            ConfigEvent.common();
+            setText();
+        });
+    }
+
+    private void setGlassDispersion(View view) {
+        Setting.putGlassDispersion(!Setting.isGlassDispersion());
+        ConfigEvent.common();
+        setText();
+    }
+
+    private void resetGlass(View view) {
+        Setting.putGlassBlur(5);
+        Setting.putGlassDistortion(30);
+        Setting.putGlassTranslucency(50);
+        Setting.putGlassDispersion(true);
+        ConfigEvent.common();
+        setText();
     }
 
     private void resetApp() {

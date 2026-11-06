@@ -845,6 +845,13 @@
     <string name="setting_one_key_sync">一鍵同步</string>
     <string name="setting_incognito">無痕模式</string>
     <string name="setting_touch_optimization">觸屏優化</string>
+    <string name="setting_liquid_glass">液態玻璃特效</string>
+    <string name="setting_short_drama_collected">短劇模式</string>
+    <string name="setting_glass_blur">模糊效果</string>
+    <string name="setting_glass_distortion">扭曲效果</string>
+    <string name="setting_glass_translucency">通透度</string>
+    <string name="setting_glass_dispersion">邊緣色散</string>
+    <string name="setting_glass_reset">重置液態玻璃效果</string>
     <string name="setting_drive_check">網盤檢測</string>
     <string name="setting_audio_source">音訊源配置</string>
     <string name="setting_novel_source">小說源配置</string>

@@ -32,6 +32,8 @@ final class WebHomeChromeController {
 
         boolean isWebHomeChromeActive();
 
+        boolean isGlassBottomBarActive();
+
         void onWebHomeChromeChanged(String mode);
 
         void onWebHomeViewportChanged(WebHomeViewport viewport);
@@ -177,11 +179,16 @@ final class WebHomeChromeController {
     private void applyLayout() {
         boolean active = isActive();
         boolean normal = !active || WebHomeChrome.NORMAL.equals(mode);
-        binding.navigation.setVisibility(normal ? View.VISIBLE : View.GONE);
+        binding.navigation.setVisibility(normal && !host.isGlassBottomBarActive() ? View.VISIBLE : View.GONE);
         WebHomeViewport current = buildViewport();
         int top = normal ? current.getSafeTop() : 0;
         int bottom = normal ? current.getSafeBottom() : 0;
-        binding.container.setPadding(0, top, 0, 0);
+        // While the liquid-glass bar floats over the content, inset the
+        // container's bottom by the bar slot height so the last rows of
+        // scrollable pages can clear it. This is the single place that sets
+        // container padding; HomeActivity must not fight it.
+        int glassBottom = normal && host.isGlassBottomBarActive() ? Math.round(88 * binding.getRoot().getResources().getDisplayMetrics().density) : 0;
+        binding.container.setPadding(0, top, 0, glassBottom);
         binding.navigation.setPadding(0, 0, 0, bottom);
         ViewGroup.LayoutParams params = binding.navigation.getLayoutParams();
         int height = navigationBaseHeight + bottom;

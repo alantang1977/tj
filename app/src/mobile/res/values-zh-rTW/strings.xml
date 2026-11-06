@@ -7,7 +7,47 @@
     <!-- Nav -->
     <string name="nav_vod">點播</string>
     <string name="nav_live">直播</string>
+    <string name="nav_drama">短劇</string>
     <string name="nav_setting">設定</string>
+
+    <!-- 本地源 -->
+    <string name="local_source">本地源</string>
+    <string name="local_source_search">搜尋本地源</string>
+    <string name="local_source_empty">暫無本地源</string>
+    <string name="local_source_count">共 %1$d 個本地源</string>
+    <string name="local_source_pick_dir">選擇資料夾</string>
+    <string name="local_source_pick_file">選擇檔案</string>
+    <string name="local_source_scan_all">掃描全部</string>
+    <string name="local_source_select_all">全選</string>
+    <string name="local_source_invert">反選</string>
+    <string name="local_source_remove">刪除</string>
+    <string name="local_source_clear">清空</string>
+    <string name="local_source_pick_php_root">PHP 根目錄</string>
+    <string name="local_source_secret">密源</string>
+    <string name="local_source_top">頂部</string>
+    <string name="local_source_bottom">底部</string>
+    <string name="local_source_scanning">正在掃描…</string>
+    <string name="local_source_imported">已匯入 %1$d 個源</string>
+    <string name="local_source_deleted">已刪除 %1$d 個源</string>
+    <string name="local_source_bad_ext">不支援的檔案類型</string>
+    <string name="local_source_php_hint">PHP 根目錄已設定</string>
+    <string name="local_source_php_root_label">PHP 根目錄：%1$s</string>
+    <string name="local_source_php_root_empty">未設定</string>
+
+    <!-- Short drama section -->
+    <string name="drama_recommend">推薦</string>
+    <string name="drama_theater">劇場</string>
+    <string name="drama_history">歷史</string>
+    <string name="drama_home">首頁</string>
+    <string name="drama_detail">詳情</string>
+    <string name="drama_episodes">選集</string>
+    <string name="drama_source_title">選擇短劇源</string>
+    <string name="drama_source_count">%1$d 個源</string>
+    <string name="drama_empty">當前配置裡沒有短劇源</string>
+    <string name="drama_no_content">這個源暫時沒有短劇</string>
+    <string name="drama_load_failed">載入失敗，點擊重試</string>
+    <string name="drama_need_parse">該劇需要解析播放，請點詳情觀看</string>
+    <string name="drama_episode_meta">第%1$d集 | 共%2$d集</string>
 
     <!-- Menu -->
     <string name="menu_sync">同步</string>

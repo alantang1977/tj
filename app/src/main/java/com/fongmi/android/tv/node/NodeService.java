@@ -260,7 +260,7 @@ public class NodeService extends Service {
     private void updateNotification(String text) {
         try {
             Notification notification = new NotificationCompat.Builder(this, Notify.DEFAULT)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle("猫源")
                     .setContentText(text)
                     .setOnlyAlertOnce(true)
@@ -274,7 +274,7 @@ public class NodeService extends Service {
 
     private Notification notification(String text) {
         return new NotificationCompat.Builder(this, Notify.DEFAULT)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("猫源")
                 .setContentText(text)
                 .setOnlyAlertOnce(true)

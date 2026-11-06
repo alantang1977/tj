@@ -26,7 +26,7 @@ final class NodeNotify {
     static void progress(Context context, String text, int percent) {
         try {
             NotificationCompat.Builder builder = new NotificationCompat.Builder(context, Notify.DEFAULT)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle("猫源")
                     .setContentText(text)
                     .setOnlyAlertOnce(true)
@@ -42,7 +42,7 @@ final class NodeNotify {
     static void done(Context context, String text) {
         try {
             Notification notification = new NotificationCompat.Builder(context, Notify.DEFAULT)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle("猫源")
                     .setContentText(text)
                     .setOnlyAlertOnce(true)

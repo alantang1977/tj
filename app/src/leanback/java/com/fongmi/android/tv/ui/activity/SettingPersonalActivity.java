@@ -87,6 +87,7 @@ public class SettingPersonalActivity extends BaseActivity {
         mBinding.appBranding.setOnClickListener(this::startAppBranding);
         mBinding.resetApp.setOnClickListener(this::showResetAppDialog);
         mBinding.touchOptimization.setOnClickListener(this::setTouchOptimization);
+        mBinding.liquidGlass.setOnClickListener(this::setLiquidGlass);
     }
 
     @Override
@@ -117,6 +118,7 @@ public class SettingPersonalActivity extends BaseActivity {
         // mBinding.searchColumnText.setText(getSearchColumnText()); // 在搜索页面切换更方便
         mBinding.appBrandingText.setText(AppBranding.getSummary(this));
         mBinding.touchOptimizationText.setText(getSwitch(Setting.isTouchOptimized()));
+        mBinding.liquidGlassText.setText(getSwitch(Setting.isLiquidGlass()));
     }
 
     private String getSearchColumnText() {
@@ -267,6 +269,13 @@ public class SettingPersonalActivity extends BaseActivity {
         Setting.putTouchOptimized(enabled);
         mBinding.touchOptimizationText.setText(getSwitch(enabled));
         TouchOptimizationHelper.sync(getWindow().getDecorView());
+    }
+
+    private void setLiquidGlass(View view) {
+        Setting.putLiquidGlass(!Setting.isLiquidGlass());
+        // 开关现在同时管底栏玻璃和系统控件玻璃：控件玻璃走主题 token，改完要全屏重建才生效。
+        RefreshEvent.theme();
+        setText();
     }
 
     private void resetApp() {

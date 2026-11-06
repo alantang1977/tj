@@ -208,4 +208,87 @@ public record ThemeTokens(
         ThemeContrast.require(this);
         return this;
     }
+
+    /** 液态玻璃描边色：与弹窗玻璃 chip（selector_dialog_glass_chip）同一取值。 */
+    public static final int GLASS_OUTLINE = 0x3D9B9FD0;
+
+    /**
+     * 液态玻璃控件的 token 派生：只动绑定器能按基线色改写的三个表面角色
+     * （{@code SURFACE} / {@code SURFACE_CONTAINER} / {@code SURFACE_CONTAINER_HIGH}）与描边角色
+     * （{@code OUTLINE}），其余角色（主色、文字、焦点、遮罩、播放器等）一律不动。
+     *
+     * <p>表面填充的透明度按透光度缩放（{@code translucency} 0..1，取自「透光」设置）：
+     * 透光 50% 时填充剩一半不透明度，与底栏玻璃同一口径。描边换成玻璃亮边。主色、文字与
+     * 焦点色不动，因此按钮强调色、文字可读性与焦点环都不受影响；填充半透明后，控件后的
+     * 内容透出来，才是玻璃感的来源。
+     *
+     * <p>其余表面值（Dim/Bright/Lowest/Low/Highest）没有对应的绑定角色，绑定器本来就
+     * 不改写它们，这里也不动——改了也没有任何视图会跟随。
+     */
+    public ThemeTokens glass(float translucency) {
+        float factor = 1f - Math.max(0f, Math.min(1f, translucency));
+        return new ThemeTokens(
+                colorPrimary(),
+                colorOnPrimary(),
+                colorPrimaryContainer(),
+                colorOnPrimaryContainer(),
+                colorSecondary(),
+                colorOnSecondary(),
+                colorSecondaryContainer(),
+                colorOnSecondaryContainer(),
+                colorTertiary(),
+                colorOnTertiary(),
+                colorError(),
+                colorOnError(),
+                colorErrorContainer(),
+                colorOnErrorContainer(),
+                colorSuccess(),
+                colorOnSuccess(),
+                colorSuccessContainer(),
+                colorOnSuccessContainer(),
+                colorWarning(),
+                colorOnWarning(),
+                colorWarningContainer(),
+                colorOnWarningContainer(),
+                glassFill(colorSurface(), factor),
+                colorSurfaceDim(),
+                colorSurfaceBright(),
+                colorSurfaceContainerLowest(),
+                colorSurfaceContainerLow(),
+                glassFill(colorSurfaceContainer(), factor),
+                glassFill(colorSurfaceContainerHigh(), factor),
+                colorSurfaceContainerHighest(),
+                colorOnSurface(),
+                colorOnSurfaceVariant(),
+                GLASS_OUTLINE,
+                colorOutlineVariant(),
+                colorInverseSurface(),
+                colorInverseOnSurface(),
+                colorInversePrimary(),
+                colorScrim(),
+                colorShadow(),
+                colorFocus(),
+                focusScale(),
+                colorPlayerFocusRing(),
+                colorPlayerCurrentRing(),
+                dialogOpacity(),
+                colorPlayerControl(),
+                colorPlayerControlMuted(),
+                colorPlayerControlActive(),
+                colorPlayerScrim(),
+                colorHealthGood(),
+                colorHealthWarn(),
+                colorHealthBad(),
+                colorOverlayLight(),
+                colorOverlayDark(),
+                colorItemOverlay(),
+                colorOnItemOverlay()
+        );
+    }
+
+    /** 按系数缩放一个填充色的不透明度，色相与彩度不变。 */
+    private static int glassFill(int color, float factor) {
+        int alpha = Math.round(((color >>> 24) & 0xFF) * factor);
+        return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
+    }
 }

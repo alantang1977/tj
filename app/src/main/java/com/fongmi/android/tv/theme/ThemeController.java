@@ -194,13 +194,27 @@ public final class ThemeController {
         boolean systemDark = resolvedDark(context);
         ThemeMode themeMode = currentThemeMode();
         int themeColor = com.fongmi.android.tv.setting.Setting.getThemeColor();
+        ThemeTokens resolved;
         if (themeColor == -1) {
-            return ThemeResolver.resolve(themeMode, ThemeSeed.NONE, 0, 0, profile, null, systemDark);
+            resolved = ThemeResolver.resolve(themeMode, ThemeSeed.NONE, 0, 0, profile, null, systemDark);
+        } else {
+            ThemeSeed seed = themeColor == 0 ? ThemeSeed.WALLPAPER : ThemeSeed.EXPLICIT;
+            int explicit = themeColor == 0 ? 0 : themeColor;
+            int wallpaper = com.fongmi.android.tv.setting.Setting.getWallColor();
+            resolved = ThemeResolver.resolve(themeMode, seed, explicit, wallpaper, profile, null, systemDark);
         }
-        ThemeSeed seed = themeColor == 0 ? ThemeSeed.WALLPAPER : ThemeSeed.EXPLICIT;
-        int explicit = themeColor == 0 ? 0 : themeColor;
-        int wallpaper = com.fongmi.android.tv.setting.Setting.getWallColor();
-        return ThemeResolver.resolve(themeMode, seed, explicit, wallpaper, profile, null, systemDark);
+        return glassControls(resolved);
+    }
+
+    /**
+     * 液态玻璃控件：开关开时，把解析出的当前 token 派生成玻璃版（表面半透明 + 玻璃描边），
+     * 绑定器随后按同一套精确匹配规则把它写进所有控件。开关关时原样返回。
+     * 基线（frozenPalette）不走这里，因此绑定器的比对基准永远是编译期原色。
+     */
+    private static ThemeTokens glassControls(ThemeTokens resolved) {
+        if (resolved == null) return null;
+        if (!com.fongmi.android.tv.setting.Setting.isLiquidGlass()) return resolved;
+        return resolved.glass(com.fongmi.android.tv.setting.Setting.getGlassTranslucency() / 100f);
     }
 
     /**
@@ -380,6 +394,21 @@ public final class ThemeController {
     public static void bindDialog(Dialog dialog) {
         if (dialog == null || dialog.getWindow() == null) return;
         bindTheme(dialog.getWindow().getDecorView());
+        applyGlassWindowBlur(dialog);
+    }
+
+    /**
+     * 液态玻璃控件：弹窗背后的实时模糊（API 31+ 才有 Window 背景模糊）。面板本身已由
+     * 玻璃 token 写成半透明，配上背景模糊才是完整的玻璃弹窗；低版本只剩半透明面板。
+     * 模糊半径取「模糊效果」设置（0-40dp），0 表示不模糊。
+     */
+    private static void applyGlassWindowBlur(Dialog dialog) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return;
+        if (!com.fongmi.android.tv.setting.Setting.isLiquidGlass()) return;
+        android.view.Window window = dialog.getWindow();
+        if (window == null) return;
+        float density = App.get().getResources().getDisplayMetrics().density;
+        window.setBackgroundBlurRadius((int) (com.fongmi.android.tv.setting.Setting.getGlassBlur() * density));
     }
 
     /**
