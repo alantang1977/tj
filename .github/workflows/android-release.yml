@@ -185,14 +185,11 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          KS_BASE64="${RELEASE_KEYSTORE_BASE64:-$KEYSTORE_BASE64}"
-          STORE_PASSWORD="${RELEASE_STORE_PASSWORD:-$KEY_PASSWORD}"
-          ALIAS="${RELEASE_KEY_ALIAS:-$KEY_ALIAS}"
-          KEY_PASS="${RELEASE_KEY_PASSWORD:-$STORE_PASSWORD}"
+          KS_BASE64="$RELEASE_KEYSTORE_BASE64"
+          STORE_PASSWORD="$RELEASE_STORE_PASSWORD"
+          ALIAS="$RELEASE_KEY_ALIAS"
+          KEY_PASS="$RELEASE_KEY_PASSWORD"
           if [ -z "$KS_BASE64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$ALIAS" ]; then
             echo "::error title=Release signing not configured::Configure RELEASE_KEYSTORE_BASE64, RELEASE_KEY_ALIAS and RELEASE_STORE_PASSWORD in repository secrets."
             exit 1
@@ -206,6 +203,9 @@ jobs:
             echo "keyPassword=$KEY_PASS"
           } > local.properties
           echo "Release signing configured"
+
+      - name: Verify signing keystore fingerprint
+        run: python3 custom/local_customize.py --verify-signing
 
       - name: Build four release APKs
         env:
