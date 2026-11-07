@@ -152,12 +152,18 @@ public class SearchActivity extends BaseActivity implements WordAdapter.OnClickL
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        mCurrentSite = !TextUtils.isEmpty(getSiteKey());
+        mCurrentSite = !TextUtils.isEmpty(getSiteKey()) || isDefaultCurrentSite();
         CustomKeyboard.init(this, mBinding);
         setRecyclerView();
         checkKeyword();
         setSearchScope();
         onSearch();
+    }
+
+    private boolean isDefaultCurrentSite() {
+        if (!Setting.isSearchCurrentSiteDefault()) return false;
+        Site site = getHome();
+        return !site.isEmpty() && site.isSearchable();
     }
 
     @Override

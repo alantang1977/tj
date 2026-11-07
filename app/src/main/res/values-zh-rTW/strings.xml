@@ -1,30 +1,29 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources xmlns:ns0="http://schemas.android.com/apk/res-auto">
+<resources xmlns:xliff="http://schemas.android.com/apk/res-auto">
 
-    
-    <string name="app_name">湯影視</string>
+    <!-- App -->
+    <string name="app_name">墨影視</string>
    <string name="setting_app_branding">APP 圖示</string>
     <string name="app_branding_icon_current">預設圖示</string>
     <string name="app_branding_icon_history">原始圖示</string>
     <string name="app_branding_icon_select">選擇圖示</string>
     <string name="app_exit_confirm">再按一次退出應用</string>
 
-    
+    <!-- Live -->
     <string name="live_pass">密碼</string>
     <string name="live_refresh">刷新</string>
-    <string name="live_line">來源 <ns0:g name="name">%s</ns0:g></string>
+    <string name="live_line">來源 <xliff:g name="name">%s</xliff:g></string>
     <string name="live_control_source">直播源</string>
-    <string name="live_control_source_named">直播源：<ns0:g name="name">%s</ns0:g></string>
+    <string name="live_control_source_named">直播源：<xliff:g name="name">%s</xliff:g></string>
 
-    
-    <string name="detail_title"><ns0:g name="name">%s</ns0:g>：<ns0:g name="name">%s</ns0:g></string>
-    <string name="detail_site">站源：<ns0:g name="name">%s</ns0:g></string>
-    <string name="detail_year">年份：<ns0:g name="name">%s</ns0:g></string>
-    <string name="detail_area">地區：<ns0:g name="name">%s</ns0:g></string>
-    <string name="detail_type">類型：<ns0:g name="name">%s</ns0:g></string>
-    <string name="detail_director">導演：<ns0:g name="name">%s</ns0:g></string>
-    <string name="detail_actor">演員：<ns0:g name="name">%s</ns0:g></string>
-    <string name="detail_content">簡介：<ns0:g name="name">%s</ns0:g></string>
+    <!-- Detail -->
+    <string name="detail_title"><xliff:g name="name">%s</xliff:g>：<xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_site">站源：<xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_year">年份：<xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_area">地區：<xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_type">類型：<xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_director">導演：<xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_actor">演員：<xliff:g name="name">%s</xliff:g></string>
+    <string name="detail_content">簡介：<xliff:g name="name">%s</xliff:g></string>
     <string name="detail_desc">簡介</string>
     <string name="detail_episode">選集</string>
     <string name="detail_episode_season_context">選集 · 第 %1$d 季</string>
@@ -39,15 +38,15 @@
     <string name="detail_episode_file_name_original_action">切換到原文件名</string>
     <string name="detail_episode_file_name_scraped_action">切換到刮削文件名</string>
 
-    
+    <!-- Keep -->
     <string name="keep">收藏</string>
     <string name="keep_add">已收藏</string>
     <string name="keep_del">已取消收藏</string>
-    
+    <!-- 收藏頁空態：設計文件 §9.9 要求「標題 + 解釋 + 一個主動作」。 -->
     <string name="keep_empty_title">還沒有收藏</string>
     <string name="keep_empty_description">在任意詳情頁按「收藏」，就會出現在這裡。</string>
     <string name="keep_empty_action">去點播</string>
-    
+    <!-- 歷史頁空態：設計文件 §9.9 要求「標題 + 解釋 + 一個主動作」。 -->
     <string name="history_empty_title">還沒有觀看記錄</string>
     <string name="history_empty_description">播放過的內容會自動出現在這裡，方便繼續觀看。</string>
     <string name="history_empty_action">去點播</string>
@@ -57,7 +56,7 @@
     <string name="exit_confirm_background">後台播放</string>
     <string name="exit_confirm_positive">完全退出</string>
 
-    
+    <!-- Play -->
     <string name="play">播放</string>
     <string name="pause">暫停</string>
     <string name="play_op">片頭</string>
@@ -107,17 +106,17 @@
     <string name="offset_setting">偏移設定</string>
     <string name="play_forward_hint">已切換正序播放</string>
     <string name="play_backward_hint">已切換倒序播放</string>
-    <string name="play_ready">準備播放：<ns0:g name="name">%s</ns0:g></string>
-    <string name="play_switch_flag">正在切換線路至「<ns0:g name="name">%s</ns0:g>」</string>
-    <string name="play_switch_site">正在切換站源至「<ns0:g name="name">%s</ns0:g>」</string>
-    <string name="play_switch_parse">正在切换解析至「<ns0:g name="name">%s</ns0:g>」</string>
+    <string name="play_ready">準備播放：<xliff:g name="name">%s</xliff:g></string>
+    <string name="play_switch_flag">正在切換線路至「<xliff:g name="name">%s</xliff:g>」</string>
+    <string name="play_switch_site">正在切換站源至「<xliff:g name="name">%s</xliff:g>」</string>
+    <string name="play_switch_parse">正在切换解析至「<xliff:g name="name">%s</xliff:g>」</string>
     <string name="play_night_mode">夜間護眼</string>
     <string name="night_mode_off">護眼關閉</string>
     <string name="night_mode_low">輕度護眼</string>
     <string name="night_mode_medium">中度護眼</string>
     <string name="night_mode_high">重度護眼</string>
 
-    
+    <!-- Danmaku Setting -->
     <string name="danmaku">彈幕</string>
     <string name="danmaku_show_on">彈幕已開啟</string>
     <string name="danmaku_show_off">彈幕已關閉</string>
@@ -173,16 +172,16 @@
     <string name="danmaku_section_density">密度</string>
     <string name="danmaku_reset">重設</string>
 
-    
+    <!-- Parse -->
     <string name="parse">解析</string>
     <string name="parse_god">超級解析</string>
-    <string name="parse_from">解析來自：<ns0:g name="name">%s</ns0:g></string>
+    <string name="parse_from">解析來自：<xliff:g name="name">%s</xliff:g></string>
 
-    
+    <!-- Push -->
     <string name="push">推送</string>
 
-    
-    
+    <!-- Setting -->
+    <!-- TV 設定頁的分組標題；此前 17 項平鋪、無分組，只能整屏掃。 -->
     <string name="setting_group_sources">內容源</string>
     <string name="setting_group_playback">播放與內容</string>
     <string name="setting_group_personal">個人化與智慧</string>
@@ -259,7 +258,7 @@
     <string name="intro_skip_confirm_recap">跳過前情提要</string>
     <string name="intro_skip_confirm_outro">跳過片尾</string>
     <string name="intro_skip_confirm_preview">跳過下集預告</string>
-    
+    <!-- 控制列上顯示的自動偵測值（非使用者手動設定），%1$s 為時間 -->
     <string name="intro_skip_detected_value">~%1$s</string>
     <string name="intro_skip_kind_recap">前情回顧</string>
     <string name="intro_skip_kind_intro">片頭</string>
@@ -268,7 +267,7 @@
     <string name="setting_intro_skip_kinds">跳過的片段類型</string>
     <string name="intro_skip_kinds_none">未選擇</string>
     <string name="intro_skip_kinds_all">全部</string>
-    
+    <!-- 自動跳過後的提示，%1$s 為片段類型 -->
     <string name="intro_skip_notice_seeked">已跳過%1$s</string>
     <string name="intro_skip_notice_ended">%1$s已跳過，進入下一集</string>
     <string name="personal_recommendation_confirm_title">啟用個性推薦</string>
@@ -280,6 +279,7 @@
     <string name="repo_github">GitHub 倉庫</string>
     <string name="repo_cnb">CNB 倉庫</string>
     <string name="setting_debug_log">調試日誌</string>
+    <string name="setting_search_current_site">預設搜尋本站</string>
     <string name="setting_manage_page">管理頁面</string>
     <string name="setting_remote_trust">遠程託管</string>
     <string name="setting_git_cloud">Git 雲盤</string>
@@ -821,7 +821,7 @@
     <string name="setting_proxy_hosts">匹配網域</string>
     <string name="setting_proxy_rules">Proxy 規則</string>
     <string name="setting_proxy_rules_raw">Raw 規則</string>
-    <string name="setting_proxy_rules_hint">Raw JSON：{"proxy":[{"hosts":["example.com"],"urls":["socks5://127.0.0.1:1080"]}]}</string>
+    <string name="setting_proxy_rules_hint">Raw JSON：{&quot;proxy&quot;:[{&quot;hosts&quot;:[&quot;example.com&quot;],&quot;urls&quot;:[&quot;socks5://127.0.0.1:1080&quot;]}]}</string>
     <string name="setting_proxy_default_url">預設代理位址</string>
     <string name="setting_proxy_rule_url">代理位址</string>
     <string name="setting_proxy_edit_rule">編輯規則 %1$d</string>
@@ -1062,7 +1062,7 @@
     <string name="setting_off">關</string>
     <string name="setting_on">開</string>
 
-    
+    <!-- About -->
     <string name="about_title">關於 WebHomeTV</string>
     <string name="about_free_badge">完全免費</string>
     <string name="about_version">版本 %1$s · %2$s/%3$s</string>
@@ -1083,7 +1083,7 @@
     <string name="setting_github_proxy_latency_failed">失敗</string>
     <string name="setting_github_proxy_latency_testing">測試中</string>
 
-    
+    <!-- Backup & Restore -->
     <string name="restore_select">選擇備份</string>
     <string name="restore_success">還原成功</string>
     <string name="restore_fail">還原失敗</string>
@@ -1091,15 +1091,15 @@
     <string name="backup_fail">備份失敗</string>
     <string name="backup_permission_denied">需要儲存權限才能備份或恢復資料</string>
 
-    
+    <!-- Device Sync -->
     <string name="device_select">選擇設備</string>
     <string name="device_offline">設備已離線</string>
     <string name="cast_not_ready">播放資訊尚未就緒，請稍後重試</string>
     <string name="sync_success">同步完成</string>
     <string name="sync_progress">正在同步...</string>
     <string name="sync_failed">同步失敗</string>
-    <string name="sync_mode_to_remote">本機 -&gt; 選中設備</string>
-    <string name="sync_mode_from_remote">選中設備 -&gt; 本機</string>
+    <string name="sync_mode_to_remote">本機 -> 選中設備</string>
+    <string name="sync_mode_from_remote">選中設備 -> 本機</string>
     <string name="sync_local_device">本機</string>
     <string name="sync_remote_device">選中設備</string>
     <string name="sync_sender">發送</string>
@@ -1124,9 +1124,7 @@
     <string name="sync_paths_title">同步目錄</string>
     <string name="sync_paths_edit">編輯</string>
     <string name="sync_paths_desc">每行一個外置儲存相對路徑，預設同步 TV、TVBox、TVData。可加入本地包目錄；目錄內容會隨 Jar/腳本保存資料一起同步。</string>
-    <string name="sync_paths_hint">TV
-TVBox
-TVData</string>
+    <string name="sync_paths_hint">TV&#10;TVBox&#10;TVData</string>
     <string name="sync_paths_up">收起</string>
     <string name="sync_paths_refresh">刷新</string>
     <string name="sync_paths_enter">打開目錄</string>
@@ -1194,7 +1192,7 @@ TVData</string>
     <string name="sync_failed_with_reason">同步失敗：%1$s</string>
     <string name="sync_receive_success">已接收同步資料</string>
 
-    
+    <!-- Player -->
     <string name="player">播放核心</string>
     <string name="player_default">預設播放核心</string>
     <string name="player_render">渲染方式</string>
@@ -1584,7 +1582,7 @@ TVData</string>
     <string name="lut_unavailable_hdr">HDR/Dolby Vision 內容暫不支援 LUT 調色</string>
     <string name="lut_unavailable_no_video">當前內容沒有視訊畫面</string>
 
-    
+    <!-- Danmaku -->
     <string name="danmaku_load">彈幕載入</string>
     <string name="danmaku_api">搜尋接口</string>
     <string name="danmaku_api_invalid">彈幕接口地址無效</string>
@@ -1595,7 +1593,7 @@ TVData</string>
     <string name="danmaku_source_default">彈幕</string>
     <string name="danmaku_source_count">%1$d 筆</string>
 
-    
+    <!-- Search -->
     <string name="search_keyword">關鍵字…</string>
     <string name="site_search_hint">搜尋站點…</string>
     <string name="site_dialog_title">選擇站點</string>
@@ -1619,7 +1617,7 @@ TVData</string>
     <string name="search_progress">(%1$d/%2$d)</string>
     <string name="search_no_result">沒有搜到</string>
 
-    
+    <!-- Dialog -->
     <string name="dialog_edit">修改</string>
     <string name="dialog_positive">確定</string>
     <string name="dialog_negative">取消</string>
@@ -1648,19 +1646,27 @@ TVData</string>
     <string name="dialog_config_url">請輸入網址…</string>
     <string name="dialog_config_addresses">備用網址，每行一個…</string>
 
-    
+    <!-- Error -->
     <string name="error_config_get">配置取得失敗</string>
-    
+    <!-- 內容源載入失敗時的錯誤態：設計文件 §9.9 要求「錯誤色 + 原因 + 重試動作」。 -->
     <string name="error_config_load">內容源載入失敗</string>
-    
+    <!-- 首頁空態（確實沒有內容，與「載入失敗」是兩件事）：設計文件 §9.9 的三件套。 -->
     <string name="home_empty_title">暫時沒有內容</string>
     <string name="home_empty_description">內容源沒有回傳可顯示的內容。</string>
     <string name="home_empty_action">重新載入</string>
-    
+    <!--
+        「還沒設定接口」空態：重置應用、重新安裝或恢復出廠後首次啟動就是這個狀態。
+        它**不是失敗**（沒有網址可請求，也沒有失敗原因，重試永遠不會成功），所以標題不用
+        錯誤色、主動作也不是「重試」而是「新增接口」——直接把使用者帶到接口管理清單。
+    -->
     <string name="home_no_config_title">還沒有設定接口</string>
     <string name="home_no_config_description">新增一個點播接口後即可瀏覽內容。</string>
     <string name="home_no_config_action">新增接口</string>
-    
+    <!--
+        本機檔案瀏覽器空態。主動作是**重新掃描目前目錄**，不是「返回上級」——因為：
+        根目錄沒有上級（返回會離開頁面），而「重新掃描」在任何目錄都成立，
+        且能反映外部變化（剛用其他應用放進來的檔案）。
+    -->
     <string name="file_empty_title">這裡沒有內容</string>
     <string name="file_empty_description">這個目錄下沒有可顯示的項目。如果是剛放進來的檔案，重新掃描即可看到。</string>
     <string name="file_empty_action">重新掃描</string>
@@ -1695,12 +1701,12 @@ TVData</string>
     <string name="error_play_fallback">%1$s 播放失敗，已切換到 %2$s</string>
     <string name="error_play_ijk_unavailable">目前裝置不可用 IJK 內核</string>
     <string name="error_play_ijk_unavailable_switch">目前裝置不可用 IJK 內核，已切換到 %1$s</string>
-    <string name="error_play_tvbus">錯誤代碼：<ns0:g name="name">%s</ns0:g></string>
+    <string name="error_play_tvbus">錯誤代碼：<xliff:g name="name">%s</xliff:g></string>
     <string name="error_detail">暫無播放資料</string>
     <string name="error_empty">這裡什麼都沒有 👀</string>
 
-    
-    <string name="update_version">發現新版本 <ns0:g name="name">%s</ns0:g></string>
+    <!-- Update -->
+    <string name="update_version">發現新版本 <xliff:g name="name">%s</xliff:g></string>
     <string name="update_title">版本更新</string>
     <string name="update_hint">選擇版本查看更新內容並安裝。</string>
     <string name="update_check">正在檢查更新…</string>
@@ -1769,7 +1775,7 @@ TVData</string>
     <string name="update_download_identity">更新套件身份或簽章與目前應用程式不相符。</string>
     <string name="update_download_source_unavailable">此版本沒有可用的更新來源。</string>
 
-    
+    <!-- Crash -->
     <string name="crash_info">發生意外錯誤\n即將自動重新啟動，本次不重新載入介面</string>
     <string name="crash_restart">重新啟動</string>
     <string name="crash_silent_restart">靜默重新啟動</string>
@@ -1787,7 +1793,7 @@ TVData</string>
     <string name="crash_log_copied">位址已複製</string>
     <string name="crash_log_open">在瀏覽器開啟</string>
 
-    
+    <!-- Hint -->
     <string name="copied">已複製</string>
     <string name="debug_log_dialog_message">調試日誌服務已啟動。\n\n局域網地址：\n%1$s\n\n本機地址：\n%2$s\n\n電視端沒有瀏覽器也沒關係，請在同一局域網的電腦或手機瀏覽器中打開局域網地址。</string>
     <string name="debug_log_open_browser">打開瀏覽器</string>
@@ -1815,7 +1821,7 @@ TVData</string>
     <string name="manage_page_battery_guide_meizu">魅族：手機管家 → 權限管理/後台管理 → 找到本應用 → 允許後台運行；再到電量管理中把本應用設為不限制。</string>
     <string name="manage_page_battery_guide_default">設定 → 應用 → 本應用 → 電池 → 選擇不受限制/不最佳化；如果有自啟動或後台運行選項，也請允許本應用。</string>
 
-    
+    <!-- UNIT -->
     <string name="all">全部</string>
     <string name="yes">有</string>
     <string name="none">無</string>
@@ -2661,7 +2667,7 @@ TVData</string>
 <string name="player_audio_repeat">循環</string>
 
 
-    
+    <!-- Auto-generated missing translations -->
     <string name="live_no_epg">00:00 - 23:59 暫無節目信息</string>
     <string name="setting_home_vod_auto_load">默認加載點播</string>
     <string name="setting_home_site_lock">首頁源鎖定</string>
@@ -3002,7 +3008,7 @@ TVData</string>
     <string name="plugin_manager_entry_meta">版本 %1$s · 執行環境 %2$s · %3$s</string>
     <string name="plugin_manager_params">參數</string>
     <string name="plugin_manager_params_title">「%1$s」的參數</string>
-    <string name="plugin_manager_params_hint">JSON 物件，例如 {"DOUBAN_TOKEN":"abc"}</string>
+    <string name="plugin_manager_params_hint">JSON 物件，例如 {&quot;DOUBAN_TOKEN&quot;:&quot;abc&quot;}</string>
     <string name="plugin_manager_params_invalid">參數必須是 JSON 物件</string>
     <string name="plugin_manager_params_too_large">參數量超出儲存上限</string>
     <string name="plugin_panel_title">外掛面板</string>

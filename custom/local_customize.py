@@ -232,6 +232,16 @@ LAUNCHER_LIFT_CIRCLE = 40 / 512    # 圆形 launcher：@512 上移 40px（项圈
 ADAPTIVE_HEAD_K = 1.12
 ADAPTIVE_SAFE_RATIO = 0.41
 ADAPTIVE_FOREGROUND_LIFT = 20 / 432
+
+# —— 发布签名证书指纹硬校验 ——
+# 把 v5.6.0-beta-202611052141（老用户已安装、可覆盖升级的那批 APK）所用 keystore
+# 的证书 SHA-256 指纹填到这里。以后每次 CI 构建都会校验：
+#   · 留空 ""  → 只打印当前 keystore 指纹，不拦截（首次配置用）
+#   · 填入指纹 → 指纹不匹配时 CI 直接失败，杜绝换 key 导致老用户无法覆盖安装
+# 获取方法：在 CI 里跑一次（或本地有 release.jks 时）执行
+#   keytool -list -v -keystore app/signing/release.jks -storepass <密码>
+# 取 "SHA256:" 后面那串（去掉冒号、转大写）。
+EXPECTED_RELEASE_CERT_SHA256 = ""
 VIEWPORT = 512  # VectorDrawable 视口边长
 # 渐变内缩比例（沿用原逻辑）
 GRAD_INSET_ADAPTIVE = 1.0 / 6.0
@@ -2065,6 +2075,81 @@ def _pixel_metrics(expected, actual, mode, bg):
     return size_ok, maxd, meand, ratio
 
 
+def get_release_keystore_fingerprint():
+    """读取 local.properties 指向的 release.jks，用 keytool 提取证书 SHA-256 指纹（大写无冒号）。
+
+    返回 (fingerprint_str, store_path, alias, error_msg)。失败时 fingerprint_str 为 None。
+    CI 里 Configure release signing 之后 local.properties 才存在；本地开发时可能不存在。
+    """
+    lp = os.path.join(REPO_ROOT, "local.properties")
+    if not os.path.exists(lp):
+        return None, "", "", "local.properties 不存在（CI 签名步骤之前或本地未配置）"
+    props = {}
+    with open(lp, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                props[k.strip()] = v.strip()
+    store = props.get("storeFile", "")
+    store_pass = props.get("storePassword", "")
+    alias = props.get("keyAlias", "")
+    if not store or not os.path.exists(store):
+        return None, store, alias, f"storeFile 不存在: {store}"
+    if not store_pass:
+        return None, store, alias, "local.properties 缺 storePassword"
+    # keytool -list -v 输出里找 "SHA256: AA:BB:..."
+    try:
+        import subprocess
+        cmd = ["keytool", "-list", "-v", "-keystore", store,
+               "-storepass", store_pass, "-alias", alias] if alias else \
+              ["keytool", "-list", "-v", "-keystore", store, "-storepass", store_pass]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        out = (r.stdout or "") + (r.stderr or "")
+    except Exception as e:
+        return None, store, alias, f"keytool 执行失败: {e}"
+    import re as _re
+    m = _re.search(r"SHA256:\s*([0-9A-Fa-f:]+)", out)
+    if not m:
+        return None, store, alias, "keytool 输出中未找到 SHA256 指纹（keystore 路径或密码错误？）"
+    fp = m.group(1).replace(":", "").upper()
+    return fp, store, alias, ""
+
+
+def verify_signing_keystore(verbose=True):
+    """校验 release keystore 证书指纹是否与 EXPECTED_RELEASE_CERT_SHA256 一致。
+
+    · EXPECTED 为空：打印当前指纹并返回 True（首次配置，不拦截）。
+    · EXPECTED 非空：指纹不一致返回 False（应在 CI 里阻断构建）。
+    · local.properties 不存在（本地非 CI）：返回 True（不影响本地跑脚本）。
+    """
+    fp, store, alias, err = get_release_keystore_fingerprint()
+    if fp is None:
+        if verbose:
+            print(f"[SKIP] 发布签名指纹校验跳过：{err}")
+        return True  # 本地无 keystore 不拦截
+    expected = EXPECTED_RELEASE_CERT_SHA256.strip().replace(":", "").upper()
+    if verbose:
+        print(f"[INFO] 当前 release keystore: {os.path.basename(store)} alias={alias}")
+        print(f"[INFO] 证书 SHA256 指纹: {fp}")
+    if not expected:
+        if verbose:
+            print("[WARN] EXPECTED_RELEASE_CERT_SHA256 未设置：本次不校验，"
+                  "请把上面这串指纹填入脚本常量后提交，以后 CI 将硬校验此指纹。")
+        return True
+    if fp == expected:
+        if verbose:
+            print("[OK] 发布签名证书指纹与预期一致（老用户可正常覆盖安装）")
+        return True
+    if verbose:
+        print(f"[ERROR] 发布签名证书指纹不匹配！")
+        print(f"        预期: {expected}")
+        print(f"        实际: {fp}")
+        print(f"        → 这把 keystore 与老用户已安装的 APK 不同，覆盖安装会失败。")
+        print(f"        → 请检查 GitHub Secret RELEASE_KEYSTORE_BASE64 是否被换过。")
+    return False
+
+
 def verify_icons(style="cat", verbose=True):
     """强制校验 do_write 实际写入的全部图标 == 渲染函数当前输出（即 do_preview 预览来源）。
 
@@ -3791,6 +3876,43 @@ def modify_workflow_files(config):
                 else:
                     print("[SKIP] android-release.yml: 图标重生成步骤已存在且依赖完整")
 
+        # —— 发布签名：去掉 KEYSTORE_BASE64 回退，强制只用 RELEASE_*，并加指纹校验步骤 ——
+        if "android-release" in rel_path:
+            _before_sign = content
+            # 1) 删除旧 KEYSTORE_* env（回退源）
+            for _old_env in [
+                "          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}\n",
+                "          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}\n",
+                "          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}\n",
+            ]:
+                content = content.replace(_old_env, "")
+            # 2) 回退逻辑改为直接赋值（不再 :-$KEYSTORE_*）
+            content = content.replace(
+                'KS_BASE64="${RELEASE_KEYSTORE_BASE64:-$KEYSTORE_BASE64}"',
+                'KS_BASE64="$RELEASE_KEYSTORE_BASE64"')
+            content = content.replace(
+                'STORE_PASSWORD="${RELEASE_STORE_PASSWORD:-$KEY_PASSWORD}"',
+                'STORE_PASSWORD="$RELEASE_STORE_PASSWORD"')
+            content = content.replace(
+                'ALIAS="${RELEASE_KEY_ALIAS:-$KEY_ALIAS}"',
+                'ALIAS="$RELEASE_KEY_ALIAS"')
+            content = content.replace(
+                'KEY_PASS="${RELEASE_KEY_PASSWORD:-$STORE_PASSWORD}"',
+                'KEY_PASS="$RELEASE_KEY_PASSWORD"')
+            # 3) 在 Configure release signing 的 echo 之后、Build 之前插入指纹校验步骤
+            if "--verify-signing" not in content:
+                _verify_step = (
+                    "\n      - name: Verify signing keystore fingerprint\n"
+                    "        run: python3 custom/local_customize.py --verify-signing\n"
+                )
+                # 锚点：echo "Release signing configured" 行尾
+                content = content.replace(
+                    '          echo "Release signing configured"\n',
+                    '          echo "Release signing configured"\n' + _verify_step,
+                    1)
+            if content != _before_sign:
+                print("[OK] android-release.yml: 签名配置已收紧（去掉 KEYSTORE_* 回退 + 加指纹校验步骤）")
+
         if content != original:
             # 写回前 YAML 解析校验：一旦破坏缩进，GitHub Actions 会直接 Invalid workflow file
             if not _yaml_looks_ok(rel_path, content):
@@ -4259,19 +4381,32 @@ def main():
                     pkg_ok = False
     results.append(pkg_ok)
 
-    # —— 发布签名一致性：workflow 必须存在「无 keystore 即失败」的硬校验，
-    #    确保所有 release APK 都用同一把 release 密钥签名，杜绝 debug 签名混入 ——
+    # —— 发布签名一致性：三重校验 ——
+    #    (1) workflow 必须「无 release keystore 即失败」，杜绝 debug 签名混入
+    #    (2) workflow 不得回退到旧 KEYSTORE_BASE64（否则两个 secret 可能是不同 key）
+    #    (3) CI 里 local.properties 就绪后，用 keytool 硬校验证书指纹 == EXPECTED
     wf_rel = os.path.join(REPO_ROOT, ".github", "workflows", "android-release.yml")
     sign_ok = True
     if os.path.exists(wf_rel):
         with open(wf_rel, "r", encoding="utf-8") as f:
             wf_txt = f.read()
         if "RELEASE_KEYSTORE_BASE64" in wf_txt and "Release signing not configured" in wf_txt:
-            print("[OK] android-release.yml 含发布签名硬校验：缺少 keystore secret 时构建直接失败，"
-                  "不会产出 debug 签名 APK")
+            print("[OK] android-release.yml 含发布签名硬校验：缺少 keystore secret 时构建直接失败")
         else:
-            print("[WARN] android-release.yml 未发现完整的发布签名硬校验，请确认 release 始终用同一 keystore")
+            print("[ERROR] android-release.yml 缺发布签名硬校验")
             sign_ok = False
+        # 不得回退到 KEYSTORE_BASE64（RELEASE 为空时回退会切到另一把 key）
+        if "RELEASE_KEYSTORE_BASE64:-$KEYSTORE_BASE64" in wf_txt or \
+           "RELEASE_KEYSTORE_BASE64:-" in wf_txt:
+            print("[ERROR] android-release.yml 仍保留 KEYSTORE_BASE64 回退逻辑，"
+                  "不同时间可能切到不同 keystore，导致签名不一致。请改为强制只用 RELEASE_KEYSTORE_BASE64。")
+            sign_ok = False
+        else:
+            print("[OK] android-release.yml 已去掉 KEYSTORE_BASE64 回退，强制只用 RELEASE_KEYSTORE_BASE64")
+    # CI 里 local.properties 就绪后才做指纹硬校验（本地开发时文件不存在则跳过）
+    fp_ok = verify_signing_keystore(verbose=True)
+    if not fp_ok:
+        sign_ok = False
     results.append(sign_ok)
 
     # 任何一步「真失败」都必须以非零码退出，阻断提交与 CI 打包：
@@ -4315,6 +4450,26 @@ def main():
 
 
 if __name__ == "__main__":
+    # --verify-signing：仅校验 release keystore 证书指纹是否与 EXPECTED 一致（CI 用）
+    if "--verify-signing" in sys.argv:
+        load_config_env()
+        ok = verify_signing_keystore(verbose=True)
+        sys.exit(0 if ok else 1)
+    # --show-signing-fingerprint：打印当前 release.jks 的证书 SHA256 指纹（首次配置用）
+    if "--show-signing-fingerprint" in sys.argv:
+        load_config_env()
+        fp, store, alias, err = get_release_keystore_fingerprint()
+        if fp is None:
+            print(f"[ERROR] 无法获取 keystore 指纹: {err}")
+            print("        请先在 CI 里跑一次（local.properties 就绪后），或本地配置好 release.jks。")
+            sys.exit(1)
+        print(f"keystore: {store}")
+        print(f"alias:    {alias}")
+        print(f"SHA256:   {fp}")
+        print()
+        print("把上面这串指纹填到脚本常量 EXPECTED_RELEASE_CERT_SHA256 后提交，")
+        print("以后 CI 每次构建都会硬校验此指纹，不匹配直接失败。")
+        sys.exit(0)
     # --verify：仅校验已写入图标是否与预览/渲染来源一致，不修改项目（一致退出0，否则1）
     if "--verify" in sys.argv:
         load_config_env()

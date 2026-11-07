@@ -59,8 +59,8 @@ import com.google.gson.JsonObject;
 
 public class SettingEnhanceFragment extends BaseFragment {
 
-    private static final String URL_GITHUB = "https://github.com/alantang1977/tj";
-    private static final String URL_CNB = "https://cnb.cool/tangtang.com.cn.kul/juntv";
+    private static final String URL_GITHUB = "https://github.com/xinyonghuu/Mooyingshi";
+    private static final String URL_CNB = "https://cnb.cool/fish2018/ext";
 
     private FragmentSettingEnhanceBinding mBinding;
 
@@ -105,6 +105,7 @@ public class SettingEnhanceFragment extends BaseFragment {
         mBinding.audioSource.setOnClickListener(this::setAudioSource);
         mBinding.shortDramaSource.setOnClickListener(this::setShortDramaSource);
         mBinding.debugLog.setOnClickListener(this::setDebugLog);
+        mBinding.searchCurrentSite.setOnClickListener(this::setSearchCurrentSite);
         mBinding.siteHealthSort.setOnClickListener(view -> SiteHealthDialog.show(this, this::setText));
         mBinding.siteHealthSort.setOnLongClickListener(this::clearSiteHealth);
         mBinding.webHomeExtension.setOnClickListener(view -> WebHomeExtensionDialog.show(this, this::setText));
@@ -156,6 +157,7 @@ public class SettingEnhanceFragment extends BaseFragment {
                 mBinding.shortDramaSource,
                 mBinding.siteHealthSort,
                 mBinding.debugLog,
+                mBinding.searchCurrentSite,
                 mBinding.playbackWebhook,
                 mBinding.pluginManager
         };
@@ -172,6 +174,7 @@ public class SettingEnhanceFragment extends BaseFragment {
         safeSet("audioSource", mBinding.audioSourceText, () -> getSwitch(!AudioConfig.objectFrom(Setting.getAudioConfig()).getDisplayRules().isEmpty()));
         safeSet("shortDramaSource", mBinding.shortDramaSourceText, () -> getSwitch(!ShortDramaConfig.objectFrom(Setting.getShortDramaConfig()).getDisplayRules().isEmpty()));
         safeSet("debugLog", mBinding.debugLogText, () -> getSwitch(Setting.isDebugLog()));
+        safeSet("searchCurrentSite", mBinding.searchCurrentSiteText, () -> getSwitch(Setting.isSearchCurrentSiteDefault()));
         safeSet("siteHealthSort", mBinding.siteHealthSortText, this::getSiteHealthText);
         safeSet("webHomeExtension", mBinding.webHomeExtensionText, () -> {
             WebHomeExtensionRegistry.Snapshot webHomeExtension = WebHomeExtensionRegistry.get().snapshot();
@@ -291,6 +294,11 @@ public class SettingEnhanceFragment extends BaseFragment {
         setSummary(mBinding.debugLogText, getSwitch(Setting.isDebugLog()));
         if (!Setting.isDebugLog()) return;
         DebugLogDialog.show(this);
+    }
+
+    private void setSearchCurrentSite(View view) {
+        Setting.putSearchCurrentSiteDefault(!Setting.isSearchCurrentSiteDefault());
+        setSummary(mBinding.searchCurrentSiteText, getSwitch(Setting.isSearchCurrentSiteDefault()));
     }
 
     private void setSiteName(View view) {

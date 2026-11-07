@@ -149,11 +149,17 @@ public class SearchFragment extends BaseFragment implements MenuProvider, WordAd
 
     @Override
     protected void initView() {
-        mCurrentSite = !TextUtils.isEmpty(getSiteKey());
+        mCurrentSite = !TextUtils.isEmpty(getSiteKey()) || isDefaultCurrentSite();
         mGroup = "";
         setRecyclerView();
         checkKeyword();
         search();
+    }
+
+    private boolean isDefaultCurrentSite() {
+        if (!Setting.isSearchCurrentSiteDefault()) return false;
+        Site site = getHome();
+        return !site.isEmpty() && site.isSearchable();
     }
 
     private void setRecyclerView() {
