@@ -26,10 +26,10 @@
         android:visible="false" />
 
     <item
-        android:id="@+id/lab"
-        android:icon="@drawable/ic_nav_lab"
-        android:title="@string/app_lab"
-        android:visible="false" />
+        android:id="@+id/local_source"
+        android:icon="@drawable/ic_nav_local"
+        android:title="@string/local_source"
+        android:visible="true" />
 
     <item
         android:id="@+id/setting"

@@ -29,6 +29,7 @@ import com.fongmi.android.tv.setting.InterfaceOrderStore;
 import com.fongmi.android.tv.setting.GroupRuleConfig;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
+import com.fongmi.android.tv.utils.LocalSource;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
@@ -539,6 +540,17 @@ public class VodConfig extends BaseConfig {
         Map<String, Site> items = Site.findAll().stream().collect(Collectors.toMap(Site::getKey, Function.identity()));
         getSites().forEach(site -> site.sync(items.get(site.getKey())));
         CustomCspSetting.Result custom = CustomCspSetting.inject(getSites());
+        List<Site> local = LocalSource.getSites();
+        if (!local.isEmpty()) {
+            // 本地源里没写 jar 的（比如 .html 的 csp_Nostr），跟配置站点一样用当前配置的 spider.jar 兜底，
+            // 不然 JarLoader 按空 jar 找不到加载器，全空；改完清掉 LocalSource 缓存，下次加载重新读盘。
+            boolean jarFilled = false;
+            for (Site site : local) {
+                if (site.getJar().isEmpty() && !TextUtils.isEmpty(spider)) { site.setJar(spider); jarFilled = true; }
+            }
+            getSites().addAll(local);
+            if (jarFilled) LocalSource.invalidate();
+        }
         Site home = !custom.home().isEmpty() ? custom.home() : getSites().stream().filter(item -> item.getKey().equals(config.getHome())).findFirst().orElse(getSites().isEmpty() ? new Site() : getSites().get(0));
         setHome(config, home, false);
     }

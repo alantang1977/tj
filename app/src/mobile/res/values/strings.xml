@@ -10,6 +10,30 @@
     <string name="nav_drama">Drama</string>
     <string name="nav_setting">Setting</string>
 
+    <!-- Local source -->
+    <string name="local_source">Local Source</string>
+    <string name="local_source_search">Search local sources</string>
+    <string name="local_source_empty">No local sources yet</string>
+    <string name="local_source_count">%1$d local sources</string>
+    <string name="local_source_pick_dir">Pick folder</string>
+    <string name="local_source_pick_file">Pick file</string>
+    <string name="local_source_scan_all">Scan all</string>
+    <string name="local_source_select_all">Select all</string>
+    <string name="local_source_invert">Invert</string>
+    <string name="local_source_remove">Delete</string>
+    <string name="local_source_clear">Clear</string>
+    <string name="local_source_pick_php_root">PHP root</string>
+    <string name="local_source_secret">Secret</string>
+    <string name="local_source_top">Top</string>
+    <string name="local_source_bottom">Bottom</string>
+    <string name="local_source_scanning">Scanning…</string>
+    <string name="local_source_imported">Imported %1$d sources</string>
+    <string name="local_source_deleted">Deleted %1$d sources</string>
+    <string name="local_source_bad_ext">Unsupported file type</string>
+    <string name="local_source_php_hint">PHP root set</string>
+    <string name="local_source_php_root_label">PHP root: %1$s</string>
+    <string name="local_source_php_root_empty">Not set</string>
+
     <!-- Short drama section -->
     <string name="drama_recommend">Recommend</string>
     <string name="drama_theater">Theater</string>
