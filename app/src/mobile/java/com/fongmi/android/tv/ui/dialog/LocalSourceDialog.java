@@ -63,6 +63,14 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
         show(fragment.getChildFragmentManager(), "LocalSourceDialog");
     }
 
+    @Override
+    public void onStart() {
+        super.onStart();
+        // 弹窗默认是包内容高度，带 weight 的源列表分不到剩余空间，一次只露一行；
+        // 把窗口拉到屏幕高度的 85%，列表才能一次多显示好几条，底部按钮仍贴底。
+        setHeight(0.85f);
+    }
+
     private final ActivityResultLauncher<Intent> launcher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getData() == null || result.getData().getData() == null) return;
         String path = FileChooser.getPersistentPathFromUri(result.getData().getData());

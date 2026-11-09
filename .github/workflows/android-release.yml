@@ -63,6 +63,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 四个大包连续打包会把 runner 磁盘吃满 (package* 任务在后段随机失败,
+      # 伴随 executionHistory.bin 写缓存失败)。构建前清掉用不上的预装工具链。
+      - name: Free disk space
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          df -h / | tail -1
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
