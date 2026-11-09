@@ -39,7 +39,7 @@ public class LocalSource {
     /** 扫描收录的文件后缀白名单（与魔影一致）。 */
     public static final List<String> EXTENSIONS = Arrays.asList("wv.js", "cat.js", "xbpq.json", "xyq.json", "php", "html", "js", "py", "json");
     /** 扫描时跳过的目录名（与魔影一致）。 */
-    public static final Set<String> BLOCKED_DIRS = new HashSet<>(Arrays.asList("Android", ".thumbnails", "DCIM", "Pictures", "Movies", "Documents", "Music", "Ringtones", "Notifications", "Alarms", "PODCASTS", "Bluetooth", "WhatsApp", "tencent", "WeChat", "QQBrowser", "KuGou", "NetEaseCloudMusic", "Douyin", "Sina", "BaiduNetdisk", "Bilibili", "Logs", "Temp", "pids", "lxserver", "EnvFiles", "danmu_api", "examples", "migu_video", "musicfree", "musicSdk", "data", "controllers", "node_modules", "docs", "config", "lib", "libs", "libs_drpy", "apps", "public", "plugins", "utils", "scripts", "json", "jx", "webdav-files", "webdav", "install", ".github"));
+    public static final Set<String> BLOCKED_DIRS = new HashSet<>(Arrays.asList("Android", ".thumbnails", "DCIM", "Pictures", "Movies", "Documents", "Music", "Ringtones", "Notifications", "Alarms", "PODCASTS", "Bluetooth", "WhatsApp", "tencent", "WeChat", "QQBrowser", "KuGou", "NetEaseCloudMusic", "Douyin", "Sina", "BaiduNetdisk", "Bilibili", "Logs", "Temp", "pids", "lxserver", "EnvFiles", "danmu_api", "examples", "migu_video", "musicfree", "musicSdk", "data", "controllers", "node_modules", "docs", "config", "lib", "libs", "libs_drpy", "apps", "public", "plugins", "utils", "scripts", "jx", "webdav-files", "webdav", "install", ".github"));
 
     /** [标签] 到分类名的映射（与魔影一致）。 */
     public static final Map<String, String> CATEGORIES = new LinkedHashMap<>();
@@ -184,8 +184,14 @@ public class LocalSource {
             Site site = new Site();
             site.setKey(Json.safeString(object, "key"));
             site.setName(Json.safeString(object, "name"));
-            site.setApi(UrlUtil.convert(Json.safeString(object, "api")));
-            site.setExt(UrlUtil.convert(Json.safeString(object, "ext")));
+            String rawApi = Json.safeString(object, "api");
+            String rawExt = Json.safeString(object, "ext");
+            site.setApi(UrlUtil.convert(rawApi));
+            // FileSpider 读规则走自己的 File(b)：非 http 当成本地路径 new File(s) 直接读盘，
+            // "file://" 前缀会让 exists() 失败、http:// 又依赖本机服务回环（日志已证实会失败）。
+            // 所以 FileSpider 的 ext 直接给绝对路径，不走 UrlUtil.convert()。
+            // XBPQ/XYQHiker 未确认是否认裸路径，仍走 http:// 不动。
+            site.setExt("csp_FileSpider".equals(rawApi) ? toPlainPath(rawExt) : UrlUtil.convert(rawExt));
             site.setJar(Json.safeString(object, "jar"));
             site.setHomePage(UrlUtil.convert(Json.safeString(object, "homePage")));
             site.setType(object.has("type") ? object.get("type").getAsInt() : 3);
@@ -225,9 +231,22 @@ public class LocalSource {
         if (value != null) object.addProperty(key, value);
     }
 
+    /** 单个文件夹里的文件数上限：超过就跳过这个文件夹，不扫，免得卡死。 */
+    public static final int MAX_FILES_PER_DIR = 100;
+
+    /** 上次扫描有没有因文件过多跳过文件夹（读一次就清掉，弹窗只提示一次）。 */
+    private static volatile boolean skippedLargeDir;
+
+    public static boolean takeSkippedLargeDir() {
+        boolean skipped = skippedLargeDir;
+        skippedLargeDir = false;
+        return skipped;
+    }
+
     /** 扫描一个目录（递归），返回新导入的站点数。 */
     public static int scan(File dir) {
         if (dir == null || !dir.isDirectory()) return 0;
+        skippedLargeDir = false;
         List<File> files = new ArrayList<>();
         collect(dir, files);
         return parse(files, isShowSecret());
@@ -238,10 +257,15 @@ public class LocalSource {
         return parse(files, isShowSecret());
     }
 
-    /** 递归收集白名单后缀的文件，跳过屏蔽目录。 */
+    /** 递归收集白名单后缀的文件，跳过屏蔽目录；文件超过上限的文件夹整个跳过，免得卡死。 */
     private static void collect(File dir, List<File> out) {
         File[] children = dir.listFiles();
         if (children == null) return;
+        int files = 0;
+        for (File child : children) if (child.isFile() && ++files > MAX_FILES_PER_DIR) {
+            skippedLargeDir = true;
+            return;
+        }
         for (File child : children) {
             if (child.isDirectory()) {
                 if (!BLOCKED_DIRS.contains(child.getName())) collect(child, out);
@@ -365,6 +389,8 @@ public class LocalSource {
                 changed = true;
                 continue;
             }
+            // 旧版非 cat .js 一律注册成 api=file:// 直接加载：var rule 格式的要走 drpy 引擎才有数据。
+            if (migrateDrpyJs(site)) changed = true;
             if (!isStaleCspApi(site.getApi())) continue;
             String pyUrl = toFileUrl(site.getExt());
             // ext 必须是 .py 文件地址才算数，别把别的后缀文件当成蜘蛛。
@@ -388,6 +414,40 @@ public class LocalSource {
         }
     }
 
+    /**
+     * 修旧版扫进来的非 cat .js 注册：var rule 格式的改走 drpy 引擎（api=lib/drpy2-fast.min.js、ext=文件地址），
+     * ES 模块格式（export default）的直接加载是对的，不用动；cat.js、cat 目录里的 .js、wv.js 不动；
+     * 文件已不存在的也不动，等用户重扫。
+     */
+    private static boolean migrateDrpyJs(Site site) {
+        String api = site.getApi();
+        String ext = site.getExt();
+        File file = null;
+        if (api != null && api.startsWith("file://") && api.toLowerCase(Locale.ROOT).endsWith(".js")) file = new File(api.substring("file://".length()));
+        else if ("lib/drpy2-fast.min.js".equals(api) && ext != null && ext.startsWith("file://")) file = new File(ext.substring("file://".length()));
+        if (file == null || !file.exists()) return false;
+        String name = file.getName().toLowerCase(Locale.ROOT);
+        if ("cat.js".equals(name) || "wv.js".equals(name) || isInCategoryDir(file, "cat")) return false;
+        if (isDrpyModule(file)) {
+            // ES 模块格式：直接加载已是对的；之前若被错注册成引擎，改回直接加载。
+            if ("lib/drpy2-fast.min.js".equals(api)) {
+                site.setApi(fileUrl(file));
+                site.setExt("");
+                site.setType(3);
+                return true;
+            }
+            return false;
+        }
+        // var rule 格式：必须走 drpy 引擎。
+        if (!"lib/drpy2-fast.min.js".equals(api) || !fileUrl(file).equals(ext)) {
+            site.setApi("lib/drpy2-fast.min.js");
+            site.setExt(fileUrl(file));
+            site.setType(3);
+            return true;
+        }
+        return false;
+    }
+
     /** file:// 地址原样用；本机地址 http://127.0.0.1:端口/file/路径 还原成 file:// 路径；其余返回 null。 */
     private static String toFileUrl(String url) {
         if (url == null) return null;
@@ -395,6 +455,14 @@ public class LocalSource {
         int i = url.indexOf("/file/");
         if (url.startsWith("http://127.0.0.1:") && i > 0) return "file://" + url.substring(i + 6);
         return null;
+    }
+
+    /** file:// 或本机 http://127.0.0.1:端口/file/ 地址还原成绝对路径（FileSpider.b() 只认裸路径）；其余原样返回。 */
+    private static String toPlainPath(String url) {
+        if (url == null) return "";
+        String fileUrl = toFileUrl(url);
+        if (fileUrl != null) return fileUrl.substring("file://".length());
+        return url;
     }
 
     /** 在扫描目录下递归找指定文件名的 .py（跳过屏蔽目录）。 */
@@ -469,7 +537,14 @@ public class LocalSource {
             result.add(newSite(base, display, 3, fileUrl(file), "", ""));
         } else if ("js".equals(extension(lower)) || "wv.js".equals(normalizeExt(lower))) {
             if ("wv.js".equals(normalizeExt(lower))) result.add(newSite(base, display, 3, "csp_WvSpider", fileUrl(file), spiderJar("WvSpider.jar")));
-            else result.add(newSite(base, display, 3, fileUrl(file), "", ""));
+            else if (isDrpyModule(file)) {
+                // drpy 的 ES 模块格式（export default 导出函数）：直接当蜘蛛加载，Global 已提供 req/pdfa/pdfh；
+                // 走引擎的话，引擎 init 里 eval 会报 export 语法错，全空。
+                result.add(newSite(base, display, 3, fileUrl(file), "", ""));
+            } else {
+                // var rule 格式：走 drpy 引擎（魔影同款），引擎 init 读规则、提供解析。
+                result.add(newSite(base, display, 3, "lib/drpy2-fast.min.js", fileUrl(file), ""));
+            }
         } else if ("php".equals(extension(lower))) {
             Site site = newSite(base, display, 4, fileUrl(file), file.getAbsolutePath(), "");
             site.setSearchable(0);
@@ -571,6 +646,16 @@ public class LocalSource {
 
     private static String fileUrl(File file) {
         return "file://" + file.getAbsolutePath();
+    }
+
+    /** 是不是 drpy 的 ES 模块格式（export default 导出函数）：这类脚本直接当蜘蛛加载。 */
+    private static boolean isDrpyModule(File file) {
+        try {
+            String content = Path.read(file);
+            return content != null && content.contains("export default");
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** 蜘蛛 jar 地址缓存（魔影 sv4.b 的 ConcurrentHashMap 缓存）。 */

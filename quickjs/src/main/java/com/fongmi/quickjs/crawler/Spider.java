@@ -56,6 +56,19 @@ public class Spider extends com.github.catvod.crawler.Spider {
         return submit(() -> Async.run(jsObject, func, args)).get().get();
     }
 
+    /**
+     * JS 函数返回 JSON 字符串时直接用；返回对象时转成 JSON 字符串。
+     * 直接 (String) 强转的话，对象会被当成 JSObject、抛 ClassCastException、页面全空
+     *（低端影视那类 export default 脚本的 home/category/detail/search/play 全返回对象）。
+     */
+    private String callString(String func, Object... args) throws Exception {
+        Object result = call(func, args);
+        if (result == null) return null;
+        if (result instanceof String) return (String) result;
+        if (result instanceof JSObject) return submit(() -> ((JSObject) result).stringify()).get();
+        return String.valueOf(result);
+    }
+
     @Override
     public void init(Context context, String extend) throws Exception {
         initializeJS();
@@ -64,44 +77,44 @@ public class Spider extends com.github.catvod.crawler.Spider {
 
     @Override
     public String homeContent(boolean filter) throws Exception {
-        return (String) call("home", filter);
+        return callString("home", filter);
     }
 
     @Override
     public String homeVideoContent() throws Exception {
-        return (String) call("homeVod");
+        return callString("homeVod");
     }
 
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         JSObject obj = submit(() -> JSUtil.toObject(ctx, extend)).get();
-        return (String) call("category", tid, pg, filter, obj);
+        return callString("category", tid, pg, filter, obj);
     }
 
     @Override
     public String detailContent(List<String> ids) throws Exception {
-        return (String) call("detail", ids.get(0));
+        return callString("detail", ids.get(0));
     }
 
     @Override
     public String searchContent(String key, boolean quick) throws Exception {
-        return (String) call("search", key, quick);
+        return callString("search", key, quick);
     }
 
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
-        return (String) call("search", key, quick, pg);
+        return callString("search", key, quick, pg);
     }
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         JSArray array = submit(() -> JSUtil.toArray(ctx, vipFlags)).get();
-        return (String) call("play", flag, id, array);
+        return callString("play", flag, id, array);
     }
 
     @Override
     public String liveContent(String url) throws Exception {
-        return (String) call("live", url);
+        return callString("live", url);
     }
 
     @Override
@@ -121,7 +134,7 @@ public class Spider extends com.github.catvod.crawler.Spider {
 
     @Override
     public String action(String action) throws Exception {
-        return (String) call("action", action);
+        return callString("action", action);
     }
 
     @Override

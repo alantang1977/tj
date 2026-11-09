@@ -49,6 +49,7 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
     private static final int PICK_DIR = 0;
     private static final int PICK_FILE = 1;
     private static final int PICK_PHP_ROOT = 2;
+    private static final int PICK_DIR_REPLACE = 3;
 
     public static LocalSourceDialog create() {
         return new LocalSourceDialog();
@@ -68,6 +69,13 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
         if (TextUtils.isEmpty(path)) return;
         if (pickMode == PICK_DIR) {
             LocalSource.setScanDir(path);
+            refreshScanDir();
+            scanDir(new File(path));
+        } else if (pickMode == PICK_DIR_REPLACE) {
+            // 更换文件夹：旧文件夹扫出来的源不再适用，先清空再扫新文件夹，免得旧源一直留在列表里。
+            LocalSource.setScanDir(path);
+            LocalSource.clear();
+            refreshScanDir();
             scanDir(new File(path));
         } else if (pickMode == PICK_FILE) {
             File file = new File(path);
@@ -108,6 +116,10 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
             pickMode = PICK_DIR;
             FileChooser.from(launcher).showDirectory();
         });
+        binding.changeDir.setOnClickListener(v -> {
+            pickMode = PICK_DIR_REPLACE;
+            FileChooser.from(launcher).showDirectory();
+        });
         binding.pickFile.setOnClickListener(v -> {
             pickMode = PICK_FILE;
             FileChooser.from(launcher).show();
@@ -129,7 +141,13 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
         });
         refreshSecret();
         refreshPhpRoot();
+        refreshScanDir();
         refreshList();
+    }
+
+    private void refreshScanDir() {
+        String dir = LocalSource.getScanDir();
+        binding.scanDir.setText(TextUtils.isEmpty(dir) ? getString(R.string.local_source_scan_dir_empty) : dir);
     }
 
     private void refreshList() {
@@ -207,8 +225,11 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
         App.post(() -> {
             scanning = false;
             LocalSource.invalidate();
+            boolean skippedLarge = LocalSource.takeSkippedLargeDir();
             refreshList();
-            Notify.show(getString(R.string.local_source_imported, count));
+            // 有文件夹因文件过多被跳过：只提示这句，不再报导入数。
+            if (skippedLarge) Notify.show(R.string.local_source_too_many_files);
+            else Notify.show(getString(R.string.local_source_imported, count));
             if (count > 0) reloadConfig();
         });
     }

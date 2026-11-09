@@ -68,6 +68,19 @@ public class Loader {
             return source;
         }
         if (!api.startsWith("http")) return api;
+        // 本机服务地址（http://127.0.0.1:端口/file/... 或 localhost）先直接读盘：
+        // 调试日志已证实这条 HTTP 回环下载会失败（"Unable to download python script"，
+        // 服务没起 / 端口被占 / /file/ 解析失败都会走到这里），读盘失败再回落 HTTP 下载。
+        // 只对本机 /file/ 地址做还原，远程 http 地址保持原样走下载。
+        File local = localFile(api);
+        if (local != null && local.isFile()) {
+            String direct = Path.read(local);
+            if (!TextUtils.isEmpty(direct)) {
+                Path.write(Path.py(name), direct.getBytes(StandardCharsets.UTF_8));
+                SpiderDebug.log("python-spider", "load local file directly api=%s file=%s", api, local.getAbsolutePath());
+                return direct;
+            }
+        }
         File cache = Path.py(name);
         try (Response response = OkHttp.newCall(OkHttp.client(15000), api).execute()) {
             if (!response.isSuccessful()) throw new IllegalStateException("HTTP " + response.code());
@@ -80,6 +93,23 @@ public class Loader {
             if (!TextUtils.isEmpty(cached)) return cached;
             throw new IllegalStateException("Unable to download python script: " + api, e);
         }
+    }
+
+    /**
+     * 把本机服务地址 {@code http://127.0.0.1:端口/file/<绝对路径>}（或 localhost）还原成本地文件。
+     * 端口不校验具体数值：服务没起时 Proxy.getPort() 是 -1，地址会是 {@code http://127.0.0.1:-1/file/...}，
+     * 还原只取 /file/ 后的路径，端口多少都能读到盘。非本机 /file/ 地址返回 null。
+     */
+    private static File localFile(String api) {
+        String rest;
+        if (api.startsWith("http://127.0.0.1:")) rest = api.substring("http://127.0.0.1:".length());
+        else if (api.startsWith("http://localhost:")) rest = api.substring("http://localhost:".length());
+        else return null;
+        int slash = rest.indexOf('/');
+        if (slash <= 0) return null;
+        String path = rest.substring(slash);
+        if (!path.startsWith("/file/")) return null;
+        return Path.local(path.substring(5));
     }
 
     private String scriptName(String api) {

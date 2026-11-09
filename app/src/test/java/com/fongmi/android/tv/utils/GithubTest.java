@@ -18,15 +18,15 @@ public class GithubTest {
         assertEquals(URI.create(stable).getHost(), URI.create(beta).getHost());
         assertTrue(stable.contains("/releases/download/update-channel/"));
         assertTrue(beta.contains("/releases/download/update-channel/"));
-        assertEquals("https://github.com/xinyonghuu/Mooyingshi/releases/download/update-channel/mobile-arm64_v8a.json", stable);
-        assertEquals("https://github.com/xinyonghuu/Mooyingshi/releases/download/update-channel/mobile-arm64_v8a-beta.json", beta);
+        assertEquals("https://github.com/alantang1977/tj/releases/download/update-channel/mobile-arm64_v8a.json", stable);
+        assertEquals("https://github.com/alantang1977/tj/releases/download/update-channel/mobile-arm64_v8a-beta.json", beta);
     }
 
 
     @Test
     public void cnbManifestPathRemainsAnIndependentFallback() {
         assertEquals(
-                "https://github.com/xinyonghuu/Mooyingshi/releases/download/update-channel/mobile-arm64_v8a-beta.json",
+                "https://github.com/alantang1977/tj/releases/download/update-channel/mobile-arm64_v8a-beta.json",
                 Github.getCnbMirrorAsset("mobile-arm64_v8a-beta.json"));
     }
 }

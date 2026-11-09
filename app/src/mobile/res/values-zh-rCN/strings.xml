@@ -16,6 +16,8 @@
     <string name="local_source_empty">暂无本地源</string>
     <string name="local_source_count">共 %1$d 个本地源</string>
     <string name="local_source_pick_dir">选择文件夹</string>
+    <string name="local_source_change_dir">更换文件夹</string>
+    <string name="local_source_scan_dir_empty">未选择文件夹</string>
     <string name="local_source_pick_file">选择文件</string>
     <string name="local_source_scan_all">扫描全部</string>
     <string name="local_source_select_all">全选</string>
@@ -33,6 +35,7 @@
     <string name="local_source_php_hint">PHP 根目录已设置</string>
     <string name="local_source_php_root_label">PHP 根目录：%1$s</string>
     <string name="local_source_php_root_empty">未设置</string>
+    <string name="local_source_too_many_files">文件过多请选择子文件夹</string>
 
     <!-- Short drama section -->
     <string name="drama_recommend">推荐</string>

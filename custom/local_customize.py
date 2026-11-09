@@ -2659,13 +2659,21 @@ def modify_update_urls(config):
         original = content
         rel_path = os.path.relpath(full_path, REPO_ROOT)
         if github_repo:
-            content = re.sub(r'api\.github\.com/repos/Silent1566/webhtv',
-                             f'api.github.com/repos/{github_repo}', content)
-            content = re.sub(r'github\.com/Silent1566/webhtv',
-                             f'github.com/{github_repo}', content)
+            # 替换所有已知旧仓库指向 → 目标仓库（Silent1566/webhtv + xinyonghuu/Mooyingshi 等）
+            for _old_owner_repo in ["Silent1566/webhtv", "xinyonghuu/Mooyingshi"]:
+                content = re.sub(rf'api\.github\.com/repos/{re.escape(_old_owner_repo)}',
+                                 f'api.github.com/repos/{github_repo}', content)
+                content = re.sub(rf'github\.com/{re.escape(_old_owner_repo)}',
+                                 f'github.com/{github_repo}', content)
         if cnb_slug:
             content = re.sub(r'cnb\.cool/fish2035/webhtv-release',
                              f'cnb.cool/{cnb_slug}', content)
+        # 残留检查：URL 字符串里不得再有旧仓库（注释里的 "adapted for Mooyingshi" 不影响）
+        _residual = re.findall(r'github\.com/(?:xinyonghuu/Mooyingshi|Silent1566/webhtv)', content)
+        if _residual:
+            _java_sanity_check(content, rel_path,
+                                forbid_patterns=[r'github\.com/xinyonghuu/Mooyingshi',
+                                                 r'github\.com/Silent1566/webhtv'])
         if content != original:
             # 写回前健全性校验（这些是 .java 文件，防止替换逻辑破坏语法）
             _java_sanity_check(content, rel_path)
@@ -4483,3 +4491,4 @@ if __name__ == "__main__":
         do_export(CONFIG.get("ICON_STYLE", "cat"))
     else:
         main()
+#（注：内容由AI生成）

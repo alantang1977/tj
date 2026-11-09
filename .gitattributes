@@ -1,1 +1,4 @@
 *.patch whitespace=-blank-at-eol,-blank-at-eof
+# 从魔影 APK 原样拷来的 drpy 引擎（第三方文件，行尾空格是上游原样，勿改）：跳过空白校验。
+quickjs/src/main/assets/js/lib/drpy2-fast.min.js whitespace=-blank-at-eol,-blank-at-eof
+quickjs/src/main/assets/js/lib/drpy-core-lite.min.js whitespace=-blank-at-eol,-blank-at-eof
