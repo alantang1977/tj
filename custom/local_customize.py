@@ -3884,6 +3884,14 @@ def modify_workflow_files(config):
                 else:
                     print("[SKIP] android-release.yml: 图标重生成步骤已存在且依赖完整")
 
+        # —— CNB 推送默认开启：sync_cnb 默认 true，避免每次打 release 都要手动勾选 ——
+        if "android-release" in rel_path:
+            # 把 sync_cnb 的 default: false 改成 default: true
+            content = content.replace(
+                'description: "Optionally mirror APKs to CNB Release and sync CNB manifests"\n        required: false\n        default: false',
+                'description: "Mirror APKs to CNB Release and sync CNB manifests (default on)"\n        required: false\n        default: true'
+            )
+
         # —— 发布签名：去掉 KEYSTORE_BASE64 回退，强制只用 RELEASE_*，并加指纹校验步骤 ——
         if "android-release" in rel_path:
             _before_sign = content

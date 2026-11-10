@@ -1,0 +1,327 @@
+package com.fongmi.android.tv.ui.fragment;
+
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.viewbinding.ViewBinding;
+
+import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.databinding.FragmentSettingPersonalBinding;
+import com.fongmi.android.tv.event.ConfigEvent;
+import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.following.FollowingScheduler;
+import com.fongmi.android.tv.following.FollowingSettings;
+import com.fongmi.android.tv.setting.AppBranding;
+import com.fongmi.android.tv.setting.AutoBackupPolicy;
+import com.fongmi.android.tv.setting.GroupRuleConfig;
+import com.fongmi.android.tv.setting.PlayerSetting;
+import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.theme.WebHtvAlertDialogBuilder;
+import com.fongmi.android.tv.ui.activity.AppBrandingActivity;
+import com.fongmi.android.tv.ui.base.BaseFragment;
+import com.fongmi.android.tv.ui.dialog.GroupRuleDialog;
+import com.fongmi.android.tv.ui.dialog.SpeedSettingDialog;
+import com.fongmi.android.tv.ui.dialog.SliderNumberDialog;
+import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.PermissionUtil;
+import com.fongmi.android.tv.utils.Util;
+
+import java.util.Locale;
+
+public class SettingPersonalFragment extends BaseFragment {
+
+    private FragmentSettingPersonalBinding mBinding;
+    private String[] searchUi;
+    private String[] searchColumn;
+    private String[] siteColumn;
+    private String[] globalHistoryMode;
+    private String[] interfaceFailoverMode;
+    private String[] searchResultSort;
+    private boolean globalHistoryTouchStarted;
+
+    public static SettingPersonalFragment newInstance() {
+        return new SettingPersonalFragment();
+    }
+
+    private String getSwitch(boolean value) {
+        return getString(value ? R.string.setting_on : R.string.setting_off);
+    }
+
+    @Override
+    protected ViewBinding getBinding(@NonNull LayoutInflater inflater, @Nullable ViewGroup container) {
+        return mBinding = FragmentSettingPersonalBinding.inflate(inflater, container, false);
+    }
+
+    @Override
+    protected void initView() {
+        setText();
+    }
+
+    @Override
+    protected void initEvent() {
+        mBinding.searchThread.setOnClickListener(this::setSearchThread);
+        mBinding.following.setOnClickListener(this::setFollowing);
+        mBinding.autoBackup.setOnClickListener(this::setAutoBackup);
+        mBinding.playbackOverlay.setOnClickListener(this::setPlaybackOverlay);
+        mBinding.playBackToDetail.setOnClickListener(this::setPlayBackToDetail);
+        mBinding.episodeHistory.setOnClickListener(this::setEpisodeHistory);
+        // Require a touch sequence which starts on this row. Keep the marker through
+        // ACTION_UP so the following real click can change the persisted mode.
+        mBinding.globalHistory.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) globalHistoryTouchStarted = true;
+            else if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) globalHistoryTouchStarted = false;
+            return false;
+        });
+        mBinding.globalHistory.setOnClickListener(view -> {
+            if (!globalHistoryTouchStarted) return;
+            globalHistoryTouchStarted = false;
+            setGlobalHistory(view);
+        });
+        mBinding.interfaceFailover.setOnClickListener(this::setInterfaceFailover);
+        mBinding.playSpeed.setOnClickListener(this::setPlaySpeed);
+        mBinding.groupRule.setOnClickListener(this::setGroupRule);
+        mBinding.searchUi.setOnClickListener(this::setSearchUi);
+        mBinding.searchColumn.setOnClickListener(this::setSearchColumn);
+        mBinding.siteColumn.setOnClickListener(this::setSiteColumn);
+        mBinding.searchResultSort.setOnClickListener(this::setSearchResultSort);
+        mBinding.resetApp.setOnClickListener(this::showResetAppDialog);
+        mBinding.appBranding.setOnClickListener(this::startAppBranding);
+        mBinding.touchOptimization.setOnClickListener(this::setTouchOptimization);
+        mBinding.liquidGlass.setOnClickListener(this::setLiquidGlass);
+        mBinding.dramaCollected.setOnClickListener(this::setShortDramaCollected);
+        mBinding.glassBlur.setOnClickListener(this::setGlassBlur);
+        mBinding.glassDistortion.setOnClickListener(this::setGlassDistortion);
+        mBinding.glassTranslucency.setOnClickListener(this::setGlassTranslucency);
+        mBinding.glassDispersion.setOnClickListener(this::setGlassDispersion);
+        mBinding.glassReset.setOnClickListener(this::resetGlass);
+    }
+
+    private void setText() {
+        mBinding.searchThreadText.setText(String.valueOf(Setting.getSearchThread()));
+        mBinding.followingText.setText(getSwitch(FollowingSettings.isEnabled()));
+        mBinding.autoBackupText.setText(getSwitch(isAutoBackupEnabled()));
+        mBinding.playbackOverlayText.setText(getSwitch(Setting.isPlaybackOverlayEnabled()));
+        mBinding.playBackToDetailText.setText(getSwitch(Setting.isPlayBackToDetail()));
+        mBinding.episodeHistoryText.setText(getSwitch(Setting.isEpisodeHistory()));
+        mBinding.globalHistoryText.setText((globalHistoryMode = getResources().getStringArray(R.array.select_global_history_mode))[Setting.getGlobalHistoryMode()]);
+        mBinding.interfaceFailoverText.setText((interfaceFailoverMode = getResources().getStringArray(R.array.select_interface_failover_mode))[Setting.getInterfaceFailoverMode()]);
+        mBinding.playSpeedText.setText(getSpeedText(PlayerSetting.getDefaultSpeed()));
+        mBinding.groupRuleText.setText(getString(R.string.setting_group_rule_summary, GroupRuleConfig.enabledCount(), GroupRuleConfig.totalCount()));
+        mBinding.searchUiText.setText((searchUi = getResources().getStringArray(R.array.select_search_ui))[Setting.getSearchUi()]);
+        mBinding.searchColumnText.setText(getSearchColumnText());
+        mBinding.siteColumnText.setText((siteColumn = getResources().getStringArray(R.array.select_site_column))[Setting.getSiteColumn() - 1]);
+        mBinding.searchResultSortText.setText((searchResultSort = getResources().getStringArray(R.array.select_search_result_sort))[Setting.getSearchResultSort()]);
+        mBinding.appBrandingText.setText(AppBranding.getSummary(requireContext()));
+        mBinding.touchOptimizationText.setText(getSwitch(Setting.isTouchOptimized()));
+        mBinding.liquidGlassText.setText(getSwitch(Setting.isLiquidGlass()));
+        mBinding.dramaCollectedText.setText(getSwitch(Setting.isShortDramaCollected()));
+        mBinding.glassBlurText.setText(String.valueOf(Setting.getGlassBlur()));
+        mBinding.glassDistortionText.setText(String.valueOf(Setting.getGlassDistortion()));
+        mBinding.glassTranslucencyText.setText(Setting.getGlassTranslucency() + "%");
+        mBinding.glassDispersionText.setText(getSwitch(Setting.isGlassDispersion()));
+    }
+
+    private String getSearchColumnText() {
+        searchColumn = getResources().getStringArray(R.array.select_search_column);
+        int column = Setting.getSearchColumn();
+        if (column >= 0 && column < searchColumn.length) {
+            return searchColumn[column];
+        }
+        return searchColumn[0];
+    }
+
+    private String getSpeedText(float speed) {
+        return String.format(Locale.US, "%.2f", speed);
+    }
+
+    private void setSearchThread(View view) {
+        SliderNumberDialog.show(requireActivity(), R.string.setting_search_thread, Setting.getSearchThread(), 1, 100, value -> {
+            Setting.putSearchThread(value);
+            setText();
+        });
+    }
+
+    private void setFollowing(View view) {
+        boolean enabled = !FollowingSettings.isEnabled();
+        FollowingSettings.setEnabled(enabled);
+        if (enabled) {
+            FollowingScheduler.ensurePeriodic(requireContext());
+            FollowingScheduler.enqueueDueNow(requireContext());
+        } else {
+            FollowingScheduler.cancelAll(requireContext());
+        }
+        ConfigEvent.common();
+        RefreshEvent.home();
+        setText();
+    }
+
+    private void setAutoBackup(View view) {
+        if (isAutoBackupEnabled()) {
+            Setting.putAutoBackup(false);
+            setText();
+            return;
+        }
+        PermissionUtil.requestFile(this, allGranted -> {
+            if (!allGranted) {
+                Notify.show(R.string.backup_permission_denied);
+                return;
+            }
+            Setting.putAutoBackup(true);
+            setText();
+        });
+    }
+
+    private boolean isAutoBackupEnabled() {
+        return AutoBackupPolicy.isEffective(Setting.isAutoBackup(), Setting.hasFileAccess());
+    }
+
+    private void setPlaybackOverlay(View view) {
+        Setting.putPlaybackOverlayEnabled(!Setting.isPlaybackOverlayEnabled());
+        setText();
+    }
+
+    private void setPlayBackToDetail(View view) {
+        Setting.putPlayBackToDetail(!Setting.isPlayBackToDetail());
+        setText();
+    }
+
+    private void setEpisodeHistory(View view) {
+        Setting.putEpisodeHistory(!Setting.isEpisodeHistory());
+        setText();
+    }
+
+    private void setGlobalHistory(View view) {
+        Setting.putGlobalHistoryMode((Setting.getGlobalHistoryMode() + 1) % globalHistoryMode.length);
+        RefreshEvent.history();
+        setText();
+    }
+
+    private void setInterfaceFailover(View view) {
+        Setting.putInterfaceFailoverMode((Setting.getInterfaceFailoverMode() + 1) % interfaceFailoverMode.length);
+        setText();
+    }
+
+    private void setPlaySpeed(View view) {
+        SpeedSettingDialog.show(requireActivity(), R.string.setting_play_speed, PlayerSetting.getDefaultSpeed(), 0.5f, 5f, 0.25f, value -> {
+            PlayerSetting.putDefaultSpeed(value);
+            setText();
+        });
+    }
+
+    private void setGroupRule(View view) {
+        GroupRuleDialog.create(requireActivity()).onChanged(this::setText).show();
+    }
+
+    private void setSearchUi(View view) {
+        Setting.putSearchUi((Setting.getSearchUi() + 1) % searchUi.length);
+        setText();
+    }
+
+    private void setSearchColumn(View view) {
+        int current = Setting.getSearchColumn();
+        int next = (current + 1) % searchColumn.length;
+        Setting.putSearchColumn(next);
+        setText();
+    }
+
+    private void setSiteColumn(View view) {
+        Setting.putSiteColumn(Setting.getSiteColumn() == 1 ? 2 : 1);
+        setText();
+    }
+
+    private void setSearchResultSort(View view) {
+        Setting.putSearchResultSort((Setting.getSearchResultSort() + 1) % searchResultSort.length);
+        setText();
+    }
+
+    private void showResetAppDialog(View view) {
+        new WebHtvAlertDialogBuilder(requireActivity())
+                .setTitle(R.string.dialog_reset_app)
+                .setMessage(R.string.dialog_reset_app_data)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> resetApp())
+                .show();
+    }
+
+    private void startAppBranding(View view) {
+        AppBrandingActivity.start(requireActivity());
+    }
+
+    private void setTouchOptimization(View view) {
+        boolean enabled = !Setting.isTouchOptimized();
+        Setting.putTouchOptimized(enabled);
+        mBinding.touchOptimizationText.setText(getSwitch(enabled));
+    }
+
+    private void setLiquidGlass(View view) {
+        Setting.putLiquidGlass(!Setting.isLiquidGlass());
+        ConfigEvent.common();
+        // 开关现在同时管底栏玻璃和系统控件玻璃：控件玻璃走主题 token，改完要全屏重建才生效。
+        RefreshEvent.theme();
+        setText();
+    }
+
+    private void setShortDramaCollected(View view) {
+        Setting.putShortDramaCollected(!Setting.isShortDramaCollected());
+        ConfigEvent.common();
+        setText();
+    }
+
+    private void setGlassBlur(View view) {
+        SliderNumberDialog.show(requireActivity(), R.string.setting_glass_blur, Setting.getGlassBlur(), 0, 40, value -> {
+            Setting.putGlassBlur(value);
+            ConfigEvent.common();
+            setText();
+        });
+    }
+
+    private void setGlassDistortion(View view) {
+        SliderNumberDialog.show(requireActivity(), R.string.setting_glass_distortion, Setting.getGlassDistortion(), 0, 30, value -> {
+            Setting.putGlassDistortion(value);
+            ConfigEvent.common();
+            setText();
+        });
+    }
+
+    private void setGlassTranslucency(View view) {
+        SliderNumberDialog.show(requireActivity(), R.string.setting_glass_translucency, Setting.getGlassTranslucency(), 0, 100, value -> {
+            Setting.putGlassTranslucency(value);
+            ConfigEvent.common();
+            setText();
+        });
+    }
+
+    private void setGlassDispersion(View view) {
+        Setting.putGlassDispersion(!Setting.isGlassDispersion());
+        ConfigEvent.common();
+        setText();
+    }
+
+    private void resetGlass(View view) {
+        Setting.putGlassBlur(5);
+        Setting.putGlassDistortion(30);
+        Setting.putGlassTranslucency(50);
+        Setting.putGlassDispersion(true);
+        ConfigEvent.common();
+        setText();
+    }
+
+    private void resetApp() {
+        if (!Util.resetApp()) Notify.show(R.string.reset_app_failed);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        setText();
+    }
+
+    @Override
+    public void onHiddenChanged(boolean hidden) {
+        if (!hidden) setText();
+    }
+}

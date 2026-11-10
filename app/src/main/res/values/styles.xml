@@ -1,0 +1,154 @@
+<resources>
+
+    <style name="Vod">
+        <item name="cornerFamily">rounded</item>
+    </style>
+
+    <style name="Vod.Grid">
+        <item name="cornerSizeTopLeft">8dp</item>
+        <item name="cornerSizeTopRight">8dp</item>
+    </style>
+
+    <style name="Vod.Grid.Large">
+        <item name="cornerSize">8dp</item>
+    </style>
+
+    <style name="Vod.Circle">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="Vod.List">
+        <item name="cornerSizeTopLeft">8dp</item>
+        <item name="cornerSizeBottomLeft">8dp</item>
+    </style>
+
+    <style name="Player">
+        <item name="resize_mode">fit</item>
+        <item name="use_artwork">true</item>
+        <item name="use_controller">false</item>
+    </style>
+
+    <style name="Player.Vod">
+        <item name="keep_content_on_player_reset">false</item>
+    </style>
+
+    <style name="Player.Live">
+        <item name="keep_content_on_player_reset">true</item>
+    </style>
+
+    <style name="Video" />
+
+    <style name="Video.ContextText">
+        <item name="android:shadowColor">@color/black_90</item>
+        <item name="android:shadowDx">0</item>
+        <item name="android:shadowDy">1</item>
+        <item name="android:shadowRadius">3</item>
+    </style>
+
+    <style name="Shadow">
+        <item name="android:shadowColor">#B0000000</item>
+        <item name="android:shadowDx">1.5</item>
+        <item name="android:shadowDy">1.5</item>
+        <item name="android:shadowRadius">2</item>
+    </style>
+
+    <style name="Theme.WebHTV.LightDialog" parent="Theme.WebHTV.Dialog" />
+
+    <style name="ThemeOverlay.WebHTV.LightDialog" parent="ThemeOverlay.WebHTV.Dialog" />
+
+    <!--
+        更新弹窗专用：把 Material 的对话框背景 inset 归零。
+
+        Material 的 backgroundInset* 是以 alertDialogStyle 作为 defStyleAttr 读取的
+        （MaterialAlertDialogBuilder 构造器 → MaterialDialogs.getDialogBackgroundInsets），
+        defStyleAttr 的优先级高于主题属性，所以必须覆盖 alertDialogStyle 本身，
+        写在 ThemeOverlay 上会被 MaterialAlertDialog.Material3 的值压掉。
+
+        不归零的话，res/values-h480dp-v13 会把上下 inset 提到 80dp（屏高 ≥480dp 时生效，
+        绝大多数电视命中），InsetDrawable 经 getPadding() 变成 DecorView 的上下 padding，
+        而弹窗高度是我们自己算好写死的，于是内容底部被裁掉约 240px。
+    -->
+    <style name="MaterialAlertDialog.WebHTV.Rounded" parent="MaterialAlertDialog.Material3">
+        <item name="backgroundTint">?attr/colorSurfaceContainerHigh</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.WebHTV.Dialog</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.WebHTV.Dialog</item>
+    </style>
+
+    <style name="ShapeAppearance.WebHTV.Dialog" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">22dp</item>
+    </style>
+
+    <style name="MaterialAlertDialog.WebHTV.NoInset" parent="MaterialAlertDialog.Material3">
+        <item name="backgroundInsetStart">0dp</item>
+        <item name="backgroundInsetTop">0dp</item>
+        <item name="backgroundInsetEnd">0dp</item>
+        <item name="backgroundInsetBottom">0dp</item>
+    </style>
+
+    <style name="ThemeOverlay.WebHTV.LightDialog.NoInset" parent="ThemeOverlay.WebHTV.LightDialog">
+        <item name="alertDialogStyle">@style/MaterialAlertDialog.WebHTV.NoInset</item>
+    </style>
+
+    <style name="Widget.WebHTV" parent="@android:style/Widget" />
+
+    <style name="Widget.WebHTV.LightDialog" />
+
+    <style name="Widget.WebHTV.LightDialog.Label" parent="Widget.WebHTV.Label" />
+
+    <style name="Widget.WebHTV.LightDialog.Helper" parent="Widget.WebHTV.Helper" />
+
+    <style name="Widget.WebHTV.LightDialog.Input" parent="Widget.WebHTV.Input" />
+
+    <style name="Widget.WebHTV.LightDialog.Button.Tonal" parent="Widget.WebHTV.Button.Tonal" />
+
+    <style name="Widget.WebHTV.LightDialog.Button.Outlined" parent="Widget.WebHTV.Button.Outlined" />
+
+    <style name="Widget.WebHTV.LightDialog.Button.Text" parent="Widget.WebHTV.Button.Text" />
+
+    <style name="DialogFullScreen" parent="Theme.Material3.Dark.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
+
+    <style name="Control">
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:textColor">@color/player_control_text</item>
+    </style>
+
+    <style name="DisplayControl" parent="Control">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">6dp</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:background">@drawable/selector_display_option</item>
+        <item name="android:gravity">center</item>
+        <item name="android:minHeight">36dp</item>
+        <item name="android:minWidth">56dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:textColor">@color/display_option_text</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:shadowColor">@color/transparent</item>
+        <item name="android:shadowDx">0</item>
+        <item name="android:shadowDy">0</item>
+        <item name="android:shadowRadius">0</item>
+    </style>
+
+    <style name="ToolbarTextAppearance" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="titleTextColor">@color/white</item>
+    </style>
+
+    <style name="TextAppearance.WebHTV.LightDialogSliderLabel" parent="TextAppearance.MaterialComponents.Tooltip">
+        <item name="android:textColor">@color/white</item>
+    </style>
+
+    <style name="Widget.WebHTV.LightDialogSliderLabel" parent="Widget.WebHTV.SliderLabel" />
+
+</resources>

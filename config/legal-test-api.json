@@ -1,0 +1,65 @@
+{
+  "code": 1,
+  "msg": "ok",
+  "page": 1,
+  "pagecount": 1,
+  "limit": 20,
+  "total": 5,
+  "list": [
+    {
+      "vod_id": 1,
+      "vod_name": "大雄兔 Big Buck Bunny（多格式测试）",
+      "vod_pic": "https://archive.org/services/img/big_buck_bunny_1080p_stereo",
+      "vod_remarks": "CC-BY 开放电影",
+      "vod_year": "2008",
+      "vod_area": "荷兰",
+      "vod_content": "Blender 基金会开放电影（CC-BY 授权）。同一个片子提供 HLS / MP4 / DASH 三条线路，专门用来测试播放器对不同流格式的兼容。",
+      "vod_play_from": "HLS线路$$$MP4线路$$$DASH线路",
+      "vod_play_url": "正片$https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8$$$正片$https://archive.org/download/big_buck_bunny_1080p_stereo/big_buck_bunny_1080p_stereo.mp4$$$正片$https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd"
+    },
+    {
+      "vod_id": 2,
+      "vod_name": "Blender 开放电影合集（选集测试）",
+      "vod_pic": "https://archive.org/services/img/sintel-dvd",
+      "vod_remarks": "4 集 · 选集切换测试",
+      "vod_year": "2024",
+      "vod_area": "荷兰",
+      "vod_content": "把四部 Blender 开放电影排成四集，用来测试选集切换、续播和进度记忆是否正常。",
+      "vod_play_from": "开放电影",
+      "vod_play_url": "第1集 大雄兔$https://archive.org/download/big_buck_bunny_1080p_stereo/big_buck_bunny_1080p_stereo.mp4#第2集 辛特尔$https://archive.org/download/sintel-dvd/Sintel_PAL.mp4#第3集 钢之泪$https://archive.org/download/Tears-of-Steel/tears_of_steel_720p.mp4#第4集 大象之梦$https://archive.org/download/ElephantsDream_277/elephant_dreams_640.mp4"
+    },
+    {
+      "vod_id": 3,
+      "vod_name": "钢之泪 Tears of Steel",
+      "vod_pic": "https://archive.org/services/img/Tears-of-Steel",
+      "vod_remarks": "CC-BY · 科幻短片",
+      "vod_year": "2012",
+      "vod_area": "荷兰",
+      "vod_content": "Blender 基金会开放电影（CC-BY 授权），提供 HLS 与 MP4 两条线路。",
+      "vod_play_from": "HLS线路$$$MP4线路",
+      "vod_play_url": "正片$https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8$$$正片$https://archive.org/download/Tears-of-Steel/tears_of_steel_720p.mp4"
+    },
+    {
+      "vod_id": 4,
+      "vod_name": "辛特尔 Sintel",
+      "vod_pic": "https://archive.org/services/img/sintel-dvd",
+      "vod_remarks": "CC-BY · 奇幻短片",
+      "vod_year": "2010",
+      "vod_area": "荷兰",
+      "vod_content": "Blender 基金会开放电影（CC-BY 授权），少女与小龙的故事，MP4 直链。",
+      "vod_play_from": "MP4线路",
+      "vod_play_url": "正片$https://archive.org/download/sintel-dvd/Sintel_PAL.mp4"
+    },
+    {
+      "vod_id": 5,
+      "vod_name": "BipBop 能力测试流（HEVC/多码率/字幕轨）",
+      "vod_pic": "https://image.mux.com/x36xhzz/thumbnail.jpg",
+      "vod_remarks": "苹果官方测试流",
+      "vod_year": "2023",
+      "vod_area": "美国",
+      "vod_content": "苹果官方 HLS 示例流：含 HEVC 编码、多码率和外挂字幕轨，用来测试播放器的硬解、码率切换与字幕轨选择。",
+      "vod_play_from": "HLS线路",
+      "vod_play_url": "正片$https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_hevc/master.m3u8"
+    }
+  ]
+}
