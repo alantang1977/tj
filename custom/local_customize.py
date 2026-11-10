@@ -3496,20 +3496,6 @@ def modify_cnb_release_script(config):
     content = content.replace(old_slug, cnb_repo_slug)
     content = content.replace(f"https://cnb.cool/{cnb_repo_slug}.git".replace(cnb_repo_slug, old_slug), cnb_repo_url)
 
-    # 2.5) 在 cp json 到 apk/ 之后，加生成汇总 update.json（App 端查 CNB 的入口文件）
-    _old_cp = 'cp "${json_files[@]}" cnb-mirror/apk/'
-    if "update.json" not in content and _old_cp in content:
-        _new_cp = (
-            _old_cp + '\n'
-            '# 生成 App 端查的汇总 update.json（取 mobile arm64 主包）\n'
-            'if ls cnb-mirror/apk/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then\n'
-            '  cp cnb-mirror/apk/mobile-arm64-v8a-*.json cnb-mirror/apk/update.json\n'
-            'else\n'
-            '  cp cnb-mirror/apk/*.json cnb-mirror/apk/update.json\n'
-            'fi'
-        )
-        content = content.replace(_old_cp, _new_cp, 1)
-
     changed = content != original
     if changed or n_slug:
         with open(script_path, "w", encoding="utf-8", newline="") as f:
@@ -3934,25 +3920,6 @@ def modify_workflow_files(config):
                     1)
             if content != _before_sign:
                 print("[OK] android-release.yml: 签名配置已收紧（去掉 KEYSTORE_* 回退 + 加指纹校验步骤）")
-
-        # —— update.json 汇总：App 端查的入口文件，必须生成并上传到 GitHub update-channel + CNB apk/ ——
-        if "android-release" in rel_path:
-            _before_update = content
-            # 在 "Publish update channel manifests" 步骤的 gh release upload 之前，加生成 update.json
-            _old_upload = 'gh release upload "$UPDATE_CHANNEL_TAG" channel-manifests/*.json --clobber'
-            if "update.json" not in content and _old_upload in content:
-                _gen_update = (
-                    '# 生成 App 端查的汇总 update.json（取当前 channel 的 mobile arm64 主包）\n'
-                    '          if ls channel-manifests/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then\n'
-                    '            cp channel-manifests/mobile-arm64-v8a-*.json channel-manifests/update.json\n'
-                    '          else\n'
-                    '            cp channel-manifests/*.json channel-manifests/update.json\n'
-                    '          fi\n'
-                    '          gh release upload "$UPDATE_CHANNEL_TAG" channel-manifests/*.json --clobber'
-                )
-                content = content.replace(_old_upload, _gen_update, 1)
-            if content != _before_update:
-                print("[OK] android-release.yml: 已加 update.json 汇总生成步骤（App 端入口文件）")
 
         if content != original:
             # 写回前 YAML 解析校验：一旦破坏缩进，GitHub Actions 会直接 Invalid workflow file
