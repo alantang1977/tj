@@ -3496,6 +3496,19 @@ def modify_cnb_release_script(config):
     content = content.replace(old_slug, cnb_repo_slug)
     content = content.replace(f"https://cnb.cool/{cnb_repo_slug}.git".replace(cnb_repo_slug, old_slug), cnb_repo_url)
 
+    # 2.5) 删除 update.json 汇总生成代码（App 端不查这个文件，且 cp 多文件会报错）
+    _update_json_block = (
+        '# 生成 App 端查的汇总 update.json（取 mobile arm64 主包）\n'
+        'if ls cnb-mirror/apk/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then\n'
+        '  cp cnb-mirror/apk/mobile-arm64-v8a-*.json cnb-mirror/apk/update.json\n'
+        'else\n'
+        '  cp cnb-mirror/apk/*.json cnb-mirror/apk/update.json\n'
+        'fi\n'
+    )
+    if _update_json_block in content:
+        content = content.replace(_update_json_block, '', 1)
+        print("[OK] sync-cnb-release.sh: 已删除 update.json 汇总生成代码")
+
     changed = content != original
     if changed or n_slug:
         with open(script_path, "w", encoding="utf-8", newline="") as f:
@@ -3891,6 +3904,48 @@ def modify_workflow_files(config):
                 'description: "Optionally mirror APKs to CNB Release and sync CNB manifests"\n        required: false\n        default: false',
                 'description: "Mirror APKs to CNB Release and sync CNB manifests (default on)"\n        required: false\n        default: true'
             )
+
+        # —— 发布签名：去掉 KEYSTORE_BASE64 回退
+
+        # —— CNB_TOKEN 预检：sync_cnb 为 true 但 CNB_TOKEN 为空时提前报错 
+        if "android-release" in rel_path:
+            _CHECK_TOKEN_MARKER = "Check CNB_TOKEN before sync"
+            if _CHECK_TOKEN_MARKER not in content:
+                _check_step = (
+                    "\n"
+                    '      - name: Check CNB_TOKEN before sync\n'
+                    '        if: ${{ inputs.sync_cnb }}\n'
+                    '        env:\n'
+                    '          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}\n'
+                    '        run: |\n'
+                    '          if [ -z "$CNB_TOKEN" ]; then\n'
+                    '            echo "::error title=CNB_TOKEN missing::sync_cnb is on but CNB_TOKEN secret is not configured."\n'
+                    '            exit 1\n'
+                    '          fi\n'
+                    '          echo "CNB_TOKEN is configured."\n'
+                )
+                _sync_anchor = '      - name: Sync to CNB\n'
+                if _sync_anchor in content:
+                    content = content.replace(_sync_anchor, _check_step + _sync_anchor, 1)
+                    print("[OK] android-release.yml: 已注入 CNB_TOKEN 预检步骤")
+                else:
+                    print("[WARN] android-release.yml: 未找到 Sync to CNB 步骤")
+
+        # —— 删除 update.json 汇总生成代码（App 端不查这个文件，且 cp 多文件会报错）——
+        if "android-release" in rel_path:
+            _before_update_json = content
+            # 匹配 update.json 生成代码块（注释 + if/else + fi）
+            _update_json_block = (
+                '          # 生成 App 端查的汇总 update.json（取当前 channel 的 mobile arm64 主包）\n'
+                '          if ls channel-manifests/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then\n'
+                '            cp channel-manifests/mobile-arm64-v8a-*.json channel-manifests/update.json\n'
+                '          else\n'
+                '            cp channel-manifests/*.json channel-manifests/update.json\n'
+                '          fi\n'
+            )
+            if _update_json_block in content:
+                content = content.replace(_update_json_block, '', 1)
+                print("[OK] android-release.yml: 已删除 update.json 汇总生成代码（App 端按 ABI 分 manifest 查，不需要汇总）")
 
         # —— 发布签名：去掉 KEYSTORE_BASE64 回退，强制只用 RELEASE_*，并加指纹校验步骤 ——
         if "android-release" in rel_path:

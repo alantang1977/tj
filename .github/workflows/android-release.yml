@@ -397,14 +397,19 @@ jobs:
               --notes "Machine-managed stable and beta update manifests." \
               --prerelease
           fi
-          # 生成 App 端查的汇总 update.json（取当前 channel 的 mobile arm64 主包）
-          if ls channel-manifests/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then
-            cp channel-manifests/mobile-arm64-v8a-*.json channel-manifests/update.json
-          else
-            cp channel-manifests/*.json channel-manifests/update.json
-          fi
           gh release upload "$UPDATE_CHANNEL_TAG" channel-manifests/*.json --clobber
 
+
+      - name: Check CNB_TOKEN before sync
+        if: ${{ inputs.sync_cnb }}
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          if [ -z "$CNB_TOKEN" ]; then
+            echo "::error title=CNB_TOKEN missing::sync_cnb is on but CNB_TOKEN secret is not configured."
+            exit 1
+          fi
+          echo "CNB_TOKEN is configured."
       - name: Sync to CNB
         if: ${{ inputs.sync_cnb }}
         env:
