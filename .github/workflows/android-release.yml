@@ -397,6 +397,12 @@ jobs:
               --notes "Machine-managed stable and beta update manifests." \
               --prerelease
           fi
+          # 生成 App 端查的汇总 update.json（取当前 channel 的 mobile arm64 主包）
+          if ls channel-manifests/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then
+            cp channel-manifests/mobile-arm64-v8a-*.json channel-manifests/update.json
+          else
+            cp channel-manifests/*.json channel-manifests/update.json
+          fi
           gh release upload "$UPDATE_CHANNEL_TAG" channel-manifests/*.json --clobber
 
       - name: Sync to CNB

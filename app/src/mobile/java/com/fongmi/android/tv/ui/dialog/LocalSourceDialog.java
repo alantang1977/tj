@@ -24,6 +24,7 @@ import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.LocalSource;
 import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.github.catvod.utils.Path;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -63,13 +64,7 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
         show(fragment.getChildFragmentManager(), "LocalSourceDialog");
     }
 
-    @Override
-    public void onStart() {
-        super.onStart();
-        // 弹窗默认是包内容高度，带 weight 的源列表分不到剩余空间，一次只露一行；
-        // 把窗口拉到屏幕高度的 85%，列表才能一次多显示好几条，底部按钮仍贴底。
-        setHeight(0.85f);
-    }
+    private boolean moreExpanded;
 
     private final ActivityResultLauncher<Intent> launcher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getData() == null || result.getData().getData() == null) return;
@@ -147,6 +142,8 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
             int count = adapter.getItemCount();
             if (count > 0) binding.sites.scrollToPosition(count - 1);
         });
+        binding.moreToggle.setOnClickListener(v -> setMoreExpanded(!moreExpanded));
+        setMoreExpanded(false);
         refreshSecret();
         refreshPhpRoot();
         refreshScanDir();
@@ -156,6 +153,22 @@ public class LocalSourceDialog extends BaseAlertDialog implements LocalSourceAda
     private void refreshScanDir() {
         String dir = LocalSource.getScanDir();
         binding.scanDir.setText(TextUtils.isEmpty(dir) ? getString(R.string.local_source_scan_dir_empty) : dir);
+    }
+
+    /**
+     * 下面 4 排按钮默认收起，列表独占空间；点“更多操作”展开按钮，列表相应收窄，
+     * 让弹窗总高度不超屏，展开时底部按钮也能点到。
+     */
+    private void setMoreExpanded(boolean expanded) {
+        moreExpanded = expanded;
+        binding.moreActions.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        binding.moreToggle.setText(expanded ? R.string.local_source_collapse : R.string.local_source_more);
+        // 列表高度：收起时 320dp（约 4 条），展开时 100dp（约 1 条），给按钮腾地方。
+        // 上下限锁死同一值：只设最小高度时 weight 会把它撑大、把按钮顶出屏幕，
+        // 加了最大高度才卡得住。“更多操作”已移到列表上方，不再被列表顶走。
+        binding.sites.setMinHeight(ResUtil.dp2px(expanded ? 100 : 320));
+        binding.sites.setMaxHeight(ResUtil.dp2px(expanded ? 100 : 320));
+        binding.sites.requestLayout();
     }
 
     private void refreshList() {

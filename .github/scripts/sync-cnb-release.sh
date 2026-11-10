@@ -64,6 +64,12 @@ clone_cnb() {
 clone_cnb
 mkdir -p cnb-mirror/apk
 cp "${json_files[@]}" cnb-mirror/apk/
+# 生成 App 端查的汇总 update.json（取 mobile arm64 主包）
+if ls cnb-mirror/apk/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then
+  cp cnb-mirror/apk/mobile-arm64-v8a-*.json cnb-mirror/apk/update.json
+else
+  cp cnb-mirror/apk/*.json cnb-mirror/apk/update.json
+fi
 git -C cnb-mirror config user.name "github-actions[bot]"
 git -C cnb-mirror config user.email "github-actions[bot]@users.noreply.github.com"
 git -C cnb-mirror add apk/

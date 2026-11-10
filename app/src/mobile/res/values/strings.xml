@@ -36,6 +36,8 @@
     <string name="local_source_php_root_label">PHP root: %1$s</string>
     <string name="local_source_php_root_empty">Not set</string>
     <string name="local_source_too_many_files">Too many files, please choose a subfolder</string>
+    <string name="local_source_more">More actions</string>
+    <string name="local_source_collapse">Collapse</string>
 
     <!-- Short drama section -->
     <string name="drama_recommend">Recommend</string>

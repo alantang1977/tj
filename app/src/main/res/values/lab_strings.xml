@@ -65,6 +65,4 @@
 <string name="lab_global_proxy_port">代理端口</string>
 <string name="lab_global_proxy_no_proxy">不走代理的域名（逗号分隔）</string>
 <string name="lab_empty_no_source">暂无可用包\n请点击右上角设置，选择本地 lab.json 或填写网络 URL</string>
-<string name="lab_nav_entry_title">底部导航入口</string>
-<string name="lab_nav_entry_hint">开：底部导航显示实验室 关：仅从增强设置进入</string>
 </resources>

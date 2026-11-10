@@ -36,6 +36,8 @@
     <string name="local_source_php_root_label">PHP 根目錄：%1$s</string>
     <string name="local_source_php_root_empty">未設定</string>
     <string name="local_source_too_many_files">檔案過多請選擇子資料夾</string>
+    <string name="local_source_more">更多操作</string>
+    <string name="local_source_collapse">收起</string>
 
     <!-- Short drama section -->
     <string name="drama_recommend">推薦</string>

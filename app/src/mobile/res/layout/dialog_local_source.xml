@@ -70,12 +70,29 @@
 
     </HorizontalScrollView>
 
+    <!-- “更多操作”放列表上方：列表再长也顶不走它，点开下面 4 排按钮，列表相应收窄。 -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/moreToggle"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/local_source_more"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textSize="12sp"
+        android:textColor="@color/dialog_outlined_button_text"
+        app:backgroundTint="@color/dialog_outlined_button_bg"
+        app:strokeColor="@color/dialog_outlined_button_stroke" />
+
     <com.fongmi.android.tv.ui.custom.CustomRecyclerView
         android:id="@+id/sites"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="8dp"
         android:layout_weight="1"
+        android:minHeight="320dp"
+        app:maxHeight="320dp"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:overScrollMode="never"
@@ -101,6 +118,14 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp" />
+
+    <!-- 下面 4 排按钮默认收起，点“更多操作”才展开；收起时列表独占空间。 -->
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/moreActions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
@@ -314,6 +339,8 @@
             android:textSize="12sp"
             app:backgroundTint="@color/dialog_outlined_button_bg"
             app:strokeColor="@color/dialog_outlined_button_stroke" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 

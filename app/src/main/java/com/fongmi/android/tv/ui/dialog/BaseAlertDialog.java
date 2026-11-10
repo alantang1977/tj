@@ -52,11 +52,4 @@ public abstract class BaseAlertDialog extends DialogFragment {
         params.width = (int) (ResUtil.getScreenWidth() * factor);
         getDialog().getWindow().setAttributes(params);
     }
-
-    protected void setHeight(float factor) {
-        if (getDialog() == null || getDialog().getWindow() == null) return;
-        WindowManager.LayoutParams params = getDialog().getWindow().getAttributes();
-        params.height = (int) (ResUtil.getScreenHeight() * factor);
-        getDialog().getWindow().setAttributes(params);
-    }
 }

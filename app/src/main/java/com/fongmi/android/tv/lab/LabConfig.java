@@ -43,7 +43,6 @@ public final class LabConfig {
     private static final String KEY_GLOBAL_PROXY = "global_proxy";
     private static final String KEY_GLOBAL_PROXY_PORT = "global_proxy_port";
     private static final String KEY_GLOBAL_PROXY_NO_PROXY = "global_proxy_no_proxy";
-    private static final String KEY_NAV_ENTRY = "nav_entry";
     private static final String KEY_IMPORTED = "imported";
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
@@ -129,14 +128,6 @@ public final class LabConfig {
 
     public void setBattery(boolean value) {
         sp().edit().putBoolean(KEY_BATTERY, value).apply();
-    }
-
-    public boolean getNavEntry() {
-        return sp().getBoolean(KEY_NAV_ENTRY, false);
-    }
-
-    public void setNavEntry(boolean value) {
-        sp().edit().putBoolean(KEY_NAV_ENTRY, value).apply();
     }
 
     public boolean getGlobalProxy() {

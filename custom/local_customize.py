@@ -3496,6 +3496,20 @@ def modify_cnb_release_script(config):
     content = content.replace(old_slug, cnb_repo_slug)
     content = content.replace(f"https://cnb.cool/{cnb_repo_slug}.git".replace(cnb_repo_slug, old_slug), cnb_repo_url)
 
+    # 2.5) 在 cp json 到 apk/ 之后，加生成汇总 update.json（App 端查 CNB 的入口文件）
+    _old_cp = 'cp "${json_files[@]}" cnb-mirror/apk/'
+    if "update.json" not in content and _old_cp in content:
+        _new_cp = (
+            _old_cp + '\n'
+            '# 生成 App 端查的汇总 update.json（取 mobile arm64 主包）\n'
+            'if ls cnb-mirror/apk/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then\n'
+            '  cp cnb-mirror/apk/mobile-arm64-v8a-*.json cnb-mirror/apk/update.json\n'
+            'else\n'
+            '  cp cnb-mirror/apk/*.json cnb-mirror/apk/update.json\n'
+            'fi'
+        )
+        content = content.replace(_old_cp, _new_cp, 1)
+
     changed = content != original
     if changed or n_slug:
         with open(script_path, "w", encoding="utf-8", newline="") as f:
@@ -3920,6 +3934,25 @@ def modify_workflow_files(config):
                     1)
             if content != _before_sign:
                 print("[OK] android-release.yml: 签名配置已收紧（去掉 KEYSTORE_* 回退 + 加指纹校验步骤）")
+
+        # —— update.json 汇总：App 端查的入口文件，必须生成并上传到 GitHub update-channel + CNB apk/ ——
+        if "android-release" in rel_path:
+            _before_update = content
+            # 在 "Publish update channel manifests" 步骤的 gh release upload 之前，加生成 update.json
+            _old_upload = 'gh release upload "$UPDATE_CHANNEL_TAG" channel-manifests/*.json --clobber'
+            if "update.json" not in content and _old_upload in content:
+                _gen_update = (
+                    '# 生成 App 端查的汇总 update.json（取当前 channel 的 mobile arm64 主包）\n'
+                    '          if ls channel-manifests/mobile-arm64-v8a-*.json 1>/dev/null 2>&1; then\n'
+                    '            cp channel-manifests/mobile-arm64-v8a-*.json channel-manifests/update.json\n'
+                    '          else\n'
+                    '            cp channel-manifests/*.json channel-manifests/update.json\n'
+                    '          fi\n'
+                    '          gh release upload "$UPDATE_CHANNEL_TAG" channel-manifests/*.json --clobber'
+                )
+                content = content.replace(_old_upload, _gen_update, 1)
+            if content != _before_update:
+                print("[OK] android-release.yml: 已加 update.json 汇总生成步骤（App 端入口文件）")
 
         if content != original:
             # 写回前 YAML 解析校验：一旦破坏缩进，GitHub Actions 会直接 Invalid workflow file
@@ -4417,6 +4450,72 @@ def main():
         sign_ok = False
     results.append(sign_ok)
 
+    # —— 应用名称一致性：所有 strings.xml 的 app_name 必须固定，防止上游覆盖回原名 ——
+    name_ok = True
+    expected_names = {
+        "values": "TANG TV",
+        "values-zh-rCN": "湯影視",
+        "values-zh-rTW": "湯影視",
+    }
+    for res_dir, expected_name in expected_names.items():
+        sp = os.path.join(REPO_ROOT, "app", "src", "main", "res", res_dir, "strings.xml")
+        if not os.path.exists(sp):
+            print(f"[WARN] {res_dir}/strings.xml 不存在，跳过 app_name 校验")
+            continue
+        with open(sp, "r", encoding="utf-8") as f:
+            stxt = f.read()
+        m = re.search(r'<string name="app_name">([^<]+)</string>', stxt)
+        if not m:
+            print(f"[ERROR] {res_dir}/strings.xml 未找到 app_name")
+            name_ok = False
+        elif m.group(1).strip() != expected_name:
+            print(f"[ERROR] {res_dir}/strings.xml app_name='{m.group(1).strip()}'，应为 '{expected_name}'（会导致桌面图标名称错乱）")
+            name_ok = False
+        else:
+            print(f"[OK] {res_dir}/strings.xml app_name = {expected_name}")
+    results.append(name_ok)
+
+    # —— productFlavors 不得覆盖 applicationId（否则不同 flavor 包名不同，无法统一升级）——
+    flavors_ok = True
+    gradle_path = os.path.join(REPO_ROOT, "app", "build.gradle")
+    if os.path.exists(gradle_path):
+        with open(gradle_path, "r", encoding="utf-8") as f:
+            gtxt = f.read()
+        # 提取 productFlavors { ... } 块
+        m = re.search(r'productFlavors\s*\{(.*?)\n\s*\}', gtxt, re.DOTALL)
+        if m and re.search(r'applicationId', m.group(1)):
+            print("[ERROR] productFlavors 块内出现 applicationId 覆盖，不同 flavor 包名不同会导致无法统一升级！")
+            flavors_ok = False
+        else:
+            print("[OK] productFlavors 未覆盖 applicationId（所有 flavor 共用同一包名）")
+    results.append(flavors_ok)
+
+    # —— release buildType 必须绑定 signingConfigs.release（不能静默回退 debug）——
+    release_sign_ok = True
+    if os.path.exists(gradle_path):
+        with open(gradle_path, "r", encoding="utf-8") as f:
+            gtxt = f.read()
+        # 先定位 buildTypes { ... } 块，再在其内找 release { ... }
+        bt = re.search(r'buildTypes\s*\{(.*?)\n    \}', gtxt, re.DOTALL)
+        if bt:
+            rb = re.search(r'release\s*\{(.*?)\n        \}', bt.group(1), re.DOTALL)
+            if rb:
+                rbody = rb.group(1)
+                if 'signingConfigs.release' not in rbody:
+                    print("[ERROR] release buildType 未绑定 signingConfigs.release，可能静默用 debug 签名！")
+                    release_sign_ok = False
+                else:
+                    print("[OK] release buildType 绑定 signingConfigs.release")
+                # 只有直接 signingConfig = signingConfigs.debug（无三元 release 判断）才报错
+                if re.search(r'signingConfig\s*=\s*signingConfigs\.debug\s*$', rbody, re.MULTILINE):
+                    print("[ERROR] release buildType 直接使用 signingConfigs.debug，会产出 debug 签名包！")
+                    release_sign_ok = False
+            else:
+                print("[WARN] buildTypes 内未找到 release 块")
+        else:
+            print("[WARN] 未找到 buildTypes 块")
+    results.append(release_sign_ok)
+
     # 任何一步「真失败」都必须以非零码退出，阻断提交与 CI 打包：
     #   · 图标生成失败 / 一致性校验未通过
     #   · Java 写回校验不过、YAML 被破坏、XML 解析失败等已登记进 FAILURES 的问题
@@ -4433,8 +4532,8 @@ def main():
         sys.exit(1)
 
     print("\n" + "=" * 72)
-    if all([ns_ok, pkg_ok, sign_ok]):
-        print("  [DONE] 自定义修改完成，且 包名 / namespace / 发布签名 一致性校验通过。")
+    if all([ns_ok, pkg_ok, sign_ok, name_ok, flavors_ok, release_sign_ok]):
+        print("  [DONE] 自定义修改完成，且 包名/名称/namespace/签名/flavor 一致性校验全部通过。")
     elif any(results):
         print("  [DONE] 自定义修改完成，但上方存在 [ERROR]/[WARN] 项，请按提示处理。")
     else:
@@ -4491,4 +4590,3 @@ if __name__ == "__main__":
         do_export(CONFIG.get("ICON_STYLE", "cat"))
     else:
         main()
-#（注：内容由AI生成）
