@@ -1751,6 +1751,7 @@ TVData</string>
     <string name="home_empty_title">Nothing to show</string>
     <string name="home_empty_description">The content source returned no items.</string>
     <string name="home_empty_action">Reload</string>
+    <string name="home_continue_watching">Continue Watching</string>
     
     <string name="home_no_config_title">No content source yet</string>
     <string name="home_no_config_description">Add a VOD content source to start browsing.</string>

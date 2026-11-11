@@ -6691,7 +6691,10 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
             showAiRecommendationReason(null, false);
             return;
         }
-        boolean hasCast = !castItems.isEmpty();
+        // B4: TMDB has no cast for this title -> fall back to the site's own actor
+        // string, so the cast row is not empty for non-TMDB titles.
+        List<TmdbPerson> displayCast = castItems.isEmpty() ? siteActorFallback() : castItems;
+        boolean hasCast = !displayCast.isEmpty();
         boolean hasCreators = !creatorItems.isEmpty();
         boolean hasPhotos = !tmdbEpisodePhotos.isEmpty();
         boolean hasPosters = !detailTmdbPosters.isEmpty();
@@ -6725,7 +6728,7 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         setTopMargin(binding.castTitle, hasPhotos || hasPosters || hasRelatedVideos ? sectionGapDp : 0);
         binding.castTitle.setVisibility(hasCast ? View.VISIBLE : View.GONE);
         binding.castList.setVisibility(hasCast ? View.VISIBLE : View.GONE);
-        castAdapter.setItems(castItems);
+        castAdapter.setItems(displayCast);
         castAdapter.rebindAttached(binding.castList);
 
         setTopMargin(binding.creatorTitle, hasPhotos || hasPosters || hasRelatedVideos || hasCast ? sectionGapDp : 0);
@@ -12567,6 +12570,12 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
     }
 
     private void loadPersonDetail(TmdbPerson person) {
+        if (person.getPersonId() <= 0) {
+            // Site-actor fallback card (B4): no TMDB id, so search the site for
+            // this actor's other works instead of opening a TMDB person page.
+            SearchActivity.direct(this, person.getName());
+            return;
+        }
         if (!canMatchTmdb()) {
             Notify.show(getString(R.string.detail_tmdb_need_key));
             return;
@@ -13730,6 +13739,28 @@ public class TmdbDetailActivity extends PlaybackActivity implements TrackDialog.
         item.setActor(coalesce(castNames(), vod.getActor()));
         item.setRemarks(coalesce(tmdbEpisodeInfo().detailText(this), getMarkText(), vod.getRemarks()));
         return item;
+    }
+
+    // B4: build name-only cast cards from the site's actor string, used when
+    // TMDB returns no cast for this title. Cards have no photo (ImgUtil shows
+    // a text placeholder) and no TMDB id; tapping one searches the site for
+    // that actor (see loadPersonDetail).
+    private List<TmdbPerson> siteActorFallback() {
+        List<TmdbPerson> items = new ArrayList<>();
+        if (vod == null) return items;
+        String actor = vod.getActor();
+        if (TextUtils.isEmpty(actor)) return items;
+        String subtitle = getString(R.string.tmdb_cast_label);
+        for (String name : actor.split("[,，/、；;]+")) {
+            name = name.trim();
+            if (name.isEmpty()) continue;
+            boolean dup = false;
+            for (TmdbPerson person : items) if (person.getName().equals(name)) { dup = true; break; }
+            if (dup) continue;
+            items.add(new TmdbPerson(0, name, subtitle, "", "", ""));
+            if (items.size() >= 12) break;
+        }
+        return items;
     }
 
     private String castNames() {

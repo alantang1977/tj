@@ -174,10 +174,12 @@ class GlassBackdropCapture(
 }
 
 // Geometry of the floating bar inside the 88dp glass slot (see activity_home.xml):
-// 16dp side insets, 10dp above the slot's bottom edge, 64dp tall, so its top edge
-// sits 14dp below the slot's top edge.
-private val BarInsetX = 16.dp
-private val BarTopInSlot = 14.dp
+// 24dp side insets, 16dp above the slot's bottom edge, 64dp tall, so its top edge
+// sits 8dp below the slot's top edge. (B3: wider insets + higher float than the
+// original 16dp/10dp/14dp, so the bar reads as a centered floating capsule in the
+// BieCuiLe style instead of a near-full-width strip.)
+private val BarInsetX = 24.dp
+private val BarTopInSlot = 8.dp
 
 @Composable
 fun GlassNavBarContent(state: GlassNavState) {
@@ -232,7 +234,7 @@ fun GlassNavBarContent(state: GlassNavState) {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = BarInsetX)
-                .padding(bottom = 10.dp)
+                .padding(bottom = 16.dp)
                 .fillMaxWidth(),
             backdrop = backdrop,
             axis = NavAxis.Horizontal,
