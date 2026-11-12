@@ -1,6 +1,5 @@
 plugins {
     alias libs.plugins.android.application
-    alias libs.plugins.kotlin.compose
 }
 
 def localProps = new Properties()
@@ -86,7 +85,6 @@ android {
     buildFeatures {
         buildConfig = true
         viewBinding = true
-        compose = true
     }
 
     testOptions {
@@ -199,10 +197,6 @@ dependencies {
     implementation libs.jgit
     implementation libs.lottie
     implementation libs.material
-    implementation libs.compose.ui
-    implementation libs.compose.foundation
-    implementation libs.kyant.backdrop
-    implementation libs.kyant.shapes
     implementation libs.materialdesigncolors
     implementation libs.nanohttpd
     implementation libs.newpipeextractor

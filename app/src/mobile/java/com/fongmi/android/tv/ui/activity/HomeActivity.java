@@ -25,7 +25,6 @@ import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.databinding.ActivityHomeBinding;
 import com.fongmi.android.tv.db.AppDatabase;
-import com.fongmi.android.tv.drama.DramaSites;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.event.ServerEvent;
@@ -33,12 +32,9 @@ import com.fongmi.android.tv.event.StateEvent;
 import com.fongmi.android.tv.following.FollowingPlaybackBridge;
 import com.fongmi.android.tv.following.FollowingSettings;
 import com.fongmi.android.tv.following.FollowingScheduler;
-import com.fongmi.android.tv.glass.GlassBackdropCapture;
-import com.fongmi.android.tv.glass.GlassNav;
-import com.fongmi.android.tv.glass.GlassNavItem;
-import com.fongmi.android.tv.glass.GlassNavState;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.lab.LabActivity;
+import com.fongmi.android.tv.lab.LabConfig;
 import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.receiver.ShortcutReceiver;
 import com.fongmi.android.tv.server.Server;
@@ -47,7 +43,6 @@ import com.fongmi.android.tv.setting.AutoBackupPolicy;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
-import com.fongmi.android.tv.ui.dialog.LocalSourceDialog;
 import com.fongmi.android.tv.ui.fragment.SettingEnhanceFragment;
 import com.fongmi.android.tv.ui.fragment.SettingAdFragment;
 import com.fongmi.android.tv.ui.fragment.SettingAiFragment;
@@ -59,21 +54,18 @@ import com.fongmi.android.tv.ui.fragment.SettingPlayerFragment;
 import com.fongmi.android.tv.ui.fragment.SettingSubtitleFragment;
 import com.fongmi.android.tv.ui.fragment.VodFragment;
 import com.fongmi.android.tv.utils.CrashRestartMode;
+import com.fongmi.android.tv.utils.PreviousProcessCrashRecovery;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.MobileWindow;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.Util;
-import com.fongmi.android.tv.web.WebHomeChrome;
 import com.fongmi.android.tv.web.WebHomeChromeStartup;
 import com.fongmi.android.tv.web.WebHomeViewport;
 import com.github.catvod.net.OkHttp;
 import com.google.android.material.navigation.NavigationBarView;
 import com.google.gson.JsonObject;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
@@ -91,9 +83,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private boolean wideWindow;
     private int currentPosition;
     private boolean returnVodFromEnhance;
-    private GlassNavState glassState;
-    private GlassBackdropCapture glassCapture;
-    private boolean navShown = true;
 
     @Override
     protected ViewBinding getBinding() {
@@ -123,7 +112,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> checkWindowShape(right - left, bottom - top));
         mBinding.navigation.setOnItemSelectedListener(this);
         setNavigation();
-        setupGlassNav();
         PermissionUtil.requestFile(this, allGranted -> PermissionUtil.requestNotify(this));
         FollowingScheduler.ensurePeriodic(this);
         FollowingScheduler.enqueueDueNow(this);
@@ -135,8 +123,8 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     @Override
     protected void onResume() {
         super.onResume();
-        if (mBinding.navigation.getMenu().findItem(R.id.following).isVisible() != FollowingSettings.isEnabled()
-                || mBinding.navigation.getMenu().findItem(R.id.drama).isVisible() != (DramaSites.hasDramaSites() && Setting.isShortDramaCollected())) setNavigation();
+        if (mBinding.navigation.getMenu().findItem(R.id.lab).isVisible() != LabConfig.get().getNavEntry()
+                || mBinding.navigation.getMenu().findItem(R.id.following).isVisible() != FollowingSettings.isEnabled()) setNavigation();
         updateFollowingBadge();
     }
 
@@ -154,6 +142,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void checkAction(Intent intent) {
+        PreviousProcessCrashRecovery.checkBeforeConfig(this, () -> handleAction(intent));
+    }
+
+    private void handleAction(Intent intent) {
         if (intent.hasExtra(EXTRA_NAV_POSITION)) {
             change(intent.getIntExtra(EXTRA_NAV_POSITION, 0));
             intent.removeExtra(EXTRA_NAV_POSITION);
@@ -200,6 +192,10 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void initConfig() {
+        PreviousProcessCrashRecovery.checkBeforeConfig(this, this::loadConfig);
+    }
+
+    private void loadConfig() {
         if (CrashRestartMode.consume()) {
             checkAction(getIntent());
             StateEvent.empty();
@@ -227,7 +223,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         return new Callback() {
             @Override
             public void success() {
-                setNavigation();
                 checkAction(getIntent());
             }
 
@@ -271,13 +266,11 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     private void setNavigation() {
         mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(true);
         mBinding.navigation.getMenu().findItem(R.id.setting).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.local_source).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.drama).setVisible(DramaSites.hasDramaSites() && Setting.isShortDramaCollected());
+        mBinding.navigation.getMenu().findItem(R.id.lab).setVisible(LabConfig.get().getNavEntry());
         mBinding.navigation.getMenu().findItem(R.id.live).setVisible(LiveConfig.hasUrl());
         mBinding.navigation.getMenu().findItem(R.id.following).setVisible(FollowingSettings.isEnabled());
         updateFollowingBadge();
         syncNavigationSelection();
-        syncGlassState();
     }
 
     private boolean openLive() {
@@ -300,98 +293,16 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     public void setNavigationVisible(boolean visible) {
-        navShown = visible;
-        applyBottomBar();
-    }
-
-    @Override
-    public boolean isGlassBottomBarActive() {
-        return Setting.isLiquidGlass();
-    }
-
-    private void setupGlassNav() {
-        glassState = GlassNav.createState();
-        glassState.setListener(new GlassNavState.Listener() {
-            @Override
-            public void onSelect(int id) {
-                if (id == R.id.vod || id == R.id.setting) {
-                    // Mirror the page choice into the hidden BottomNavigationView so
-                    // its checked item (the single source of selection truth) follows
-                    // glass taps; otherwise the glass selection pill never moves.
-                    if (mBinding.navigation.getSelectedItemId() != id) {
-                        mBinding.navigation.setOnItemSelectedListener(null);
-                        mBinding.navigation.setSelectedItemId(id);
-                        mBinding.navigation.setOnItemSelectedListener(HomeActivity.this);
-                    }
-                    glassState.setSelectedId(id);
-                }
-                handleNavItem(id);
-            }
-
-            @Override
-            public void onLiveLongPress() {
-                addShortcut(mBinding.glassNav);
-            }
-        });
-        GlassNav.bind(mBinding.glassNav, glassState);
-        glassCapture = GlassNav.createCapture(mBinding.getRoot(), mBinding.glassNav, glassState);
-        glassCapture.start();
-        applyBottomBar();
-    }
-
-    private void applyBottomBar() {
-        if (mBinding == null) return;
-        boolean glass = Setting.isLiquidGlass();
-        boolean chromeHides = glass && isWebHomeChromeActive() && !WebHomeChrome.NORMAL.equals(getWebHomeChromeMode());
-        boolean show = navShown && !chromeHides;
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.container.getLayoutParams();
-        if (glass) {
-            mBinding.navigation.setVisibility(View.GONE);
-            mBinding.glassNav.setVisibility(show ? View.VISIBLE : View.GONE);
-            params.removeRule(RelativeLayout.ABOVE);
-        } else if (show) {
-            mBinding.glassNav.setVisibility(View.GONE);
+        if (visible) {
             params.addRule(RelativeLayout.ABOVE, R.id.navigation);
             mBinding.navigation.setVisibility(View.VISIBLE);
         } else {
-            mBinding.glassNav.setVisibility(View.GONE);
             params.removeRule(RelativeLayout.ABOVE);
             mBinding.navigation.setVisibility(View.GONE);
         }
         mBinding.container.setLayoutParams(params);
-        // Container bottom padding for the floating glass bar is owned by
-        // WebHomeChromeController.applyLayout(); just trigger an insets pass.
         mBinding.getRoot().requestApplyInsets();
-        syncGlassState();
-    }
-
-    private void syncGlassState() {
-        if (glassState == null || mBinding == null) return;
-        List<GlassNavItem> items = new ArrayList<>();
-        addGlassItem(items, R.id.vod, R.drawable.ic_nav_vod, R.string.nav_vod, false);
-        addGlassItem(items, R.id.live, R.drawable.ic_nav_live, R.string.nav_live, true);
-        addGlassItem(items, R.id.drama, R.drawable.ic_nav_drama, R.string.nav_drama, false);
-        addGlassItem(items, R.id.following, R.drawable.ic_nav_following, R.string.nav_following, false);
-        addGlassItem(items, R.id.local_source, R.drawable.ic_nav_local, R.string.local_source, false);
-        addGlassItem(items, R.id.setting, R.drawable.ic_nav_setting, R.string.nav_setting, false);
-        glassState.setItems(items);
-        glassState.setSelectedId(mBinding.navigation.getSelectedItemId());
-        glassState.setFollowingId(R.id.following);
-        com.google.android.material.badge.BadgeDrawable badge = mBinding.navigation.getBadge(R.id.following);
-        glassState.setFollowingBadge(badge == null ? 0 : badge.getNumber());
-        boolean night = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-        glassState.setGlassBlurDp(Setting.getGlassBlur());
-        glassState.setGlassDistortionDp(Setting.getGlassDistortion());
-        glassState.setGlassTranslucency(Setting.getGlassTranslucency() / 100f);
-        glassState.setGlassDispersion(Setting.isGlassDispersion());
-        glassState.setDarkMode(night);
-        android.util.TypedValue value = new android.util.TypedValue();
-        if (getTheme().resolveAttribute(android.R.attr.colorPrimary, value, true)) glassState.setAccentColor(value.data);
-    }
-
-    private void addGlassItem(List<GlassNavItem> items, int id, int icon, int label, boolean live) {
-        MenuItem item = mBinding.navigation.getMenu().findItem(id);
-        if (item != null && item.isVisible()) items.add(new GlassNavItem(id, icon, getString(label), live));
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -399,11 +310,9 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         switch (event.type()) {
             case VOD:
                 RefreshEvent.home();
-                setNavigation();
                 break;
             case COMMON:
                 setNavigation();
-                applyBottomBar();
                 break;
             case BOOT:
                 LiveActivity.start(this);
@@ -420,28 +329,16 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-        return handleNavItem(item.getItemId());
-    }
-
-    public boolean handleNavItem(int itemId) {
         returnVodFromEnhance = false;
         setNavigationVisible(true);
-        if (itemId == R.id.setting) return changeFragment(1);
-        if (itemId == R.id.lab) {
+        if (item.getItemId() == R.id.setting) return changeFragment(1);
+        if (item.getItemId() == R.id.lab) {
             LabActivity.start(this);
             return false;
         }
-        if (itemId == R.id.local_source) {
-            LocalSourceDialog.create().show(this);
-            return false;
-        }
-        if (itemId == R.id.vod) return changeFragment(0);
-        if (itemId == R.id.drama) {
-            ShortDramaActivity.start(this);
-            return false;
-        }
-        if (itemId == R.id.live) return openLive();
-        if (itemId == R.id.following) {
+        if (item.getItemId() == R.id.vod) return changeFragment(0);
+        if (item.getItemId() == R.id.live) return openLive();
+        if (item.getItemId() == R.id.following) {
             FollowingActivity.start(this, null);
             return false;
         }
@@ -468,7 +365,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         }
         if (unread > 0) mBinding.navigation.getOrCreateBadge(R.id.following).setNumber(unread);
         else mBinding.navigation.removeBadge(R.id.following);
-        syncGlassState();
     }
 
     private void selectNavigation(int position) {
@@ -483,7 +379,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mBinding.navigation.setOnItemSelectedListener(null);
         mBinding.navigation.setSelectedItemId(itemId);
         mBinding.navigation.setOnItemSelectedListener(this);
-        syncGlassState();
     }
 
     private boolean changeFragment(int position) {
@@ -499,7 +394,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     private void refreshWebHomeChromeLayout() {
         if (mChrome != null) mChrome.refreshLayout();
-        applyBottomBar();
     }
 
     private void resetVodChrome() {
@@ -586,7 +480,6 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     public void onWebHomeChromeChanged(String mode) {
-        applyBottomBar();
         if (mManager == null) return;
         VodFragment fragment = (VodFragment) mManager.getFragment(0);
         if (fragment != null) fragment.applyWebHomeChrome(mode);
@@ -646,7 +539,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void onDestroy() {
-        if (glassCapture != null) glassCapture.stop();
+        PreviousProcessCrashRecovery.release(this);
         if (mChrome != null) mChrome.destroy();
         LiveConfig.get().clear();
         VodConfig.get().clear("mobile-home-destroy");

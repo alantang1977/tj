@@ -311,7 +311,6 @@
     <string name="repo_github">GitHub repository</string>
     <string name="repo_cnb">CNB repository</string>
     <string name="setting_debug_log">Debug log</string>
-    <string name="setting_search_current_site">Default search current site</string>
     <string name="setting_manage_page">Management page</string>
     <string name="setting_remote_trust">Remote trust</string>
     <string name="setting_git_cloud">Git cloud drive</string>
@@ -894,13 +893,6 @@
     <string name="setting_one_key_sync">One-key sync</string>
     <string name="setting_incognito">Incognito mode</string>
     <string name="setting_touch_optimization">Touch optimization</string>
-    <string name="setting_liquid_glass">Liquid glass effect</string>
-    <string name="setting_short_drama_collected">Short drama mode</string>
-    <string name="setting_glass_blur">Blur effect</string>
-    <string name="setting_glass_distortion">Distortion effect</string>
-    <string name="setting_glass_translucency">Translucency</string>
-    <string name="setting_glass_dispersion">Edge dispersion</string>
-    <string name="setting_glass_reset">Reset liquid glass</string>
     <string name="setting_drive_check">Drive link check</string>
     <string name="setting_audio_source">Audio source config</string>
     <string name="setting_novel_source">Novel source config</string>
@@ -1064,7 +1056,9 @@
     <string name="cache_total_limit_title">Total cache limit</string>
     <string name="cache_total_limit_summary">Total limit: %1$s</string>
     <string name="cache_limit_title_exo">Playback cache limit</string>
-    <string name="cache_management_playback_budget">Playback cache %1$s (shrinks to %2$s once playback ends)</string>
+    <string name="cache_management_total_limit">Total limit %1$s (all modules · converges after playback)</string>
+    <string name="cache_management_total_unlimited">Total limit unlimited (all modules · converges after playback)</string>
+    <string name="cache_management_total_blocked">still %1$s over (protected content)</string>
     <string name="cache_cleanup_confirm_title">Clean cache?</string>
     <string name="cache_cleanup_confirm_light">Remove expired EPG, temporary, and legacy cache data?</string>
     <string name="cache_cleanup_confirm_standard">Clean rebuildable modules such as images, lyrics, karaoke, and WebHome cache?\n\nFavorites, history, and settings are not affected.</string>
@@ -1751,7 +1745,6 @@ TVData</string>
     <string name="home_empty_title">Nothing to show</string>
     <string name="home_empty_description">The content source returned no items.</string>
     <string name="home_empty_action">Reload</string>
-    <string name="home_continue_watching">Continue Watching</string>
     
     <string name="home_no_config_title">No content source yet</string>
     <string name="home_no_config_description">Add a VOD content source to start browsing.</string>
@@ -3111,4 +3104,5 @@ TVData</string>
     <string name="plugin_manager_perm_events">Playback events (plugin.events)</string>
     <string name="plugin_manager_perm_episode_data">Episode data (plugin.data.episode)</string>
     <string name="plugin_panel_title">Plugin panel</string>
+    <string name="crash_action_failed">Action failed. Please try again.</string>
 </resources>

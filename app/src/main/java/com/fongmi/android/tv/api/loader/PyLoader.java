@@ -57,28 +57,27 @@ public class PyLoader {
     /**
      * 按 (命名空间, siteKey) 取 spider：桥接解析非激活配置时不能写进激活配置的槽位，
      * 否则 A、B 两个配置的同名站点会互相串源。空命名空间等于原来的行为。
-     *
-     * <p>初始化失败不缓存：SpiderInit.load 失败时返回 null，不建映射，下次访问会重试。
      */
     public Spider getSpider(String namespace, String key, String api, String ext) {
-        return SpiderInit.load(spiders, BaseLoader.slot(namespace, key), () -> loader.spider(api), spider -> {
-            spider.siteKey = key;
-            spider.init(App.get(), normalizeExt(ext));
-        }, e -> {
-            // A failed bridge init is otherwise hard to attribute: SpiderNull then
-            // returns "" for every method, so home/category/search just render empty.
-            // Record it under the python-spider tag (already routed to the NETWORK
-            // category) and name the callable that failed, because the stack alone
-            // does not tell whether it was init(), getDependence() or the import.
-            SpiderDebug.log(PY_TAG, "init failed key=%s api=%s error=%s:%s", key, api, e.getClass().getName(), e.getMessage());
-            SpiderDebug.log(PY_TAG, e);
-            // SpiderDebug.log() is gated on DebugLogStore.acceptsTag(), which is false
-            // whenever 调试日志 is off (the default). Relying on it alone would make a
-            // failed init invisible in Logcat even though this catch is the only place
-            // that explains an all-empty site. Keep the unconditional channel too, as
-            // the sibling JsLoader does for its own init failure.
-            e.printStackTrace();
-        });
+        return SpiderInit.load(spiders, BaseLoader.slot(namespace, key),
+                () -> loader.spider(api), spider -> {
+                spider.siteKey = key;
+                spider.init(App.get(), normalizeExt(ext));
+                }, e -> {
+                // A failed bridge init is otherwise hard to attribute: SpiderNull then
+                // returns "" for every method, so home/category/search just render empty.
+                // Record it under the python-spider tag (already routed to the NETWORK
+                // category) and name the callable that failed, because the stack alone
+                // does not tell whether it was init(), getDependence() or the import.
+                SpiderDebug.log(PY_TAG, "init failed key=%s api=%s error=%s:%s", key, api, e.getClass().getName(), e.getMessage());
+                SpiderDebug.log(PY_TAG, e);
+                // SpiderDebug.log() is gated on DebugLogStore.acceptsTag(), which is false
+                // whenever 调试日志 is off (the default).  Relying on it alone would make a
+                // failed init invisible in Logcat even though this catch is the only place
+                // that explains an all-empty site.  Keep the unconditional channel too, as
+                // the sibling JsLoader does for its own init failure.
+                e.printStackTrace();
+                });
     }
 
     private String normalizeExt(String ext) {

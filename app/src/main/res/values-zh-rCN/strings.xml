@@ -309,7 +309,6 @@
     <string name="repo_github">GitHub 仓库</string>
     <string name="repo_cnb">CNB 仓库</string>
     <string name="setting_debug_log">调试日志</string>
-    <string name="setting_search_current_site">默认搜索本站</string>
     <string name="setting_manage_page">管理页面</string>
     <string name="setting_remote_trust">远程托管</string>
     <string name="setting_git_cloud">Git 云盘</string>
@@ -891,13 +890,6 @@
     <string name="setting_one_key_sync">一键同步</string>
     <string name="setting_incognito">无痕模式</string>
     <string name="setting_touch_optimization">触屏优化</string>
-    <string name="setting_liquid_glass">液态玻璃特效</string>
-    <string name="setting_short_drama_collected">短剧模式</string>
-    <string name="setting_glass_blur">模糊效果</string>
-    <string name="setting_glass_distortion">扭曲效果</string>
-    <string name="setting_glass_translucency">通透度</string>
-    <string name="setting_glass_dispersion">边缘色散</string>
-    <string name="setting_glass_reset">重置液态玻璃效果</string>
     <string name="setting_drive_check">网盘检测</string>
     <string name="setting_audio_source">音频源配置</string>
     <string name="setting_novel_source">小说源配置</string>
@@ -1061,7 +1053,9 @@
     <string name="cache_total_limit_title">总缓存上限</string>
     <string name="cache_total_limit_summary">总上限：%1$s</string>
     <string name="cache_limit_title_exo">播放缓存上限</string>
-    <string name="cache_management_playback_budget">播放缓存 %1$s（退出播放后收至 %2$s）</string>
+    <string name="cache_management_total_limit">总上限 %1$s（全部模块合计 · 退出播放后收敛）</string>
+    <string name="cache_management_total_unlimited">总上限 不限（全部模块合计 · 退出播放后收敛）</string>
+    <string name="cache_management_total_blocked">仍超限 %1$s（受保护内容）</string>
     <string name="cache_cleanup_confirm_title">确认清理缓存？</string>
     <string name="cache_cleanup_confirm_light">清理过期节目单、临时文件和遗留缓存？</string>
     <string name="cache_cleanup_confirm_standard">清理图片、歌词、K 歌和 WebHome 等可重建缓存？\n\n收藏、历史和设置不会受影响。</string>
@@ -1707,7 +1701,6 @@ TVData</string>
     <string name="home_empty_title">暂时没有内容</string>
     <string name="home_empty_description">内容源没有返回可显示的内容。</string>
     <string name="home_empty_action">重新加载</string>
-    <string name="home_continue_watching">继续观看</string>
     
     <string name="home_no_config_title">还没有配置接口</string>
     <string name="home_no_config_description">添加一个点播接口后即可浏览内容。</string>
@@ -3106,4 +3099,5 @@ TVData</string>
     <string name="plugin_manager_perm_events">播放事件（plugin.events）</string>
     <string name="plugin_manager_perm_episode_data">剧集数据（plugin.data.episode）</string>
     <string name="plugin_panel_title">插件面板</string>
+    <string name="crash_action_failed">操作失败，请重试。</string>
 </resources>

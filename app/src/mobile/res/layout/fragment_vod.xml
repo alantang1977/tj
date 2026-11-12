@@ -40,44 +40,6 @@
 
         </com.google.android.material.appbar.MaterialToolbar>
 
-        <!-- 首页轮播横幅（B1）：ViewPager2，数据取当前站首页推荐；无数据时隐藏。 -->
-        <androidx.viewpager2.widget.ViewPager2
-            android:id="@+id/banner"
-            android:layout_width="match_parent"
-            android:layout_height="188dp"
-            android:visibility="gone" />
-
-        <!-- 首页“继续观看”（B2）：横向滑动行，读观看历史；无未看完内容时隐藏。 -->
-        <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/continueSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp"
-            android:visibility="gone">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/continueTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:text="@string/home_continue_watching"
-                android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/continueList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:clipToPadding="false"
-                android:orientation="horizontal"
-                android:paddingStart="12dp"
-                android:paddingTop="8dp"
-                android:paddingEnd="12dp"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-
-        </androidx.appcompat.widget.LinearLayoutCompat>
-
         <androidx.appcompat.widget.LinearLayoutCompat
             android:id="@+id/typeBar"
             android:layout_width="match_parent"

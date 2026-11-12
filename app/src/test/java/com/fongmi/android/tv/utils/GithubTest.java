@@ -26,7 +26,7 @@ public class GithubTest {
     @Test
     public void cnbManifestPathRemainsAnIndependentFallback() {
         assertEquals(
-                "https://github.com/alantang1977/tj/releases/download/update-channel/mobile-arm64_v8a-beta.json",
+                "https://cnb.cool/tangtang.com.cn.kul/juntv/-/git/raw/main/apk/mobile-arm64_v8a-beta.json",
                 Github.getCnbMirrorAsset("mobile-arm64_v8a-beta.json"));
     }
 }

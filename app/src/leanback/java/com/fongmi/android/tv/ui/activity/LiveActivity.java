@@ -1293,6 +1293,10 @@ public class LiveActivity extends PlaybackActivity implements GroupAdapter.OnCli
 
     @Override
     public void onSeekEnd(long time) {
+        seek(time);
+    }
+
+    private void seek(long time) {
         mKeyDown.reset();
         seekTo(time);
     }
