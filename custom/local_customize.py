@@ -2989,13 +2989,27 @@ def modify_update_order(config):
                     new_method = [
                         f'{indent}private Update getUpdate(String channel) {{',
                         f'{indent}    String manifestName = getManifestName(channel);',
+                        f'{indent}    // 第一优先：CNB 国内直连，成功直接返回，不回退 GitHub',
                         f'{indent}    Update cnb = readUpdate(channel, Github.getCnbMirrorAsset(manifestName), SOURCE_CNB, GITHUB_API_HEADERS, null);',
-                        f'{indent}    if (cnb.hasManifest()) return cnb;',
+                        f'{indent}    if (cnb.hasManifest()) {{',
+                        f'{indent}        Log.i(TAG, "update_source=CNB channel=" + channel + " manifest=" + manifestName);',
+                        f'{indent}        return cnb;',
+                        f'{indent}    }}',
+                        f'{indent}    Log.w(TAG, "CNB manifest unavailable, falling back to GitHub channel=" + channel);',
+                        f'{indent}    // 第二优先：GitHub update-channel tag',
                         f'{indent}    Update update = readUpdate(channel, Github.getChannelAsset(manifestName), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
-                        f'{indent}    if (update.hasManifest()) return update;',
+                        f'{indent}    if (update.hasManifest()) {{',
+                        f'{indent}        Log.i(TAG, "update_source=GitHub-channel channel=" + channel);',
+                        f'{indent}        return update;',
+                        f'{indent}    }}',
                         f'{indent}    if (Update.CHANNEL_BETA.equals(channel)) return getGithubBetaUpdate(channel);',
+                        f'{indent}    // 第三优先：GitHub latest release',
                         f'{indent}    update = readUpdate(channel, Github.getGithubLatestAsset(manifestName), SOURCE_GITHUB, GITHUB_API_HEADERS, null);',
-                        f'{indent}    if (update.hasManifest()) return update;',
+                        f'{indent}    if (update.hasManifest()) {{',
+                        f'{indent}        Log.i(TAG, "update_source=GitHub-latest channel=" + channel);',
+                        f'{indent}        return update;',
+                        f'{indent}    }}',
+                        f'{indent}    // 兜底：GitHub Releases API 遍历',
                         f'{indent}    return getGithubStableUpdate(channel);',
                         f'{indent}}}',
                     ]
@@ -3008,12 +3022,14 @@ def modify_update_order(config):
                                      'Github.getChannelAsset(manifestName)',
                                      'Github.getGithubLatestAsset(manifestName)',
                                      'getGithubBetaUpdate(channel)',
-                                     'getGithubStableUpdate(channel)']
+                                     'getGithubStableUpdate(channel)',
+                                     'update_source=CNB',
+                                     'update_source=GitHub-channel']
                                     if p not in content]
                         if _missing:
                             raise RuntimeError(
                                 f"[FATAL] {rel_path}: getUpdate() 注入后模式校验失败，缺失：{_missing}。")
-                        print(f"[OK] {rel_path}: getUpdate() 改为 CNB 优先 → GitHub update-channel → GitHub API 兜底")
+                        print(f"[OK] {rel_path}: getUpdate() 强化为 CNB 第一优先（带日志）→ GitHub update-channel → GitHub API 兜底")
                         changed_any = True
                     else:
                         print(f"[SKIP] {rel_path}: getUpdate() 已是 CNB 优先（--force 下形态不变）")
@@ -3057,8 +3073,14 @@ def modify_update_order(config):
                 indent = lines[pd_idx][:len(lines[pd_idx]) - len(lines[pd_idx].lstrip())]
                 insertion = [
                     f'{indent}String apkField = update.apk;',
+                    f'{indent}// CNB manifest 里的 apk 字段是 CNB Release 直链，优先用它下载',
                     f'{indent}if (apkField != null && apkField.startsWith("https://cnb.cool/")) {{',
                     f'{indent}    update.apkUrl = apkField;',
+                    f'{indent}    Log.i(TAG, "apk_download_source=CNB-direct url=" + apkField);',
+                    f'{indent}}}',
+                    f'{indent}// 否则回退 GitHub Release 直链',
+                    f'{indent}else {{',
+                    f'{indent}    Log.i(TAG, "apk_download_source=GitHub url=" + update.apkUrl);',
                     f'{indent}}}',
                 ]
                 lines = lines[:pd_idx+1] + insertion + lines[pd_idx+1:]
@@ -3068,13 +3090,14 @@ def modify_update_order(config):
                     _missing = [p for p in
                                 ['String apkField = update.apk;',
                                  'apkField != null && apkField.startsWith("https://cnb.cool/")',
-                                 'update.apkUrl = apkField;']
+                                 'update.apkUrl = apkField;',
+                                 'apk_download_source=CNB-direct']
                                 if p not in content]
                     if _missing:
                         raise RuntimeError(
                             f"[FATAL] {rel_path}: parseDownloads() 注入后模式校验失败，缺失：{_missing}。"
                             f"请检查 Updater.java 上游结构或本脚本 A2 逻辑。")
-                    print(f"[OK] {rel_path}: parseDownloads() APK 下载改为 CNB Release 直链优先（GitHub 兜底）")
+                    print(f"[OK] {rel_path}: parseDownloads() 强化为 CNB Release 直链优先（带日志）→ GitHub 兜底")
                     changed_any = True
                 else:
                     print(f"[SKIP] {rel_path}: parseDownloads() 已是 CNB 直链优先（--force 下形态不变）")
