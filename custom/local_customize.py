@@ -3470,6 +3470,72 @@ def modify_update_order(config):
                         f.write(g_original)
                     print(f"[ROLLBACK] {github_rel}: 已自动还原为修改前内容（不影响构建）")
 
+    # ---------- D. UpdateChannelTest.java 适配新逻辑 ----------
+    test_rel = os.path.join("app", "src", "test", "java", "com", "fongmi", "android", "tv", "UpdateChannelTest.java")
+    test_path = os.path.join(REPO_ROOT, test_rel)
+    if os.path.isfile(test_path):
+        with open(test_path, "r", encoding="utf-8") as f:
+            t_original = f.read()
+        t_content = t_original
+
+        # 测试1：updaterShortCircuitsOnStaticChannelManifestBeforeGithubApi
+        # 旧断言：Github.getChannelAsset 第一优先
+        # 新断言：CNB manifest 第一优先，然后是 GitHub channel
+        old_test1_body = '''        int channelAsset = method.indexOf("Github.getChannelAsset");
+        int shortCircuit = method.indexOf("hasManifest()) return", channelAsset);
+        int betaApi = method.indexOf("getGithubBetaUpdate", shortCircuit);
+
+        assertTrue("The fixed GitHub channel manifest must be tried first", channelAsset >= 0);
+        assertTrue("A valid static manifest must prevent an unnecessary GitHub API request", shortCircuit > channelAsset);
+        assertTrue("The GitHub Releases API must be fallback-only", betaApi > shortCircuit);'''
+
+        new_test1_body = '''        int cnbManifest = method.indexOf("Github.getCnbMirrorAsset");
+        int cnbHasManifest = method.indexOf("cnb.hasManifest()", cnbManifest);
+        int channelAsset = method.indexOf("Github.getChannelAsset", cnbHasManifest);
+        int githubApi = method.indexOf("getGithubBetaUpdate", channelAsset);
+
+        assertTrue("CNB manifest must be tried first", cnbManifest >= 0);
+        assertTrue("A valid CNB manifest must short-circuit before any GitHub channel request", cnbHasManifest > cnbManifest);
+        assertTrue("GitHub channel manifest must be fallback after CNB", channelAsset > cnbHasManifest);
+        assertTrue("The GitHub Releases API must be last-resort", githubApi > channelAsset);'''
+
+        if old_test1_body in t_content:
+            t_content = t_content.replace(old_test1_body, new_test1_body)
+            print(f"[OK] {test_rel}: 测试1 已适配 CNB 优先逻辑")
+
+        # 测试2：betaKeepsCnbManifestAsMigrationFallbackBeforeGithubApi
+        # 旧断言：CNB 是 migration fallback（第二选择）
+        # 新断言：CNB 是第一优先，然后才是 GitHub
+        old_test2_body = '''        int cnbFallback = method.indexOf("Github.getCnbMirrorAsset");
+        int cnbShortCircuit = method.indexOf("hasManifest()) return", cnbFallback);
+        int betaApi = method.indexOf("getGithubBetaUpdate", cnbShortCircuit);
+
+        assertTrue("Beta should retain the currently published CNB manifest as a migration fallback", cnbFallback >= 0);
+        assertTrue("A valid CNB beta manifest must prevent a direct GitHub API request", cnbShortCircuit > cnbFallback);
+        assertTrue("The direct GitHub API must remain the last resort", betaApi > cnbShortCircuit);'''
+
+        new_test2_body = '''        int cnbFirst = method.indexOf("Github.getCnbMirrorAsset");
+        int cnbHasManifest = method.indexOf("cnb.hasManifest()", cnbFirst);
+        int channelFallback = method.indexOf("Github.getChannelAsset", cnbHasManifest);
+        int githubApi = method.indexOf("getGithubBetaUpdate", channelFallback);
+
+        assertTrue("CNB manifest must be the first choice", cnbFirst >= 0);
+        assertTrue("A valid CNB manifest must short-circuit immediately", cnbHasManifest > cnbFirst);
+        assertTrue("GitHub channel must be fallback after CNB failure", channelFallback > cnbHasManifest);
+        assertTrue("The direct GitHub API must remain last resort", githubApi > channelFallback);'''
+
+        if old_test2_body in t_content:
+            t_content = t_content.replace(old_test2_body, new_test2_body)
+            print(f"[OK] {test_rel}: 测试2 已适配 CNB 优先逻辑")
+
+        if t_content != t_original:
+            with open(test_path, "w", encoding="utf-8") as f:
+                f.write(t_content)
+            changed_any = True
+            print(f"[OK] {test_rel}: 单元测试已适配 CNB 优先更新逻辑")
+        else:
+            print(f"[SKIP] {test_rel}: 测试已是 CNB 优先断言或未匹配旧断言（需人工检查）")
+
     if changed_any:
         return True
     print("[SKIP] 更新机制已是目标状态（CNB 优先 + CNB 直连下载 + 路由兜底）")
