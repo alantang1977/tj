@@ -4,151 +4,109 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.view.View;
 import android.view.WindowManager;
-import android.widget.Toast;
 
-import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.ActivityCrashBinding;
 import com.fongmi.android.tv.server.Server;
+import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.utils.AppVersion;
 import com.fongmi.android.tv.utils.CrashLogSession;
 import com.fongmi.android.tv.utils.CrashLogText;
 import com.fongmi.android.tv.utils.CrashRestartMode;
-import com.fongmi.android.tv.utils.PreviousProcessCrashRecovery;
+import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.utils.Util;
 
+import java.util.Objects;
+
 import cat.ereza.customactivityoncrash.CustomActivityOnCrash;
-import cat.ereza.customactivityoncrash.config.CaocConfig;
 
-public class CrashActivity extends AppCompatActivity {
-
-    private static final long ACK_JOIN_MS = 1500L;
+public class CrashActivity extends BaseActivity {
 
     private ActivityCrashBinding mBinding;
     private String logUrl;
     private String localUrl;
-    private volatile boolean closing;
-    private volatile Thread ackWorker;
+
+    @Override
+    protected boolean customWall() {
+        return false;
+    }
+
+    @Override
+    protected ViewBinding getBinding() {
+        return mBinding = ActivityCrashBinding.inflate(getLayoutInflater());
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        mBinding = ActivityCrashBinding.inflate(getLayoutInflater());
-        setContentView(mBinding.getRoot());
+        // The address is meant to be read or copied from the screen; keep it visible.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                onBackInvoked();
-            }
-        });
-        initEvent();
-        mBinding.restart.requestFocus();
-        // Confirming the event touches the file-locked state; it must never run on the UI thread.
-        ackWorker = new Thread(() -> PreviousProcessCrashRecovery.acknowledgeShown(this, getIntent()), "crash-ack");
-        ackWorker.setDaemon(true);
-        ackWorker.start();
     }
 
-    /** A restart kills this process, so the pending confirmation has to land first. */
-    private void awaitAck() {
-        Thread worker = ackWorker;
-        if (worker == null) return;
-        try {
-            worker.join(ACK_JOIN_MS);
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private void initEvent() {
+    @Override
+    protected void initEvent() {
         mBinding.details.setOnClickListener(v -> showError());
         mBinding.restart.setOnClickListener(v -> restartApplication());
         mBinding.silentRestart.setOnClickListener(v -> {
-            try {
-                CrashRestartMode.arm();
-            } catch (Throwable ignored) {
-                showToast(R.string.crash_action_failed);
-                return;
-            }
+            CrashRestartMode.arm();
             restartApplication();
         });
         mBinding.copyLogAddress.setOnClickListener(v -> copyLogAddress());
         mBinding.openLog.setOnClickListener(v -> openLog());
         mBinding.logAddress.setText(R.string.crash_log_preparing);
         setLogActionsEnabled(false);
-        Thread worker = new Thread(this::startLogService, "crash-log-service");
-        worker.setDaemon(true);
-        worker.start();
+        Task.execute(this::startLogService);
     }
 
-    protected void onBackInvoked() {
-    }
-
+    /** The crash screen is a dead end; leaving it would keep the LAN log service alive unseen. */
     @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus && getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK)) {
-            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
-        }
+    protected void onBackInvoked() {
     }
 
     @Override
     protected void onDestroy() {
         if (isFinishing()) {
-            closing = true;
-            shutdownLogService();
+            try {
+                Server.get().shutdown();
+            } catch (Throwable ignored) {
+            }
         }
         super.onDestroy();
     }
 
-    private void shutdownLogService() {
-        try {
-            Server.get().shutdown();
-        } catch (Throwable ignored) {
-        }
-    }
-
     private void startLogService() {
         try {
-            try {
-                CrashLogSession.prepare(this);
-            } catch (Throwable ignored) {
-            }
-            if (closing) return;
-            Server.get().start();
-            if (closing) {
-                shutdownLogService();
-                return;
-            }
-            if (!Server.get().isRunning()) {
-                post(this::showLogFailure);
-                return;
-            }
-            String host;
-            try {
-                host = Util.getIp();
-            } catch (Throwable ignored) {
-                host = "";
-            }
-            String lan = Server.get().getAddress(false) + "/debug/logs";
-            String local = Server.get().getAddress("/debug/logs");
-            String lanHost = host;
-            post(() -> bindLogAddress(lanHost, lan, local));
+            CrashLogSession.prepare(this);
         } catch (Throwable ignored) {
-            post(this::showLogFailure);
+            // The address can still be offered; the page will report its own coverage.
         }
+        boolean running = false;
+        try {
+            Server.get().start();
+            running = Server.get().isRunning();
+        } catch (Throwable ignored) {
+        }
+        if (!running) {
+            post(this::showLogFailure);
+            return;
+        }
+        String host;
+        try {
+            host = Util.getIp();
+        } catch (Throwable ignored) {
+            host = "";
+        }
+        String lan = Server.get().getAddress(false) + "/debug/logs";
+        String local = Server.get().getAddress("/debug/logs");
+        String lanHost = host;
+        post(() -> bindLogAddress(lanHost, lan, local));
     }
 
     private void bindLogAddress(String host, String lan, String local) {
@@ -179,35 +137,23 @@ public class CrashActivity extends AppCompatActivity {
 
     private void copyLogAddress() {
         if (logUrl == null) return;
-        try {
-            ClipboardManager manager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (manager == null) return;
-            manager.setPrimaryClip(ClipData.newPlainText(getString(R.string.crash_log_title), logUrl));
-            showToast(R.string.crash_log_copied);
-        } catch (Throwable ignored) {
-            showToast(R.string.crash_log_unavailable);
-        }
+        ClipboardManager manager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (manager == null) return;
+        manager.setPrimaryClip(ClipData.newPlainText(getString(R.string.crash_log_title), logUrl));
+        Notify.show(R.string.crash_log_copied);
     }
 
     private void openLog() {
         if (localUrl == null) return;
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(localUrl)));
-        } catch (Throwable ignored) {
-            showToast(R.string.debug_log_no_browser);
-        }
-    }
-
-    private void showToast(int text) {
-        try {
-            Toast.makeText(this, text, Toast.LENGTH_LONG).show();
-        } catch (Throwable ignored) {
+        } catch (RuntimeException error) {
+            Notify.show(R.string.debug_log_no_browser);
         }
     }
 
     private void post(Runnable action) {
         runOnUiThread(() -> {
-            if (isFinishing() || isDestroyed()) return;
             try {
                 action.run();
             } catch (Throwable ignored) {
@@ -216,51 +162,15 @@ public class CrashActivity extends AppCompatActivity {
     }
 
     private void restartApplication() {
-        awaitAck();
-        try {
-            CaocConfig config;
-            try {
-                config = CustomActivityOnCrash.getConfigFromIntent(getIntent());
-            } catch (Throwable ignored) {
-                config = null;
-            }
-            if (config == null) config = new CaocConfig();
-            Intent restart = getPackageManager().getLaunchIntentForPackage(getPackageName());
-            if (restart == null) restart = new Intent(this, HomeActivity.class);
-            CustomActivityOnCrash.restartApplicationWithIntent(this, restart, config);
-        } catch (Throwable ignored) {
-            showToast(R.string.crash_action_failed);
-        }
-    }
-
-    private String errorDetails() {
-        try {
-            String recovery = PreviousProcessCrashRecovery.getRecoveryDetails(getIntent());
-            if (recovery != null) return recovery;
-        } catch (Throwable ignored) {
-        }
-        try {
-            return CustomActivityOnCrash.getAllErrorDetailsFromIntent(this, getIntent());
-        } catch (Throwable ignored) {
-            try {
-                String stack = CustomActivityOnCrash.getStackTraceFromIntent(getIntent());
-                if (stack != null) return stack;
-            } catch (Throwable unavailable) {
-            }
-            return getString(R.string.crash_log_unavailable);
-        }
+        CustomActivityOnCrash.restartApplication(this, Objects.requireNonNull(CustomActivityOnCrash.getConfigFromIntent(getIntent())));
     }
 
     private void showError() {
-        String version;
-        try {
-            version = AppVersion.fullName();
-        } catch (Throwable ignored) {
-            version = "unknown";
-        }
         new AlertDialog.Builder(this)
                 .setTitle(R.string.crash_details_title)
-                .setMessage(getString(R.string.crash_details_message, version, errorDetails()))
+                .setMessage(getString(R.string.crash_details_message,
+                        AppVersion.fullName(),
+                        CustomActivityOnCrash.getAllErrorDetailsFromIntent(this, getIntent())))
                 .setPositiveButton(R.string.crash_details_close, null)
                 .show();
     }

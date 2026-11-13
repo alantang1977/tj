@@ -81,7 +81,6 @@ import com.fongmi.android.tv.ui.presenter.ProgressPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
 import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.CrashRestartMode;
-import com.fongmi.android.tv.utils.PreviousProcessCrashRecovery;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -645,10 +644,6 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
     }
 
     private void checkAction(Intent intent) {
-        PreviousProcessCrashRecovery.checkBeforeConfig(this, () -> handleAction(intent));
-    }
-
-    private void handleAction(Intent intent) {
         if (Intent.ACTION_SEND.equals(intent.getAction())) {
             VideoActivity.push(this, intent.getStringExtra(Intent.EXTRA_TEXT));
         } else if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
@@ -677,9 +672,7 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
         // 此前是硬编码 16dp，而 webhtv_size_tv_card_gap 只声明、从未被引用。
         int tvCardGap = ResUtil.dpOf(R.dimen.webhtv_size_tv_card_gap);
         selector.addPresenter(ListRow.class, new CustomRowPresenter(tvCardGap), VodPresenter.class);
-        // 功能区按钮少且默认就溢出一屏，左右到头环绕才能连续换焦；点播/历史行是长列表，
-        // 环绕会把滚动位置甩回另一端，所以只有这一行开启。
-        selector.addPresenter(ListRow.class, new CustomRowPresenter(tvCardGap).setWrapFocus(true), FuncPresenter.class);
+        selector.addPresenter(ListRow.class, new CustomRowPresenter(tvCardGap), FuncPresenter.class);
         selector.addPresenter(ListRow.class, new CustomRowPresenter(tvCardGap, FocusHighlight.ZOOM_FACTOR_SMALL, HorizontalGridView.FOCUS_SCROLL_ALIGNED), HistoryPresenter.class);
         mBinding.recycler.setAdapter(new ItemBridgeAdapter(mAdapter = new ArrayObjectAdapter(selector)));
         mBinding.recycler.setVerticalSpacing(ResUtil.dp2px(16));
@@ -765,10 +758,6 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
     }
 
     private void initConfig() {
-        PreviousProcessCrashRecovery.checkBeforeConfig(this, this::loadConfig);
-    }
-
-    private void loadConfig() {
         if (CrashRestartMode.consume()) {
             SpiderDebug.log("startup", "skip config load once after crash restart");
             showContent();
@@ -1620,7 +1609,6 @@ public class HomeActivity extends BaseActivity implements ExitConfirmDialog.List
 
     @Override
     protected void onDestroy() {
-        PreviousProcessCrashRecovery.release(this);
         invalidatePendingFocusRequests();
         if (mFolder != null) mFolder.clearContentFocusRequest();
         mBinding.typeRecycler.removeCallbacks(mTypeSwitch);

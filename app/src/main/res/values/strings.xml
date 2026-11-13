@@ -1056,9 +1056,7 @@
     <string name="cache_total_limit_title">Total cache limit</string>
     <string name="cache_total_limit_summary">Total limit: %1$s</string>
     <string name="cache_limit_title_exo">Playback cache limit</string>
-    <string name="cache_management_total_limit">Total limit %1$s (all modules · converges after playback)</string>
-    <string name="cache_management_total_unlimited">Total limit unlimited (all modules · converges after playback)</string>
-    <string name="cache_management_total_blocked">still %1$s over (protected content)</string>
+    <string name="cache_management_playback_budget">Playback cache %1$s (shrinks to %2$s once playback ends)</string>
     <string name="cache_cleanup_confirm_title">Clean cache?</string>
     <string name="cache_cleanup_confirm_light">Remove expired EPG, temporary, and legacy cache data?</string>
     <string name="cache_cleanup_confirm_standard">Clean rebuildable modules such as images, lyrics, karaoke, and WebHome cache?\n\nFavorites, history, and settings are not affected.</string>
@@ -3064,7 +3062,7 @@ TVData</string>
     <string name="plugin_manager_entry_meta">v%1$s · %2$s · %3$s</string>
     <string name="plugin_manager_params">Parameters</string>
     <string name="plugin_manager_params_title">Parameters for %1$s</string>
-    <string name="plugin_manager_params_hint">JSON object, e.g. {\"DOUBAN_TOKEN\":\"abc\"}</string>
+    <string name="plugin_manager_params_hint">JSON object, e.g. {"DOUBAN_TOKEN":"abc"}</string>
     <string name="plugin_manager_params_invalid">Parameters must be a JSON object</string>
     <string name="plugin_manager_params_too_large">Parameters are too large to save</string>
     <string name="plugin_manager_remote_import">Import from URL</string>
@@ -3104,5 +3102,4 @@ TVData</string>
     <string name="plugin_manager_perm_events">Playback events (plugin.events)</string>
     <string name="plugin_manager_perm_episode_data">Episode data (plugin.data.episode)</string>
     <string name="plugin_panel_title">Plugin panel</string>
-    <string name="crash_action_failed">Action failed. Please try again.</string>
 </resources>

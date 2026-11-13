@@ -31,8 +31,9 @@ public class Startup implements Initializer<Void> {
     @NonNull
     @Override
     public Void create(@NonNull Context context) {
-        if (CrashReport.isErrorProcess(context) || PlaybackRecoveryMonitor.isRecoveryProcess(context)) return null;
+        if (PlaybackRecoveryMonitor.isRecoveryProcess(context)) return null;
         CaocConfig.Builder.create().trackActivities(true).backgroundMode(CaocConfig.BACKGROUND_MODE_SHOW_CUSTOM).errorActivity(CrashActivity.class).apply();
+        CrashReport.install(context);
         Logger.addLogAdapter(new AndroidLogAdapter(PrettyFormatStrategy.newBuilder().methodCount(0).showThreadInfo(false).tag("TV").build()));
         installEventBus();
         OkHttp.dns().setDoh(() -> Doh.objectFrom(Setting.getDoh()));

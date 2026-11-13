@@ -1312,7 +1312,7 @@ public class Setting {
     }
 
     public static int getTmdbDetailTheme() {
-        return clampTmdbDetailTheme(Prefers.getInt("tmdb_detail_theme", 1));
+        return clampTmdbDetailTheme(Prefers.getInt("tmdb_detail_theme", 2));
     }
 
     public static void putTmdbDetailTheme(int theme) {

@@ -96,7 +96,7 @@ public class ProxyPortControllerTest {
     }
 
     @Test
-    public void disablingAutomaticProxyKeepsServiceListeningUntilClose() throws Exception {
+    public void disablingStopsServiceAndPublishesUnboundSnapshot() throws Exception {
         ProxyPortController controller = new ProxyPortController();
         try {
             ProxyPortController.Snapshot running = controller.apply(
@@ -105,12 +105,8 @@ public class ProxyPortControllerTest {
                     config(false, ProxyRuntimeConfig.PortMode.AUTO, 0, 1));
 
             assertEquals(running.configRevision() + 1, stopped.configRevision());
-            assertTrue(stopped.ready());
-            assertFalse(stopped.config().enabled());
-            assertEquals(200, responseCode(stopped.actualPort()));
-            controller.close();
-            assertFalse(controller.snapshot().ready());
-            assertEquals(MultiThreadProxyServer.UNBOUND_PORT, controller.snapshot().actualPort());
+            assertFalse(stopped.ready());
+            assertEquals(MultiThreadProxyServer.UNBOUND_PORT, stopped.actualPort());
         } finally {
             controller.close();
         }

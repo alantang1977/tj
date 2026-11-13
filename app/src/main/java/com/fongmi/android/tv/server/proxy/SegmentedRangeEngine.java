@@ -5,12 +5,10 @@ import java.io.OutputStream;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -18,9 +16,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.Consumer;
-
-import okhttp3.Call;
 
 public final class SegmentedRangeEngine implements AutoCloseable {
 
@@ -30,7 +25,6 @@ public final class SegmentedRangeEngine implements AutoCloseable {
     private final UpstreamRangeClient upstream;
     private final ProxySessionRegistry sessions;
     private final ThreadPoolExecutor workers;
-    private final Semaphore publicWorkers;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public SegmentedRangeEngine(
@@ -49,7 +43,6 @@ public final class SegmentedRangeEngine implements AutoCloseable {
                 new SynchronousQueue<>(),
                 new RangeThreadFactory());
         this.workers.allowCoreThreadTimeOut(true);
-        this.publicWorkers = new Semaphore(Math.max(0, config.rangeWorkers() - 1));
     }
 
     public TransferResult transfer(
@@ -76,48 +69,16 @@ public final class SegmentedRangeEngine implements AutoCloseable {
             OutputStream output,
             ProxyRuntimeConfig sessionConfig,
             PreparationListener listener) throws IOException {
-        return transfer(url, requestHeaders, rangeHeader, output, sessionConfig, listener, upstream, 0);
-    }
-
-    TransferResult transfer(
-            String url,
-            Map<String, String> requestHeaders,
-            String rangeHeader,
-            OutputStream output,
-            ProxyRuntimeConfig sessionConfig,
-            PreparationListener listener,
-            UpstreamRangeClient requestUpstream,
-            int reservedSlots) throws IOException {
-        return transfer(url, requestHeaders, rangeHeader, output, sessionConfig, listener,
-                requestUpstream, reservedSlots, ignored -> {});
-    }
-
-    TransferResult transfer(
-            String url,
-            Map<String, String> requestHeaders,
-            String rangeHeader,
-            OutputStream output,
-            ProxyRuntimeConfig sessionConfig,
-            PreparationListener listener,
-            UpstreamRangeClient requestUpstream,
-            int reservedSlots,
-            Consumer<Runnable> registerCancellation) throws IOException {
-        Objects.requireNonNull(requestUpstream, "requestUpstream");
         Objects.requireNonNull(output, "output");
         Objects.requireNonNull(listener, "listener");
         ProxyRuntimeConfigValidator.requireValid(sessionConfig);
         if (closed.get()) throw new IOException("segmented range engine is closed");
         TransferState state = new TransferState();
-        Objects.requireNonNull(registerCancellation, "registerCancellation").accept(state::cancel);
-        Optional<ProxySessionRegistry.Lease> acquired = sessions.tryAcquire(state::cancel, reservedSlots);
+        Optional<ProxySessionRegistry.Lease> acquired = sessions.tryAcquire(state::cancel);
         if (acquired.isEmpty()) return prepared(listener, TransferResult.sessionLimit());
         ProxySessionRegistry.Lease lease = acquired.orElseThrow();
         try {
-            if (reservedSlots > 0 && config.rangeWorkers() <= 1) {
-                return prepared(listener, new TransferResult(Decision.FALLBACK_SINGLE_CONNECTION, -1, -1, -1, 0, null));
-            }
-            return transferAcquired(url, requestHeaders, rangeHeader, output, sessionConfig, state, listener,
-                    requestUpstream, reservedSlots > 0);
+            return transferAcquired(url, requestHeaders, rangeHeader, output, sessionConfig, state, listener);
         } finally {
             state.cancel();
             lease.close();
@@ -131,10 +92,8 @@ public final class SegmentedRangeEngine implements AutoCloseable {
             OutputStream output,
             ProxyRuntimeConfig sessionConfig,
             TransferState state,
-            PreparationListener listener,
-            UpstreamRangeClient requestUpstream,
-            boolean publicRequest) throws IOException {
-        UpstreamRangeClient.ProbeResult probe = requestUpstream.probe(url, requestHeaders, state);
+            PreparationListener listener) throws IOException {
+        UpstreamRangeClient.ProbeResult probe = upstream.probe(url, requestHeaders);
         if (!probe.canParallel()) return prepared(listener, TransferResult.fromProbe(probe));
 
         HttpByteRange.ParseResult parsedRange = HttpByteRange.parse(rangeHeader, probe.totalLength());
@@ -169,7 +128,7 @@ public final class SegmentedRangeEngine implements AutoCloseable {
 
         OrderedChunkBuffer buffer = new OrderedChunkBuffer(perSessionBudget);
         state.attach(buffer);
-        schedule(state, buffer, probe, plan.shard(0), sessionConfig, requestUpstream, publicRequest);
+        schedule(state, buffer, probe, plan.shard(0), sessionConfig);
 
         long written = 0;
         try {
@@ -183,7 +142,7 @@ public final class SegmentedRangeEngine implements AutoCloseable {
             long nextToSchedule = 1;
             long bootstrapEnd = Math.min(plan.shardCount(), concurrency + 1);
             while (nextToSchedule < bootstrapEnd) {
-                schedule(state, buffer, probe, plan.shard(nextToSchedule++), sessionConfig, requestUpstream, publicRequest);
+                schedule(state, buffer, probe, plan.shard(nextToSchedule++), sessionConfig);
             }
             for (long expected = 1; expected < plan.shardCount(); expected++) {
                 byte[] bytes = buffer.takeNext();
@@ -192,7 +151,7 @@ public final class SegmentedRangeEngine implements AutoCloseable {
                 written = Math.addExact(written, bytes.length);
                 state.remove(expected);
                 if (nextToSchedule < plan.shardCount()) {
-                    schedule(state, buffer, probe, plan.shard(nextToSchedule++), sessionConfig, requestUpstream, publicRequest);
+                    schedule(state, buffer, probe, plan.shard(nextToSchedule++), sessionConfig);
                 }
             }
             output.flush();
@@ -215,22 +174,10 @@ public final class SegmentedRangeEngine implements AutoCloseable {
             OrderedChunkBuffer buffer,
             UpstreamRangeClient.ProbeResult probe,
             RangePlanner.Shard shard,
-            ProxyRuntimeConfig sessionConfig,
-            UpstreamRangeClient requestUpstream,
-            boolean publicRequest) throws IOException {
-        if (publicRequest) {
-            while (!publicWorkers.tryAcquire()) {
-                if (state.isCancelled() || closed.get()) throw new IOException("segmented transfer cancelled");
-                LockSupport.parkNanos(RESUBMIT_DELAY_NANOS);
-                if (Thread.interrupted()) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("interrupted while waiting for a public range worker");
-                }
-            }
-        }
+            ProxyRuntimeConfig sessionConfig) throws IOException {
         FutureTask<Void> task = new FutureTask<>(() -> {
             try {
-                byte[] bytes = fetchWithRetry(state, probe, shard, sessionConfig, requestUpstream);
+                byte[] bytes = fetchWithRetry(state, probe, shard, sessionConfig);
                 if (!state.isCancelled()) buffer.put(shard.index(), bytes);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -239,29 +186,7 @@ public final class SegmentedRangeEngine implements AutoCloseable {
                 state.fail(failure);
             }
             return null;
-        }) {
-            private final AtomicBoolean running = new AtomicBoolean();
-            private final AtomicBoolean released = new AtomicBoolean();
-
-            private void releaseWorker() {
-                if (publicRequest && released.compareAndSet(false, true)) publicWorkers.release();
-            }
-
-            @Override
-            public void run() {
-                running.set(true);
-                try {
-                    super.run();
-                } finally {
-                    releaseWorker();
-                }
-            }
-
-            @Override
-            protected void done() {
-                if (!running.get()) releaseWorker();
-            }
-        };
+        });
         state.track(shard.index(), task);
         while (true) {
             if (state.isCancelled() || closed.get() || workers.isShutdown()) {
@@ -293,19 +218,17 @@ public final class SegmentedRangeEngine implements AutoCloseable {
             TransferState state,
             UpstreamRangeClient.ProbeResult probe,
             RangePlanner.Shard shard,
-            ProxyRuntimeConfig sessionConfig,
-            UpstreamRangeClient requestUpstream) throws IOException {
+            ProxyRuntimeConfig sessionConfig) throws IOException {
         IOException lastFailure = null;
         for (long attempt = 0; attempt <= (long) sessionConfig.retryCount(); attempt++) {
             if (state.isCancelled() || closed.get()) throw new IOException("segmented transfer cancelled");
             try {
-                return requestUpstream.fetchShard(
+                return upstream.fetchShard(
                         probe.finalUrl(),
                         probe.forwardHeaders(),
                         shard,
                         probe.totalLength(),
-                        probe.validator(),
-                        state);
+                        probe.validator());
             } catch (UpstreamRangeClient.RangeFetchException semanticFailure) {
                 if (!isRetryable(semanticFailure.responseCode())) throw semanticFailure;
                 lastFailure = semanticFailure;
@@ -325,26 +248,11 @@ public final class SegmentedRangeEngine implements AutoCloseable {
         if (closed.compareAndSet(false, true)) workers.shutdownNow();
     }
 
-    private final class TransferState implements UpstreamRangeClient.CallTracker {
+    private final class TransferState {
 
         private final Map<Long, Future<?>> futures = new ConcurrentHashMap<>();
-        private final Set<Call> calls = ConcurrentHashMap.newKeySet();
         private final AtomicBoolean cancelled = new AtomicBoolean();
         private volatile OrderedChunkBuffer buffer;
-
-        @Override
-        public void onCallStarted(Call call) {
-            calls.add(call);
-            if (cancelled.get()) {
-                call.cancel();
-                calls.remove(call);
-            }
-        }
-
-        @Override
-        public void onCallEnded(Call call) {
-            calls.remove(call);
-        }
 
         private void attach(OrderedChunkBuffer buffer) {
             this.buffer = buffer;
@@ -375,8 +283,6 @@ public final class SegmentedRangeEngine implements AutoCloseable {
             if (current != null) current.close();
             for (Future<?> future : futures.values()) future.cancel(true);
             futures.clear();
-            for (Call call : calls) call.cancel();
-            calls.clear();
         }
     }
 
