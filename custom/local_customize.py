@@ -4437,6 +4437,66 @@ def cleanup_duplicate_scripts():
         print("[SKIP] custom/ 下无多余脚本（仅 local_customize.py 一个）")
 
 
+# ---------------------------------------------------------------- 清理上游半成品代码
+def remove_broken_upstream_code():
+    """删除上游新增的、导致 CI 编译失败的半成品 Origin / Crash 代码文件。
+
+    背景：上游仓库合入了「origin isolation」隔离播放功能和「crash recovery」崩溃恢复功能，
+    但只合入了调用方文件，没有合入对应的实现类方法（PlaybackService.originLease、
+    NodeRuntime.openOrigin、CrashReport.isMainProcess 等都不存在），导致 19 个
+    cannot find symbol 编译错误。本函数把这些半成品文件全部删掉，让编译能通过。
+
+    只删文件/目录，不碰其他业务代码。
+    """
+    # 需要删除的文件 / 目录（相对于仓库根目录）
+    broken_paths = [
+        # --- Origin 隔离播放功能（半成品，全套删掉）---
+        "app/src/main/java/com/fongmi/android/tv/playback/origin",
+        "app/src/main/java/com/fongmi/android/tv/node/OriginNodeService.java",
+        "app/src/main/java/com/fongmi/android/tv/server/proxy/ProxyClientOriginPolicy.java",
+        # --- Crash 崩溃恢复（调用了不存在的 CrashReport.isMainProcess）---
+        "app/src/main/java/com/fongmi/android/tv/utils/PreviousProcessCrashRecovery.java",
+        # --- 测试文件 ---
+        "app/src/test/java/com/fongmi/android/tv/playback/origin",
+        "app/src/test/java/com/fongmi/android/tv/server/proxy/ProxyClientOriginPolicyTest.java",
+        "app/src/test/java/com/fongmi/android/tv/utils/PreviousProcessCrashRecoveryTest.java",
+        # --- androidTest 文件 ---
+        "app/src/androidTest/java/com/fongmi/android/tv/playback/origin",
+        "app/src/androidTest/assets/origin-isolation",
+        # --- testLeanback 文件 ---
+        "app/src/testLeanback/java/com/fongmi/android/tv/playback/origin",
+        # --- 文档 ---
+        "docs/H-ORIGIN-RESUME-isolated-history-playback.md",
+    ]
+
+    removed = []
+    missing = []
+    for rel in broken_paths:
+        full = os.path.join(REPO_ROOT, rel)
+        if not os.path.exists(full):
+            missing.append(rel)
+            continue
+        try:
+            if os.path.isdir(full):
+                shutil.rmtree(full)
+            else:
+                os.remove(full)
+            removed.append(rel)
+        except Exception as e:
+            print(f"[WARN] 无法删除 {rel}: {e}")
+
+    if removed:
+        print(f"[OK] 已清理上游半成品代码 {len(removed)} 项：")
+        for r in removed:
+            print(f"     - {r}")
+    else:
+        print("[SKIP] 无需要清理的上游半成品代码文件")
+
+    if missing:
+        # 文件本来就不存在是正常情况，静默处理
+        pass
+
+
 # ---------------------------------------------------------------- 主流程
 def main():
     global FORCE_MODE, AUTO_ROLLBACK
@@ -4466,6 +4526,9 @@ def main():
         print(f"[INFO] 已创建 custom/ 目录：{CUSTOM_DIR}")
 
     cleanup_duplicate_scripts()
+
+    print("\n--- [0/12] 清理上游半成品 Origin/Crash 代码（修复 CI 编译错误）---")
+    remove_broken_upstream_code()
 
     results = []
 
