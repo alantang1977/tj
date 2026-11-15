@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 由 local_customize.py 生成，请勿手工编辑 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path android:fillColor="#FFFFFF" android:pathData="M97.28,120.27L140.1,213.14A128,128 0 0,1 190.98,157.21z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M414.72,120.27L371.9,213.14A128,128 0 0,1 321.02,157.21z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M256,139.47A128,128 0 1 1 256,395.47A128,128 0 1 1 256,139.47z" />
+</vector>

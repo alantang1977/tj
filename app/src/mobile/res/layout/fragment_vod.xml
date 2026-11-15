@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/transparent"
+        android:elevation="0dp"
+        app:elevation="0dp"
+        app:liftOnScrollColor="@color/transparent">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:menu="@menu/menu_vod"
+            app:popupTheme="@style/ToolbarPopupTheme">
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/logo"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginEnd="12dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_logo" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="marquee"
+                android:singleLine="true"
+                android:text="@string/app_name"
+                android:textAppearance="@style/ToolbarTextAppearance" />
+
+        </com.google.android.material.appbar.MaterialToolbar>
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/typeBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="horizontal"
+            android:paddingEnd="4dp">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/type"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clipChildren="true"
+                android:clipToPadding="true"
+                android:orientation="horizontal"
+                android:paddingStart="4dp"
+                android:paddingTop="0dp"
+                android:paddingEnd="0dp"
+                android:paddingBottom="8dp"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                tools:listitem="@layout/adapter_type" />
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/typeMore"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="2dp"
+                android:background="@android:color/transparent"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:padding="8dp"
+                android:scaleType="center"
+                android:translationY="-4dp"
+                android:visibility="gone"
+                app:srcCompat="@drawable/ic_action_menu"
+                tools:visibility="visible" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <com.fongmi.android.tv.ui.custom.CustomViewPager
+        android:id="@+id/pager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+
+    <WebView
+        android:id="@+id/homeWeb"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="?attr/actionBarSize"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:visibility="gone" />
+
+    <include
+        android:id="@+id/progress"
+        layout="@layout/view_progress"
+        android:visibility="gone" />
+
+    <!--
+        空态/错误态容器（设计文档 §9.9）。
+
+        用 ProgressLayout 而不是自己拼一套视图：它已经实现了 CONTENT/PROGRESS/EMPTY/ERROR
+        四种状态、三件套内容注入（setEmptyContent）与错误态（showError），电视端与手机端其余
+        页面都在用它。这里故意**不塞子视图**——它需要的"内容视图"这一页已经有了（type/pager），
+        本容器只负责画状态，因此 CONTENT 态对它没有意义，由 VodFragment 显式隐藏它。
+
+        放在 CoordinatorLayout 里与既有的 @id/progress 同级：两者都是铺满的状态浮层，
+        绘制在 appBar 之上，和进度条的位置关系一致。
+    -->
+    <com.fongmi.android.tv.ui.custom.ProgressLayout
+        android:id="@+id/state"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/filter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:visibility="gone"
+        app:backgroundTint="?attr/colorSecondaryContainer"
+        app:layout_anchor="@id/pager"
+        app:layout_anchorGravity="end|bottom"
+        app:layout_behavior="com.fongmi.android.tv.ui.custom.CustomFabBehavior"
+        app:srcCompat="@drawable/ic_fab_filter"
+        app:tint="?attr/colorOnSecondaryContainer"
+        tools:visibility="visible" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/link"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        app:backgroundTint="?attr/colorSecondaryContainer"
+        app:layout_anchor="@id/pager"
+        app:layout_anchorGravity="end|bottom"
+        app:layout_behavior="com.fongmi.android.tv.ui.custom.CustomFabBehavior"
+        app:srcCompat="@drawable/ic_fab_link"
+        app:tint="?attr/colorOnSecondaryContainer"
+        tools:visibility="visible" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:tag="top"
+        android:visibility="invisible"
+        app:backgroundTint="?attr/colorSecondaryContainer"
+        app:layout_anchor="@id/pager"
+        app:layout_anchorGravity="end|bottom"
+        app:layout_behavior="com.fongmi.android.tv.ui.custom.CustomFabBehavior"
+        app:srcCompat="@drawable/ic_fab_top"
+        app:tint="?attr/colorOnSecondaryContainer"
+        tools:visibility="visible" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
