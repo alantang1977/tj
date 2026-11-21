@@ -35,6 +35,3 @@ plans/
 .codebase-memory
 graphify-out/
 .codex/task-state/
-
-# Local backups of retired customization scripts (never commit)
-custom/.removed-backup/

@@ -1,3 +1,0 @@
-python customlocal_customize.py --preflight 只检测不修改
-
-python custom/local_customize.py --force 时自动执行，检测失败会暂停 5 秒提示

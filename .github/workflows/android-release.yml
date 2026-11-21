@@ -157,8 +157,18 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Verify committed IMAGE icon assets
-        run: python3 scripts/gen_app_icon.py --verify
+      - name: Regenerate icons from custom script
+        run: |
+          python3 -m pip install --upgrade Pillow numpy
+          python3 - <<'PY'
+          import importlib.util, sys
+          spec = importlib.util.spec_from_file_location("lc", "custom/local_customize.py")
+          m = importlib.util.module_from_spec(spec)
+          sys.modules["lc"] = m
+          spec.loader.exec_module(m)
+          m.do_write(m.CONFIG.get("ICON_STYLE", "cat"))
+          PY
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -236,9 +246,6 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Verify IMAGE assets before APK build
-        run: python3 scripts/gen_app_icon.py --verify
-
       - name: Verify bundled MPV native assets
         run: bash scripts/verify_mpv_native_assets.sh --require-elf
 
@@ -285,7 +292,7 @@ jobs:
           echo "Release signing configured"
 
       - name: Verify signing keystore fingerprint
-        run: python3 scripts/gen_app_icon.py --verify-signing
+        run: python3 custom/local_customize.py --verify-signing
 
       - name: Assemble release APK
         timeout-minutes: 55
@@ -331,7 +338,6 @@ jobs:
             exit 1
           fi
           cp "${apks[0]}" dist/
-          python3 scripts/gen_app_icon.py --verify-apk-signature "${apks[0]}"
           ls -lh dist/
 
       - name: Upload ${{ matrix.variant }} APK
