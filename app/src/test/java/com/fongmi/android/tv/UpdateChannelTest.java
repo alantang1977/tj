@@ -16,13 +16,15 @@ public class UpdateChannelTest {
         String source = read(findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "Updater.java")));
         String method = between(source, "private Update getUpdate", "private Update getGithubStableUpdate");
 
-        int channelAsset = method.indexOf("Github.getChannelAsset");
-        int shortCircuit = method.indexOf("hasManifest()) return", channelAsset);
-        int betaApi = method.indexOf("getGithubBetaUpdate", shortCircuit);
+        int cnbManifest = method.indexOf("Github.getCnbMirrorAsset");
+        int cnbHasManifest = method.indexOf("cnb.hasManifest()", cnbManifest);
+        int channelAsset = method.indexOf("Github.getChannelAsset", cnbHasManifest);
+        int githubApi = method.indexOf("getGithubBetaUpdate", channelAsset);
 
-        assertTrue("The fixed GitHub channel manifest must be tried first", channelAsset >= 0);
-        assertTrue("A valid static manifest must prevent an unnecessary GitHub API request", shortCircuit > channelAsset);
-        assertTrue("The GitHub Releases API must be fallback-only", betaApi > shortCircuit);
+        assertTrue("CNB manifest must be tried first", cnbManifest >= 0);
+        assertTrue("A valid CNB manifest must short-circuit before any GitHub channel request", cnbHasManifest > cnbManifest);
+        assertTrue("GitHub channel manifest must be fallback after CNB", channelAsset > cnbHasManifest);
+        assertTrue("The GitHub Releases API must be last-resort", githubApi > channelAsset);
     }
 
     @Test
@@ -30,13 +32,15 @@ public class UpdateChannelTest {
         String source = read(findMainJavaPath().resolve(Path.of("com", "fongmi", "android", "tv", "Updater.java")));
         String method = between(source, "private Update getUpdate", "private Update getGithubStableUpdate");
 
-        int cnbFallback = method.indexOf("Github.getCnbMirrorAsset");
-        int cnbShortCircuit = method.indexOf("hasManifest()) return", cnbFallback);
-        int betaApi = method.indexOf("getGithubBetaUpdate", cnbShortCircuit);
+        int cnbFirst = method.indexOf("Github.getCnbMirrorAsset");
+        int cnbHasManifest = method.indexOf("cnb.hasManifest()", cnbFirst);
+        int channelFallback = method.indexOf("Github.getChannelAsset", cnbHasManifest);
+        int githubApi = method.indexOf("getGithubBetaUpdate", channelFallback);
 
-        assertTrue("Beta should retain the currently published CNB manifest as a migration fallback", cnbFallback >= 0);
-        assertTrue("A valid CNB beta manifest must prevent a direct GitHub API request", cnbShortCircuit > cnbFallback);
-        assertTrue("The direct GitHub API must remain the last resort", betaApi > cnbShortCircuit);
+        assertTrue("CNB manifest must be the first choice", cnbFirst >= 0);
+        assertTrue("A valid CNB manifest must short-circuit immediately", cnbHasManifest > cnbFirst);
+        assertTrue("GitHub channel must be fallback after CNB failure", channelFallback > cnbHasManifest);
+        assertTrue("The direct GitHub API must remain last resort", githubApi > channelFallback);
     }
 
     @Test

@@ -36,14 +36,14 @@ on:
         default: false
         type: boolean
       sync_cnb:
-        description: "Optionally mirror APKs to CNB Release and sync CNB manifests"
+        description: "Mirror APKs to CNB Release and sync CNB manifests (default on)"
         required: false
-        default: false
+        default: true
         type: boolean
       publish_oci:
         description: "Publish APKs as OCI artifacts when Registry variables and secrets are configured"
         required: false
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -57,8 +57,8 @@ env:
   TZ: Asia/Shanghai
   CNB_API_ENDPOINT: https://api.cnb.cool
   CNB_WEB_ENDPOINT: https://cnb.cool
-  CNB_REPO_SLUG: fish2035/webhtv-release
-  CNB_REPO_URL: https://cnb.cool/fish2035/webhtv-release.git
+  CNB_REPO_SLUG: tangtang.com.cn.kul/juntv
+  CNB_REPO_URL: https://cnb.cool/tangtang.com.cn.kul/juntv.git
   UPDATE_CHANNEL_TAG: update-channel
 
 jobs:
@@ -157,10 +157,16 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Regenerate icons from approved image assets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          python3 scripts/gen_app_icon.py
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools
+          packages: 'platform-tools'
 
       - name: Install Android packages
         run: |
@@ -188,11 +194,13 @@ jobs:
             --tests 'com.fongmi.android.tv.ui.dialog.AboutDialogLayoutTest' \
             --tests 'com.fongmi.android.tv.ui.dialog.UpdateDialogChannelVisibilityTest' \
             --tests 'com.fongmi.android.tv.ui.adapter.VodAdapterLayoutTest' \
-            --no-daemon
+            --no-daemon \
+            --stacktrace
           ./gradlew \
             :app:testLeanbackArm64_v8aDebugUnitTest \
             --tests 'com.fongmi.android.tv.ui.dialog.UpdateDialogLayoutTest' \
-            --no-daemon
+            --no-daemon \
+            --stacktrace
 
   build:
     name: Build ${{ matrix.variant }} APK
@@ -258,14 +266,11 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          KS_BASE64="${RELEASE_KEYSTORE_BASE64:-$KEYSTORE_BASE64}"
-          STORE_PASSWORD="${RELEASE_STORE_PASSWORD:-$KEY_PASSWORD}"
-          ALIAS="${RELEASE_KEY_ALIAS:-$KEY_ALIAS}"
-          KEY_PASS="${RELEASE_KEY_PASSWORD:-$STORE_PASSWORD}"
+          KS_BASE64="$RELEASE_KEYSTORE_BASE64"
+          STORE_PASSWORD="$RELEASE_STORE_PASSWORD"
+          ALIAS="$RELEASE_KEY_ALIAS"
+          KEY_PASS="$RELEASE_KEY_PASSWORD"
           if [ -z "$KS_BASE64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$ALIAS" ]; then
             echo "::error title=Release signing not configured::Configure RELEASE_KEYSTORE_BASE64, RELEASE_KEY_ALIAS and RELEASE_STORE_PASSWORD in repository secrets."
             exit 1
@@ -279,6 +284,9 @@ jobs:
             echo "keyPassword=$KEY_PASS"
           } > local.properties
           echo "Release signing configured"
+
+      - name: Verify signing keystore fingerprint
+        run: python3 custom/local_customize.py --verify-signing
 
       - name: Assemble release APK
         timeout-minutes: 55
@@ -538,6 +546,17 @@ jobs:
           fi
           gh release upload "$UPDATE_CHANNEL_TAG" channel-manifests/*.json --clobber
 
+
+      - name: Check CNB_TOKEN before sync
+        if: ${{ inputs.sync_cnb }}
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          if [ -z "$CNB_TOKEN" ]; then
+            echo "::error title=CNB_TOKEN missing::sync_cnb is on but CNB_TOKEN secret is not configured."
+            exit 1
+          fi
+          echo "CNB_TOKEN is configured."
       - name: Sync to CNB
         if: ${{ inputs.sync_cnb }}
         env:
@@ -548,7 +567,8 @@ jobs:
           CNB_RELEASE_PRERELEASE: ${{ inputs.prerelease == true || needs.meta.outputs.channel == 'beta' }}
           CNB_RELEASE_LATEST: ${{ needs.meta.outputs.channel == 'stable' }}
         run: |
-          .github/scripts/sync-cnb-release.sh
+          chmod +x .github/scripts/sync-cnb-release.sh 2>/dev/null || true
+          bash .github/scripts/sync-cnb-release.sh
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4

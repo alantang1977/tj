@@ -1,18 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 由 scripts/gen_app_icon.py 生成，请勿手工编辑 -->
+<!-- White cat-head status-bar/notification glyph. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="512"
-    android:viewportHeight="512">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30.72,162.91 79.13,162.91 79.13,349.09 30.72,349.09zM179.67,162.91 228.07,162.91 228.07,349.09 179.67,349.09zM30.72,162.91 79.13,162.91 129.4,296.96zM179.67,162.91 228.07,162.91 129.4,296.96z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:fillType="evenOdd"
-        android:pathData="M248.55,256a116.36,116.36 0 1,1 232.73,0a116.36,116.36 0 1,1 -232.73,0zM295.99,256a68.92,68.92 0 1,0 137.85,0a68.92,68.92 0 1,0 -137.85,0z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M336.86,205 336.86,307 413.37,256z" />
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2.7 C10.45,2.7 8.98,3.04 7.67,3.67 L3.5,2.1 L4.06,7.2 C3.38,8.55 3,10.06 3,11.7 C3,16.65 6.92,20.75 12,20.75 C17.08,20.75 21,16.65 21,11.7 C21,10.06 20.62,8.55 19.94,7.2 L20.5,2.1 L16.33,3.67 C15.02,3.04 13.55,2.7 12,2.7 Z" />
 </vector>
