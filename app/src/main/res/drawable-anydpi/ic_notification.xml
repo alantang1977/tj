@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- White cat-head status-bar/notification glyph. -->
+<!-- 由 local_customize.py 生成，请勿手工编辑 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M12,2.7 C10.45,2.7 8.98,3.04 7.67,3.67 L3.5,2.1 L4.06,7.2 C3.38,8.55 3,10.06 3,11.7 C3,16.65 6.92,20.75 12,20.75 C17.08,20.75 21,16.65 21,11.7 C21,10.06 20.62,8.55 19.94,7.2 L20.5,2.1 L16.33,3.67 C15.02,3.04 13.55,2.7 12,2.7 Z" />
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path android:fillColor="#FFFFFF" android:pathData="M97.28,120.27L140.1,213.14A128,128 0 0,1 190.98,157.21z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M414.72,120.27L371.9,213.14A128,128 0 0,1 321.02,157.21z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M256,139.47A128,128 0 1 1 256,395.47A128,128 0 1 1 256,139.47z" />
 </vector>

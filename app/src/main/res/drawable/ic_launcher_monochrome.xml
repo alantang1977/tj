@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Simplified cat-head mark for Android 13+ themed icons. -->
+<!-- 由 local_customize.py 生成，请勿手工编辑 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M256,438c-39,0-76-9-106-26-40-22-66-59-75-104-7-38,5-75,30-103-13-36-17-79-13-125 28,9 61,29 84,54 23-11 50-17 80-17s57,6 80,17c23-25 56-45 84-54 4,46 0,89-13,125 25,28 37,65 30,103-9,45-35,82-75,104-30,17-67,26-106,26z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M97.28,120.27L140.1,213.14A128,128 0 0,1 190.98,157.21z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M414.72,120.27L371.9,213.14A128,128 0 0,1 321.02,157.21z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M256,139.47A128,128 0 1 1 256,395.47A128,128 0 1 1 256,139.47z" />
 </vector>

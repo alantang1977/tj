@@ -305,6 +305,14 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         else {
             Log.i(TAG, "apk_download_source=GitHub url=" + update.apkUrl);
         }
+        // 否则回退 GitHub Release 直链
+        else {
+            Log.i(TAG, "apk_download_source=GitHub url=" + update.apkUrl);
+        }
+        // 否则回退 GitHub Release 直链
+        else {
+            Log.i(TAG, "apk_download_source=GitHub url=" + update.apkUrl);
+        }
         JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");
         if (oci == null) return;
         OciArtifact artifact = new OciArtifact(
@@ -478,10 +486,10 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             GithubProxy.Config github = GithubProxy.config();
             String endpoint = update.oci == null ? "" : OciMirror.resolve(Setting.getUpdateOciMirror(), Setting.getUpdateOciMirrorUrl(), update.oci);
             List<UpdateTarget> routes = new ArrayList<>();
-            String cnbUrl = update.apkUrl;
-            if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
-                routes.add(UpdateTarget.github(cnbUrl));
-            }
+                        String cnbUrl = update.apkUrl;
+                        if (cnbUrl != null && cnbUrl.startsWith("https://cnb.cool/")) {
+                            routes.add(UpdateTarget.github(cnbUrl));
+                        }
                         routes.addAll(UpdateRoutePlanner.plan(Setting.getUpdateSource(), update.apkUrl, update.oci, github, endpoint));
             return routes;
         } catch (Exception e) {

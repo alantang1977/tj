@@ -14,15 +14,17 @@
   [1] applicationId 安装包名 + 自动补全 buildFeatures { viewBinding true }
       （注意：namespace 保持上游 com.fongmi.android.tv，绝不修改）
   [2] app 显示名称（英文 / 简体 / 繁体 多语言 strings.xml + AndroidManifest 硬编码 label）
-  [3] app 图标：从 other/image/tj_dream_cat_master.png 导出整套资源（ImageMagick，不用 Pillow）：
-      - 手机 launcher：5 档密度 + roundIcon + adaptive foreground/background/monochrome
-      - Android TV：5 档 16:9 Leanback banner（320x180 至 1280x720）
-      - Play Store 512x512、App 内 Logo 600px、通知栏图标、网页 favicon.ico
+  [3] app 启动图标（程序化生成整套，cat 风格为卡通蓝猫头）：
+      - 旧版 launcher：mipmap-mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi（ic_launcher.png + round.webp）
+      - 自适应图标（API26+）：mipmap-anydpi-v26（背景矢量 + 彩色前景 PNG + monochrome 矢量）
+      - TV banner 320x180（leanback drawable + adaptive xml）
+      - Play Store 512x512、App 内 Logo 600px、通知栏图标（纯白扁平）、网页 favicon.ico
+      - 耳朵根部沿头圆圆弧贴合；内白耳为收尖楔子，底边与外耳根同心
   [4] 开机启动图 startup_logo.png、手机端启动图 mobile_startup.png
   [5] AndroidManifest 接线：
       - android:label 若为硬编码则改成 @string
-      - 手机 banner 使用 @drawable/ic_banner；Leanback application/current alias 使用 @mipmap/ic_banner
-        并提供 5 档密度位图，避免自适应方形资源遮蔽 16:9 TV banner
+      - android:banner 强制指向 @drawable/ic_banner（320x180 长方形），
+        banner PNG 同时写入 drawable-xhdpi 与 drawable-nodpi，适配当贝桌面等 TV 启动器
   [6] 设置页作者链接（URL_GITHUB / URL_CNB）
   [7] 「检查更新」链接替换（Github.java / GithubProxy.java / 对应单测）：
       上游 Silent1566 改为你配置的 GitHub 仓库 + CNB 仓库
@@ -147,8 +149,8 @@ CONFIG = {
     "STARTUP_LOGO": "startup_logo.png",
     # custom/ 目录下的手机端启动图文件名
     "MOBILE_STARTUP": "mobile_startup.png",
-    # 统一使用 other/image/tj_dream_cat_master.png 作为品牌图标母版；不再运行旧 Pillow 绘图风格
-    "ICON_STYLE": "image",
+    # 程序化生成图标的风格：cat（默认，卡通蓝猫头）、3d（高级立体浮雕）或 iphone17（带光影）
+    "ICON_STYLE": "cat",
     # 猫咪眼睛虹膜配色：
     #   amber 琥珀金（默认，暖色与青色头撞色、最醒目，呼应金铃铛）
     #   emerald 翡翠绿（与青色头部邻近色、柔和协调）
@@ -193,10 +195,9 @@ FORCE_MODE = False
 AUTO_ROLLBACK = False
 
 # ==============================================================================
-# 图标生成模块
-# 下方历史 Pillow 几何绘图函数仅保留作旧版本参考；正常工作流不调用这些函数。
-# 默认 generate_app_icons() 与 GitHub Actions 均调用 scripts/gen_app_icon.py，
-# 从 other/image/tj_dream_cat_master.png 用 ImageMagick 生成当前批准的整套图标。
+# 图标生成模块（整合自 custom/gen_app_icon.py）
+# 用 Pillow 程序化生成整套应用图标：launcher / adaptive / banner / 通知栏 / favicon
+# 风格由 CONFIG["ICON_STYLE"] 控制：3d（默认）或 iphone17
 # ==============================================================================
 GRAD_A = (0x8B, 0x5C, 0xF6)      # 左上 紫罗兰
 GRAD_C = (0x5C, 0xBF, 0xF6)      # 新增：亮青 (流光过渡)
@@ -2414,22 +2415,25 @@ def modify_all_strings(config):
 
 # ---------------------------------------------------------------- 3. 应用图标
 def generate_app_icons(config):
-    """从批准的图片母版生成整套图标；位图处理使用 ImageMagick，不调用 Pillow。"""
-    master = os.path.join(REPO_ROOT, "other", "image", "tj_dream_cat_master.png")
-    generator = os.path.join(REPO_ROOT, "scripts", "gen_app_icon.py")
-    if not os.path.isfile(master):
-        print(f"[ERROR] 图标母版不存在: {master}")
-        return _fail("图标生成：缺少 other/image/tj_dream_cat_master.png")
-    if not os.path.isfile(generator):
-        print(f"[ERROR] 图标生成脚本不存在: {generator}")
-        return _fail("图标生成：缺少 scripts/gen_app_icon.py")
-    print("[INFO] 正在从已确认的猫咪图片生成手机/TV 全套图标（ImageMagick）...")
+    """程序化生成整套应用图标（整合自 custom/gen_app_icon.py 的 do_write 逻辑）。"""
+    style = config.get("ICON_STYLE", "cat")
+    if style not in ("cat", "3d", "iphone17"):
+        print(f"[WARN] 未知风格 {style}，使用默认 cat")
+        style = "cat"
     try:
-        subprocess.run([sys.executable, generator], cwd=REPO_ROOT, check=True)
+        import PIL  # noqa: F401
+    except Exception:
+        print("[ERROR] 未安装 Pillow，无法生成图标。请先运行: pip install pillow numpy")
+        return _fail("图标生成：缺少 Pillow")
+    if not _ensure_numpy():
+        return _fail("图标生成：numpy 不可用")
+    print(f"[INFO] 正在生成图标（风格: {style}）...")
+    try:
+        do_write(style)
         return True
-    except (OSError, subprocess.CalledProcessError) as exc:
-        print(f"[ERROR] 图标生成失败: {exc}")
-        return _fail("图标生成：ImageMagick 资源生成脚本执行失败")
+    except Exception as e:
+        print(f"[ERROR] 图标生成失败: {e}")
+        return False
 
 
 # ---------------------------------------------------------------- 4. 启动图
@@ -2539,40 +2543,49 @@ def _patch_manifest_banner(manifest_path, banner_ref, TOOLS_NS, ANDROID_URI):
 
 
 def modify_manifest_banner(config):
-    """手机主 Manifest 使用 @drawable 横幅；Leanback application 使用 @mipmap 密度横幅。"""
+    """强制 AndroidManifest 的 android:banner 指向 320x180 长方形 PNG drawable。
+
+    同时处理 main 和 leanback flavor 两个 manifest（leanback flavor 自己也声明了
+    @mipmap/ic_banner，不改会导致 leanback 变体合并冲突）。
+    """
+    banner_ref = "@drawable/ic_banner"
     TOOLS_NS = "http://schemas.android.com/tools"
     ANDROID_URI = "http://schemas.android.com/apk/res/android"
+
+    # 需要处理的 manifest 列表：main + leanback flavor
     targets = [
-        (os.path.join(REPO_ROOT, "app", "src", "main", "AndroidManifest.xml"), "@drawable/ic_banner"),
-        (os.path.join(REPO_ROOT, "app", "src", "leanback", "AndroidManifest.xml"), "@mipmap/ic_banner"),
+        os.path.join(REPO_ROOT, "app", "src", "main", "AndroidManifest.xml"),
+        os.path.join(REPO_ROOT, "app", "src", "leanback", "AndroidManifest.xml"),
     ]
     any_changed = False
-    for manifest_path, banner_ref in targets:
-        if not os.path.isfile(manifest_path):
-            print(f"[WARN] Manifest 不存在，跳过 banner 接线: {os.path.relpath(manifest_path, REPO_ROOT)}")
-            continue
-        any_changed = _patch_manifest_banner(
-            manifest_path, banner_ref, TOOLS_NS, ANDROID_URI) or any_changed
+    for mp in targets:
+        if os.path.exists(mp):
+            any_changed = _patch_manifest_banner(mp, banner_ref, TOOLS_NS, ANDROID_URI) or any_changed
 
-    main_sizes = {"mdpi": "320x180", "hdpi": "480x270", "xhdpi": "640x360",
-                  "xxhdpi": "960x540", "xxxhdpi": "1280x720"}
-    missing = []
-    for density, _size in main_sizes.items():
-        main_file = os.path.join(REPO_ROOT, "app", "src", "main", "res",
-                                 f"drawable-{density}", "ic_banner.png")
-        tv_file = os.path.join(REPO_ROOT, "app", "src", "leanback", "res",
-                               f"mipmap-{density}", "ic_banner.png")
-        if not os.path.isfile(main_file):
-            missing.append(os.path.relpath(main_file, REPO_ROOT))
-        if not os.path.isfile(tv_file):
-            missing.append(os.path.relpath(tv_file, REPO_ROOT))
-    if missing:
-        print("[ERROR] banner 密度资源不完整：")
-        for item in missing:
-            print(f"        - {item}")
-        return _fail("TV/手机 banner 密度资源缺失")
-
-    print("[SANITY] 手机 @drawable/ic_banner 与 Leanback @mipmap/ic_banner 均有 5 档密度位图")
+    # 把 320x180 banner PNG 复制到主资源目录：
+    #  - drawable-xhdpi（Android TV 官方推荐位置，320x180 对应 xhdpi）
+    #  - drawable-nodpi（兜底）
+    src = os.path.join(REPO_ROOT, "app", "src", "leanback", "res", "drawable", "ic_banner.png")
+    copied_any = False
+    if os.path.exists(src):
+        for sub in ("drawable-xhdpi", "drawable-nodpi"):
+            dst = os.path.join(REPO_ROOT, "app", "src", "main", "res", sub, "ic_banner.png")
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+            copied_any = True
+            print(f"[OK] banner PNG -> {os.path.relpath(dst, REPO_ROOT)}（320x180）")
+    else:
+        print(f"[WARN] 未找到 leanback banner 源文件: {os.path.relpath(src, REPO_ROOT)}，请先跑图标生成步骤")
+    # 关键校验：manifest 已把 android:banner 指向 @drawable/ic_banner，
+    # 必须保证至少有一个 ic_banner.png 资源存在，否则 AAPT 合并直接报 "resource not found"。
+    banner_glob = glob.glob(os.path.join(REPO_ROOT, "app", "src", "main", "res",
+                                        "drawable*", "ic_banner.png"))
+    if not banner_glob:
+        print("[FATAL] manifest 指向 @drawable/ic_banner，但 main 资源中找不到任何 ic_banner.png！"
+              " 这会导致 AAPT resource-not-found 构建失败。请先让图标生成步骤产出 banner。")
+        any_changed = False
+    else:
+        print(f"[SANITY] @drawable/ic_banner 资源存在：{os.path.relpath(banner_glob[0], REPO_ROOT)}")
     return any_changed
 
 
@@ -3931,24 +3944,25 @@ def modify_workflow_files(config):
                 else:
                     print("[WARN] android-release.yml: 未找到 publish_oci 输入项，跳过")
 
-            # CI 每次从已提交的图片母版重生成资源，避免旧 Pillow/矢量绘图逻辑覆盖用户选定的猫咪图。
-            _ICON_STEP_MARKER = "Regenerate icons from approved image assets"
-            _OLD_ICON_STEP_MARKER = "Regenerate icons from custom script"
-            _ICON_STEP = (
-                "      - name: Regenerate icons from approved image assets\n"
-                "        run: |\n"
-                "          sudo apt-get update\n"
-                "          sudo apt-get install -y imagemagick\n"
-                "          python3 scripts/gen_app_icon.py\n"
-            )
-            _old_step_start = content.find("      - name: " + _OLD_ICON_STEP_MARKER)
-            if _old_step_start >= 0:
-                _next_step = content.find("      - name:", _old_step_start + 1)
-                if _next_step < 0:
-                    _next_step = len(content)
-                content = content[:_old_step_start] + _ICON_STEP + content[_next_step:]
-                print("[OK] android-release.yml: 已将旧 Pillow 图标步骤替换为图片母版 + ImageMagick")
-            elif _ICON_STEP_MARKER not in content:
+            # 注入「从 custom 脚本重新生成图标」步骤（幂等）：保证每次打包前都用提交的脚本
+            # 重新生成全部图标（与 do_preview 同一个 render()），从结构上杜绝 APK 图标与预览不一致。
+            _ICON_STEP_MARKER = "Regenerate icons from custom script"
+            if _ICON_STEP_MARKER not in content:
+                _icon_step = (
+                    '\n'
+                    '      - name: Regenerate icons from custom script\n'
+                    '        run: |\n'
+                    '          python3 -m pip install --upgrade Pillow numpy\n'
+                    '          python3 - <<\'PY\'\n'
+                    '          import importlib.util, sys\n'
+                    '          spec = importlib.util.spec_from_file_location("lc", "custom/local_customize.py")\n'
+                    '          m = importlib.util.module_from_spec(spec)\n'
+                    '          sys.modules["lc"] = m\n'
+                    '          spec.loader.exec_module(m)\n'
+                    '          m.do_write(m.CONFIG.get("ICON_STYLE", "cat"))\n'
+                    '          PY\n'
+                )
+                # 锚点：setup-python 步骤的 python-version 行（仅首个匹配）
                 _anchor_pat = re.compile(
                     r'(^[ \t]*- name: Set up Python[^\n]*\n'
                     r'(?:[ \t]+[^\n]*\n)*?'
@@ -3956,14 +3970,21 @@ def modify_workflow_files(config):
                     re.MULTILINE,
                 )
                 _new_content, _n_ins = _anchor_pat.subn(
-                    lambda mm: mm.group(1) + _ICON_STEP, content, count=1)
+                    lambda mm: mm.group(1) + _icon_step, content, count=1)
                 if _n_ins:
                     content = _new_content
-                    print("[OK] android-release.yml: 已加入 ImageMagick 猫咪图标重生成步骤")
+                    print("[OK] android-release.yml: 已注入「Regenerate icons from custom script」步骤（打包前重生成图标）")
                 else:
                     print("[WARN] android-release.yml: 未定位到 setup-python 步骤，图标重生成步骤需人工添加")
             else:
-                print("[SKIP] android-release.yml: ImageMagick 猫咪图标步骤已存在")
+                # 步骤已存在：幂等升级 pip 依赖（旧版只装 Pillow，填满适配需 numpy）
+                _old_pip = 'python3 -m pip install --upgrade Pillow\n'
+                _new_pip = 'python3 -m pip install --upgrade Pillow numpy\n'
+                if _old_pip in content and 'Pillow numpy' not in content:
+                    content = content.replace(_old_pip, _new_pip, 1)
+                    print("[OK] android-release.yml: 图标重生成步骤 pip 依赖升级为 Pillow numpy")
+                else:
+                    print("[SKIP] android-release.yml: 图标重生成步骤已存在且依赖完整")
 
         # —— CNB 推送默认开启：sync_cnb 默认 true，避免每次打 release 都要手动勾选 ——
         if "android-release" in rel_path:
@@ -4549,45 +4570,6 @@ def remove_broken_upstream_code():
         print("[SKIP] 无需要清理的上游半成品代码")
 
 
-def export_generated_icon_assets():
-    """按 mobile / TV 两套资源视图导出当前已生成的真实资源树。"""
-    export_root = os.path.join(REPO_ROOT, "build", "icon-export")
-    if os.path.isdir(export_root):
-        shutil.rmtree(export_root)
-    mobile_root = os.path.join(export_root, "mobile")
-    tv_root = os.path.join(export_root, "tv")
-    os.makedirs(mobile_root, exist_ok=True)
-    os.makedirs(tv_root, exist_ok=True)
-
-    # 主资源树是两种 flavor 共享的启动图、圆形图标、adaptive、通知与 logo。
-    main_res = os.path.join(REPO_ROOT, "app", "src", "main", "res")
-    shutil.copytree(main_res, os.path.join(mobile_root, "res"))
-    shutil.copytree(main_res, os.path.join(tv_root, "res"))
-    # TV overlay 包含五档 @mipmap/ic_banner 及 TV 专用 Manifest 资源。
-    leanback_res = os.path.join(REPO_ROOT, "app", "src", "leanback", "res")
-    shutil.copytree(leanback_res, os.path.join(tv_root, "leanback-res"))
-
-    playstore = os.path.join(REPO_ROOT, "app", "src", "main", "ic_launcher-playstore.png")
-    if os.path.isfile(playstore):
-        shutil.copy2(playstore, mobile_root)
-    assets = os.path.join(REPO_ROOT, "app", "src", "main", "assets")
-    if os.path.isdir(assets):
-        shutil.copytree(assets, os.path.join(mobile_root, "assets"))
-        shutil.copytree(assets, os.path.join(tv_root, "assets"))
-
-    readme = (
-        "TANG TV generated icon assets\n"
-        "mobile/res: shared mobile launcher, adaptive icon, notification and banner assets\n"
-        "tv/res: shared resources; tv/leanback-res: Leanback overlays and density banners\n"
-        "Source master: other/image/tj_dream_cat_master.png\n"
-        "Generated by scripts/gen_app_icon.py (ImageMagick; no Pillow rendering).\n"
-    )
-    with open(os.path.join(export_root, "README.txt"), "w", encoding="utf-8") as f:
-        f.write(readme)
-    print(f"[export] -> {export_root}/ (mobile / tv)")
-    return True
-
-
 # ---------------------------------------------------------------- 主流程
 def main():
     global FORCE_MODE, AUTO_ROLLBACK
@@ -4609,6 +4591,9 @@ def main():
     load_config_env()
     config = CONFIG
 
+    # 图标相关依赖（numpy）按需准备：纯文本改写步骤（名称/包名/链接/内存参数）不依赖它
+    _ensure_numpy()
+
     if not os.path.isdir(CUSTOM_DIR):
         os.makedirs(CUSTOM_DIR, exist_ok=True)
         print(f"[INFO] 已创建 custom/ 目录：{CUSTOM_DIR}")
@@ -4626,7 +4611,7 @@ def main():
     print("\n--- [2/12] 多语言 app 名称（values / values-zh-rCN / values-zh-rTW）---")
     results.append(modify_all_strings(config))
 
-    print("\n--- [3/12] 使用猫咪图片母版生成整套手机/TV 图标（ImageMagick）---")
+    print("\n--- [3/12] 程序化生成整套应用图标（gen_app_icon 逻辑，风格: %s）---" % config.get("ICON_STYLE", "3d"))
     icon_ok = generate_app_icons(config)
     results.append(icon_ok)
 
@@ -4847,19 +4832,16 @@ if __name__ == "__main__":
         print("把上面这串指纹填到脚本常量 EXPECTED_RELEASE_CERT_SHA256 后提交，")
         print("以后 CI 每次构建都会硬校验此指纹，不匹配直接失败。")
         sys.exit(0)
-    # --verify：使用不依赖 Pillow 的资源尺寸/引用校验脚本。
+    # --verify：仅校验已写入图标是否与预览/渲染来源一致，不修改项目（一致退出0，否则1）
     if "--verify" in sys.argv:
         load_config_env()
-        verify_script = os.path.join(REPO_ROOT, "scripts", "verify_cat_icon_assets.sh")
-        if not os.path.isfile(verify_script):
-            print(f"[ERROR] 找不到图标校验脚本: {verify_script}")
-            sys.exit(1)
-        result = subprocess.run(["bash", verify_script], cwd=REPO_ROOT)
-        sys.exit(result.returncode)
-    # --export：输出图标预览到 build/icon-preview/，不修改 app/src/**/res。
+        _ensure_numpy()
+        _ok, _ = verify_icons(CONFIG.get("ICON_STYLE", "cat"), verbose=True)
+        sys.exit(0 if _ok else 1)
+    # --export：仅导出全部图标到 build/icon-export/（手机版/电视版分文件夹），不修改项目
     elif "--export" in sys.argv:
         load_config_env()
-        ok = generate_app_icons(CONFIG)
-        sys.exit(0 if ok and export_generated_icon_assets() else 1)
+        _ensure_numpy()
+        do_export(CONFIG.get("ICON_STYLE", "cat"))
     else:
         main()

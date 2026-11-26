@@ -157,6 +157,18 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Regenerate icons from custom script
+        run: |
+          python3 -m pip install --upgrade Pillow numpy
+          python3 - <<'PY'
+          import importlib.util, sys
+          spec = importlib.util.spec_from_file_location("lc", "custom/local_customize.py")
+          m = importlib.util.module_from_spec(spec)
+          sys.modules["lc"] = m
+          spec.loader.exec_module(m)
+          m.do_write(m.CONFIG.get("ICON_STYLE", "cat"))
+          PY
+
       - name: Regenerate icons from approved image assets
         run: |
           sudo apt-get update
