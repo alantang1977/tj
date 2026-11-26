@@ -305,14 +305,6 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         else {
             Log.i(TAG, "apk_download_source=GitHub url=" + update.apkUrl);
         }
-        // 否则回退 GitHub Release 直链
-        else {
-            Log.i(TAG, "apk_download_source=GitHub url=" + update.apkUrl);
-        }
-        // 否则回退 GitHub Release 直链
-        else {
-            Log.i(TAG, "apk_download_source=GitHub url=" + update.apkUrl);
-        }
         JSONObject oci = downloads == null ? null : downloads.optJSONObject("oci");
         if (oci == null) return;
         OciArtifact artifact = new OciArtifact(
